@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Plus, X, CheckCircle2, Circle, CalendarDays, Loader2, Copy, Trash2, RefreshCw, AlertTriangle } from 'lucide-react'
 import ContextMenu from '@/components/ContextMenu'
