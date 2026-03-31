@@ -40,7 +40,7 @@ let syncing = false
 let intervalId: any = null
 let initPromise: Promise<void> | null = null
 
-const SYNC_INTERVAL = 30_000 // 30 seconds
+const SYNC_INTERVAL = 600_000 // 10 minutes
 
 function emptyTable(): StoreTable {
   return { records: [], byId: new Map(), lastSync: 0 }
@@ -116,6 +116,13 @@ async function syncAll() {
   } finally {
     syncing = false
   }
+}
+
+/**
+ * Force a full re-sync of all tables immediately (manual refresh).
+ */
+export async function refreshAll(): Promise<void> {
+  await syncAll()
 }
 
 /**

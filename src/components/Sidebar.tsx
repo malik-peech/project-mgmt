@@ -13,6 +13,7 @@ import {
   X,
   LogOut,
   Eye,
+  RefreshCw,
 } from 'lucide-react'
 
 const navItems = [
@@ -29,6 +30,17 @@ export default function Sidebar() {
   const isAdmin = userRole === 'Admin'
 
   const [simulatedPm, setSimulatedPm] = useState<string>('')
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastRefresh, setLastRefresh] = useState<string>('')
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetch('/api/admin/refresh', { method: 'POST' })
+      setLastRefresh(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }))
+    } catch {}
+    setRefreshing(false)
+  }
 
   useEffect(() => {
     const check = () => {
@@ -110,6 +122,15 @@ export default function Sidebar() {
             <p className="text-white text-sm font-medium truncate">{session.user.name}</p>
             <p className="text-indigo-300 text-xs">{userRole}</p>
           </div>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-3 py-2 text-indigo-300 hover:text-white text-sm w-full rounded-lg hover:bg-indigo-800 transition disabled:opacity-50"
+            title="Forcer la synchronisation avec Airtable"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Sync...' : lastRefresh ? `Sync AT · ${lastRefresh}` : 'Sync Airtable'}
+          </button>
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
             className="flex items-center gap-2 px-3 py-2 text-indigo-300 hover:text-white text-sm w-full rounded-lg hover:bg-indigo-800 transition"
