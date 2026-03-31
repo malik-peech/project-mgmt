@@ -84,9 +84,9 @@ export function useData<T>(
         setError(null)
         lastErr = null
         break
-      } catch (err: any) {
-        if (err.name === 'AbortError') return
-        lastErr = err
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        lastErr = err instanceof Error ? err : new Error(String(err))
         if (attempt < 2) {
           await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)))
         }

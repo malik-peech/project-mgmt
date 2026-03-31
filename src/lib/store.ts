@@ -36,7 +36,8 @@ type Store = {
 
 let store: Store | null = null
 let syncing = false
-let intervalId: ReturnType<typeof setInterval> | null = null
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let intervalId: any = null
 let initPromise: Promise<void> | null = null
 
 const SYNC_INTERVAL = 30_000 // 30 seconds
@@ -64,7 +65,7 @@ async function fetchTable(tableName: string): Promise<RawRecord[]> {
       id: r.id,
       fields: r.fields as Record<string, unknown>,
     }))
-  } catch (err) {
+  } catch (err: unknown) {
     console.error(`[Store] Failed to fetch ${tableName}:`, err)
     return [] // Return empty on failure, keep stale data
   }
@@ -110,7 +111,7 @@ async function syncAll() {
     console.log(
       `[Store] Synced: ${projets.length} projets, ${tasks.length} tasks, ${cogs.length} cogs, ${ressources.length} ressources, ${clients.length} clients`
     )
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('[Store] Sync error:', err)
   } finally {
     syncing = false
@@ -158,13 +159,8 @@ export async function ensureStore(): Promise<Store> {
       // Start background sync
       if (!intervalId) {
         intervalId = setInterval(() => {
-          syncAll().catch((err) => console.error('[Store] Background sync error:', err))
+          syncAll().catch((err: unknown) => console.error('[Store] Background sync error:', err))
         }, SYNC_INTERVAL)
-
-        // Don't block Node process exit
-        if (intervalId && typeof intervalId === 'object' && 'unref' in intervalId) {
-          intervalId.unref()
-        }
       }
     })()
   }
