@@ -113,6 +113,8 @@ export interface Ressource {
   categorie?: string[]
   statut?: string
   telephone?: string
+  description?: string
+  iban?: string
 }
 
 // ── User (session) ──

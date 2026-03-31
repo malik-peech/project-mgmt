@@ -27,8 +27,13 @@ export async function POST(
     // Upload each file to Airtable Content API
     const results = []
     for (const file of files) {
+      // Read file data as ArrayBuffer to ensure data is fully loaded
+      const arrayBuffer = await file.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+
       const fileFormData = new FormData()
-      fileFormData.append('file', file, file.name)
+      const blob = new Blob([buffer], { type: file.type || 'application/octet-stream' })
+      fileFormData.append('file', blob, file.name)
       fileFormData.append('filename', file.name)
       fileFormData.append('contentType', file.type || 'application/octet-stream')
 

@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { useData } from '@/hooks/useData'
 import {
   Plus, X, Search, Check, FileText, Copy, Trash2, RefreshCw, AlertTriangle, Loader2, Upload, CloudUpload,
+  ArrowUpDown, ArrowUp, ArrowDown,
 } from 'lucide-react'
 import ContextMenu from '@/components/ContextMenu'
 import ComboSelect from '@/components/ComboSelect'
@@ -40,6 +41,9 @@ export default function CogsPage() {
   const [showModal, setShowModal] = useState(false)
   const [selectedCog, setSelectedCog] = useState<Cogs | null>(null)
   const [uploadingCog, setUploadingCog] = useState(false)
+  const [sortField, setSortField] = useState<'projetRef' | 'ressourceName' | 'categorie' | 'montantBudgeteSales' | 'montantEngageProd' | 'statut' | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [ressourceFilter, setRessourceFilter] = useState('')
 
   // Modal state
   const [formProjetId, setFormProjetId] = useState('')
@@ -177,10 +181,20 @@ export default function CogsPage() {
     }
   }
 
+  const toggleSort = (field: typeof sortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+  }
+
   const filtered = useMemo(() => {
     let list = cogsList
     if (activeTab !== 'Tous') list = list.filter((c) => c.statut === activeTab)
     if (projetFilter) list = list.filter((c) => c.projetId === projetFilter)
+    if (ressourceFilter) list = list.filter((c) => c.ressourceName === ressourceFilter)
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter((c) =>
@@ -192,8 +206,21 @@ export default function CogsPage() {
         c.categorie?.toLowerCase().includes(q)
       )
     }
+    if (sortField) {
+      list = [...list].sort((a, b) => {
+        const aVal = a[sortField]
+        const bVal = b[sortField]
+        if (aVal == null && bVal == null) return 0
+        if (aVal == null) return 1
+        if (bVal == null) return -1
+        const cmp = typeof aVal === 'number' && typeof bVal === 'number'
+          ? aVal - bVal
+          : String(aVal).localeCompare(String(bVal), 'fr')
+        return sortDir === 'asc' ? cmp : -cmp
+      })
+    }
     return list
-  }, [cogsList, activeTab, projetFilter, search])
+  }, [cogsList, activeTab, projetFilter, ressourceFilter, search, sortField, sortDir])
 
   const filteredRessources = useMemo(() => {
     if (!ressourceSearch) return ressourceList
@@ -326,6 +353,17 @@ export default function CogsPage() {
                   size="sm"
                 />
               </div>
+
+              {/* Ressource filter indicator */}
+              {ressourceFilter && (
+                <button
+                  onClick={() => setRessourceFilter('')}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium hover:bg-indigo-200 transition"
+                >
+                  {ressourceFilter}
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -341,12 +379,31 @@ export default function CogsPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50/50">
-                      <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">Code / Projet</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">Ressource</th>
-                      <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">Catégorie</th>
-                      <th className="text-right px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">Montant HT</th>
-                      <th className="text-center px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">Statut</th>
-                      <th className="text-center px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">BDC</th>
+                      {[
+                        { key: 'projetRef', label: 'Code / Projet', align: 'left' },
+                        { key: 'ressourceName', label: 'Ressource', align: 'left' },
+                        { key: 'categorie', label: 'Catégorie', align: 'left' },
+                        { key: 'montantBudgeteSales', label: 'HT sales', align: 'right' },
+                        { key: 'montantEngageProd', label: 'HT engagé', align: 'right' },
+                        { key: 'statut', label: 'Statut', align: 'center' },
+                      ].map(({ key, label, align }) => (
+                        <th
+                          key={key}
+                          className={`px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 transition ${
+                            align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+                          }`}
+                          onClick={() => toggleSort(key as typeof sortField)}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {label}
+                            {sortField === key ? (
+                              sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                            ) : (
+                              <ArrowUpDown className="w-3 h-3 opacity-30" />
+                            )}
+                          </span>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -369,12 +426,24 @@ export default function CogsPage() {
                           <div className="text-sm text-gray-900 truncate max-w-[200px]">{c.projetName || '—'}</div>
                           {c.clientName && <div className="text-xs text-indigo-600">{c.clientName}</div>}
                         </td>
-                        <td className="px-4 py-3 text-gray-700">{c.ressourceName || '—'}</td>
+                        <td className="px-4 py-3 text-gray-700">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setRessourceFilter(ressourceFilter === c.ressourceName ? '' : (c.ressourceName || ''))
+                            }}
+                            className={`text-left hover:text-indigo-600 transition ${ressourceFilter === c.ressourceName ? 'text-indigo-600 font-medium' : ''}`}
+                            title="Filtrer par ressource"
+                          >
+                            {c.ressourceName || '—'}
+                          </button>
+                        </td>
                         <td className="px-4 py-3">
                           {c.categorie ? (
                             <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{c.categorie}</span>
                           ) : '—'}
                         </td>
+                        <td className="px-4 py-3 text-right font-medium text-gray-500 tabular-nums">{fmt(c.montantBudgeteSales)}</td>
                         <td className="px-4 py-3 text-right font-medium text-gray-900 tabular-nums">{fmt(c.montantEngageProd)}</td>
                         <td className="px-4 py-3 text-center">
                           {c.statut ? (
@@ -382,9 +451,6 @@ export default function CogsPage() {
                               {c.statut}
                             </span>
                           ) : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {c.bdcEnvoye ? <Check className="w-4 h-4 text-green-600 mx-auto" /> : <span className="text-gray-300">—</span>}
                         </td>
                       </tr>
                     ))}

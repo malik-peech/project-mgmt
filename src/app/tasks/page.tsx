@@ -11,12 +11,40 @@ import { useData } from '@/hooks/useData'
 import type { Task, TaskPriority, TaskType, Projet } from '@/types'
 
 const PRIORITY_COLORS: Record<string, string> = {
-  'Urgent': 'bg-red-100 text-red-800',
-  'Important': 'bg-yellow-100 text-yellow-800',
-  "Dans l'ideal": 'bg-teal-100 text-teal-800',
-  "Dans l\u2019id\u00e9al": 'bg-teal-100 text-teal-800',
-  'Optionnel': 'bg-gray-100 text-gray-600',
-  'Si retour client': 'bg-green-100 text-green-800',
+  'Urgent': 'bg-red-100 text-red-700 ring-1 ring-red-200',
+  'Important': 'bg-amber-100 text-amber-700 ring-1 ring-amber-200',
+  "Dans l'ideal": 'bg-teal-100 text-teal-700',
+  "Dans l\u2019id\u00e9al": 'bg-teal-100 text-teal-700',
+  'Optionnel': 'bg-gray-100 text-gray-500',
+  'Si retour client': 'bg-emerald-100 text-emerald-700',
+}
+
+const TYPE_COLORS: Record<string, string> = {
+  // Client communication — blue tones
+  'Brief': 'bg-blue-100 text-blue-700',
+  'Call client': 'bg-blue-100 text-blue-700',
+  'Email client': 'bg-sky-100 text-sky-700',
+  'Prez': 'bg-indigo-100 text-indigo-700',
+  // Delivery
+  'Delivery': 'bg-violet-100 text-violet-700',
+  'Envoi rétroplanning': 'bg-purple-100 text-purple-700',
+  // External / presta
+  'Contact presta': 'bg-teal-100 text-teal-700',
+  'Call presta': 'bg-teal-100 text-teal-600',
+  'Retour presta': 'bg-teal-50 text-teal-600',
+  // Finance / admin
+  'COGS': 'bg-green-100 text-green-700',
+  'Demande float': 'bg-lime-100 text-lime-700',
+  'Matos': 'bg-yellow-100 text-yellow-700',
+  // Physical / production
+  'Shooting': 'bg-orange-100 text-orange-700',
+  'Prepa Tournage': 'bg-orange-100 text-orange-600',
+  'Casting VO': 'bg-pink-100 text-pink-700',
+  'Casting acteur': 'bg-pink-100 text-pink-600',
+  // Internal / planning
+  'Task interne': 'bg-gray-100 text-gray-600',
+  'Check': 'bg-slate-100 text-slate-600',
+  'Calendar': 'bg-slate-100 text-slate-500',
 }
 
 const PRIORITY_OPTIONS: TaskPriority[] = ['Urgent', 'Important', "Dans l'id\u00e9al", 'Optionnel', 'Si retour client']
@@ -36,6 +64,11 @@ function getPriorityColor(priority?: string): string {
   return PRIORITY_COLORS[priority] ?? 'bg-gray-100 text-gray-500'
 }
 
+function getTypeColor(type?: string): string {
+  if (!type) return 'bg-gray-50 text-gray-400'
+  return TYPE_COLORS[type] ?? 'bg-indigo-50 text-indigo-600'
+}
+
 /** Strip Airtable record IDs (rec + 8+ alphanumeric chars) from display strings */
 function stripRecIds(text?: string): string {
   if (!text) return ''
@@ -46,6 +79,7 @@ const DATE_FILTERS = [
   { label: 'Toutes', value: 'all' },
   { label: 'En retard', value: 'overdue' },
   { label: "Aujourd'hui", value: 'today' },
+  { label: 'Demain', value: 'tomorrow' },
   { label: 'Cette semaine', value: 'week' },
   { label: 'Sans date', value: 'nodate' },
 ]
@@ -68,6 +102,9 @@ export default function TasksPage() {
   // Inline create
   const [inlineName, setInlineName] = useState('')
   const [inlineDate, setInlineDate] = useState('')
+  const [inlineProjet, setInlineProjet] = useState('')
+  const [inlineType, setInlineType] = useState('')
+  const [inlinePriority, setInlinePriority] = useState('')
   const [inlineCreating, setInlineCreating] = useState(false)
 
   // Form state (modal)
@@ -258,8 +295,11 @@ export default function TasksPage() {
     setInlineCreating(true)
     try {
       const body: Record<string, string> = { name: inlineName }
-      if (projetFilter) body.projetId = projetFilter
+      const projetId = inlineProjet || projetFilter
+      if (projetId) body.projetId = projetId
       if (inlineDate) body.dueDate = inlineDate
+      if (inlineType) body.type = inlineType
+      if (inlinePriority) body.priority = inlinePriority
       const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -270,6 +310,9 @@ export default function TasksPage() {
         mutateTasks(prev => [newTask, ...(prev ?? [])])
         setInlineName('')
         setInlineDate('')
+        setInlineProjet('')
+        setInlineType('')
+        setInlinePriority('')
       }
     } catch {} finally { setInlineCreating(false) }
   }
@@ -291,6 +334,7 @@ export default function TasksPage() {
     }
     if (dateFilter !== 'all') {
       const today = new Date(); today.setHours(0, 0, 0, 0)
+      const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1)
       const endOfWeek = new Date(today); endOfWeek.setDate(today.getDate() + (7 - today.getDay()))
       list = list.filter((t) => {
         if (dateFilter === 'nodate') return !t.dueDate
@@ -298,6 +342,7 @@ export default function TasksPage() {
         const d = new Date(t.dueDate); d.setHours(0, 0, 0, 0)
         if (dateFilter === 'overdue') return d < today
         if (dateFilter === 'today') return d.getTime() === today.getTime()
+        if (dateFilter === 'tomorrow') return d.getTime() === tomorrow.getTime()
         if (dateFilter === 'week') return d >= today && d <= endOfWeek
         return true
       })
@@ -407,27 +452,64 @@ export default function TasksPage() {
 
       {/* Inline create */}
       {activeTab === 'todo' && (
-        <div className="flex items-center gap-2 mb-4 px-4 py-2.5 bg-white rounded-xl border border-dashed border-gray-200">
-          <Plus className="w-4 h-4 text-gray-300 shrink-0" />
-          <input
-            type="text"
-            placeholder={projetFilter ? 'Nouvelle task pour ce projet...' : 'Nouvelle task rapide...'}
-            value={inlineName}
-            onChange={(e) => setInlineName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && inlineName.trim()) createInlineTask() }}
-            className="flex-1 text-sm border-none outline-none bg-transparent placeholder:text-gray-300"
-          />
-          <input
-            type="date"
-            value={inlineDate}
-            onChange={(e) => setInlineDate(e.target.value)}
-            className="text-xs text-gray-400 border-none outline-none bg-transparent w-28"
-          />
-          {inlineName.trim() && (
-            <button onClick={createInlineTask} disabled={inlineCreating} className="text-indigo-600 hover:text-indigo-700 text-xs font-medium">
-              {inlineCreating ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Ajouter'}
-            </button>
-          )}
+        <div className="mb-4 bg-white rounded-xl border border-dashed border-gray-200 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5">
+            <Plus className="w-4 h-4 text-gray-300 shrink-0" />
+            <input
+              type="text"
+              placeholder={projetFilter || inlineProjet ? 'Nouvelle task pour ce projet...' : 'Nouvelle task rapide...'}
+              value={inlineName}
+              onChange={(e) => setInlineName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && inlineName.trim()) createInlineTask() }}
+              className="flex-1 text-sm border-none outline-none bg-transparent placeholder:text-gray-300"
+            />
+            <input
+              type="date"
+              value={inlineDate}
+              onChange={(e) => setInlineDate(e.target.value)}
+              className="text-xs text-gray-400 border-none outline-none bg-transparent w-28"
+            />
+            {inlineName.trim() && (
+              <button onClick={createInlineTask} disabled={inlineCreating} className="text-indigo-600 hover:text-indigo-700 text-xs font-medium shrink-0">
+                {inlineCreating ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Ajouter'}
+              </button>
+            )}
+          </div>
+          {/* Extra fields row */}
+          <div className="flex items-center gap-2 px-4 pb-2.5 border-t border-gray-50 pt-2">
+            {!projetFilter && (
+              <div className="w-44">
+                <ComboSelect
+                  options={projetComboOptions}
+                  value={inlineProjet}
+                  onChange={setInlineProjet}
+                  placeholder="Projet"
+                  clearable
+                  size="sm"
+                />
+              </div>
+            )}
+            <div className="w-36">
+              <ComboSelect
+                options={typeComboOptions}
+                value={inlineType}
+                onChange={setInlineType}
+                placeholder="Type"
+                clearable
+                size="sm"
+              />
+            </div>
+            <div className="w-36">
+              <ComboSelect
+                options={priorityComboOptions}
+                value={inlinePriority}
+                onChange={setInlinePriority}
+                placeholder="Priorité"
+                clearable
+                size="sm"
+              />
+            </div>
+          </div>
         </div>
       )}
 
@@ -528,7 +610,7 @@ export default function TasksPage() {
                   onClick={() => setEditingField({ id: task.id, field: 'type' })}
                   className={`hidden md:inline-flex shrink-0 text-xs px-2 py-0.5 rounded-full font-medium transition hover:opacity-75 ${
                     task.type
-                      ? 'bg-indigo-50 text-indigo-700'
+                      ? getTypeColor(task.type)
                       : 'bg-gray-50 text-gray-300 border border-dashed border-gray-200'
                   }`}
                   title="Cliquer pour modifier le type"
@@ -575,6 +657,7 @@ export default function TasksPage() {
                     options={userOptions}
                     value={task.assigneManuel || ''}
                     onChange={(v) => updateAssignee(task.id, v)}
+                    onClose={() => setEditingAssignee(null)}
                     placeholder="Assigné"
                     clearable
                     size="sm"

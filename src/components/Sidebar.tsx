@@ -14,12 +14,14 @@ import {
   LogOut,
   Eye,
   RefreshCw,
+  Users,
 } from 'lucide-react'
 
 const navItems = [
   { href: '/', label: 'Projets', icon: LayoutDashboard },
   { href: '/tasks', label: 'Tasks', icon: ListTodo },
   { href: '/cogs', label: 'COGS', icon: Receipt },
+  { href: '/ressources', label: 'Ressources', icon: Users },
 ]
 
 export default function Sidebar() {

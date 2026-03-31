@@ -23,6 +23,8 @@ export async function GET() {
         categorie: f['Catégorie'] as string[] | undefined,
         statut: f['Statut'] as string | undefined,
         telephone: f['Téléphone'] as string | undefined,
+        description: f['Description'] as string | undefined,
+        iban: f['IBAN'] as string | undefined,
       })
     }
 

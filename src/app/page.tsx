@@ -6,6 +6,7 @@ import { Search, Calendar, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, A
 import { useData } from '@/hooks/useData'
 import ForceNewTaskModal from '@/components/ForceNewTaskModal'
 import FileViewer from '@/components/FileViewer'
+import ComboSelect from '@/components/ComboSelect'
 import type { Projet, StatutProjet, Cogs, Task } from '@/types'
 
 const phaseColors: Record<string, string> = {
@@ -645,21 +646,18 @@ function SidePanel({
           {teamMembers.map((member) => {
             if (member.editing) {
               return (
-                <div key={member.label} className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5">
-                  <div className="min-w-0">
+                <div key={member.label} className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5 min-w-[140px]">
+                  <div className="min-w-0 w-full">
                     <p className="text-[10px] text-indigo-500 font-medium leading-none mb-1">{member.label}</p>
-                    <select
+                    <ComboSelect
+                      options={[{ value: '', label: '— Aucun —' }, ...member.options.map((o) => ({ value: o, label: o }))]}
                       value={member.name || ''}
-                      onChange={(e) => member.onChange(e.target.value)}
-                      onBlur={() => member.setEditing(false)}
-                      autoFocus
-                      className="text-xs border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
-                    >
-                      <option value="">— Aucun —</option>
-                      {member.options.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
+                      onChange={member.onChange}
+                      onClose={() => member.setEditing(false)}
+                      placeholder="— Aucun —"
+                      size="sm"
+                      autoOpen
+                    />
                   </div>
                 </div>
               )

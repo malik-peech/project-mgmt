@@ -18,6 +18,7 @@ interface Props {
   className?: string
   size?: 'sm' | 'md'
   autoOpen?: boolean
+  onClose?: () => void
 }
 
 export default function ComboSelect({
@@ -29,6 +30,7 @@ export default function ComboSelect({
   className = '',
   size = 'md',
   autoOpen = false,
+  onClose,
 }: Props) {
   const [open, setOpen] = useState(false)
 
@@ -64,6 +66,7 @@ export default function ComboSelect({
     function onClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false)
+        onClose?.()
       }
     }
     document.addEventListener('mousedown', onClickOutside)
@@ -83,7 +86,7 @@ export default function ComboSelect({
       }
       return
     }
-    if (e.key === 'Escape') { setOpen(false); return }
+    if (e.key === 'Escape') { setOpen(false); onClose?.(); return }
     if (e.key === 'ArrowDown') { setHighlighted((h) => Math.min(h + 1, filtered.length - 1)); e.preventDefault() }
     if (e.key === 'ArrowUp') { setHighlighted((h) => Math.max(h - 1, 0)); e.preventDefault() }
     if (e.key === 'Enter') {
