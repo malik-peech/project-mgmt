@@ -1,0 +1,5 @@
+node_modules/
+.next/
+.env.local
+.replit
+replit.nix
