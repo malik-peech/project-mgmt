@@ -3,3 +3,4 @@ node_modules/
 .env.local
 .replit
 replit.nix
+data/

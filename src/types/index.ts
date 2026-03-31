@@ -16,9 +16,11 @@ export interface Projet {
   nom: string
   clientName?: string
   clientId?: string
+  agence?: string
   am?: string
   pm?: string
   da?: string
+  daOfficial?: string
   pc?: string
   filmmaker?: string
   phase?: Phase
@@ -113,7 +115,7 @@ export interface Ressource {
 }
 
 // ── User (session) ──
-export type UserRole = 'Admin' | 'PM'
+export type UserRole = 'Admin' | 'PM' | 'DA'
 
 export interface AppUser {
   name: string

@@ -2,15 +2,17 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { signOut, useSession } from 'next-auth/react'
 import {
   LayoutDashboard,
   ListTodo,
   Receipt,
+  Settings,
   Menu,
   X,
   LogOut,
+  Eye,
 } from 'lucide-react'
 
 const navItems = [
@@ -23,6 +25,35 @@ export default function Sidebar() {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { data: session } = useSession()
+  const userRole = (session?.user as { role?: string })?.role
+  const isAdmin = userRole === 'Admin'
+
+  const [simulatedPm, setSimulatedPm] = useState<string>('')
+
+  useEffect(() => {
+    const check = () => {
+      const stored = localStorage.getItem('peechpm_simulate_pm') || ''
+      setSimulatedPm(stored)
+    }
+    check()
+    // Listen for storage changes (from admin page)
+    window.addEventListener('storage', check)
+    // Poll for same-tab changes
+    const interval = setInterval(check, 1000)
+    return () => {
+      window.removeEventListener('storage', check)
+      clearInterval(interval)
+    }
+  }, [])
+
+  const stopSimulation = () => {
+    localStorage.removeItem('peechpm_simulate_pm')
+    setSimulatedPm('')
+  }
+
+  const allNavItems = isAdmin
+    ? [...navItems, { href: '/admin', label: 'Admin', icon: Settings }]
+    : navItems
 
   const NavContent = () => (
     <>
@@ -35,8 +66,25 @@ export default function Sidebar() {
         </span>
       </div>
 
+      {/* Simulation banner */}
+      {isAdmin && simulatedPm && (
+        <div className="mx-3 mt-3 px-3 py-2 bg-amber-500/20 border border-amber-500/30 rounded-lg">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Eye className="w-3 h-3 text-amber-300" />
+            <span className="text-[10px] font-semibold text-amber-300 uppercase tracking-wider">Simulation</span>
+          </div>
+          <p className="text-xs text-amber-100 font-medium truncate">{simulatedPm}</p>
+          <button
+            onClick={stopSimulation}
+            className="text-[10px] text-amber-300 hover:text-white underline mt-1"
+          >
+            Arrêter
+          </button>
+        </div>
+      )}
+
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {allNavItems.map(({ href, label, icon: Icon }) => {
           const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href)
           return (
             <Link
@@ -60,7 +108,7 @@ export default function Sidebar() {
         <div className="px-3 py-4 border-t border-indigo-800">
           <div className="px-3 mb-2">
             <p className="text-white text-sm font-medium truncate">{session.user.name}</p>
-            <p className="text-indigo-300 text-xs">{(session.user as { role?: string }).role}</p>
+            <p className="text-indigo-300 text-xs">{userRole}</p>
           </div>
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}

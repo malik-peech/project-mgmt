@@ -1,26 +1,6 @@
 import NextAuth from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
-
-// PM list from Airtable singleSelect options
-const PM_NAMES = [
-  'Margaux Fluttaz',
-  'Julien Munier',
-  'Max Robé',
-  'Alexis Mervant',
-  'Amandine',
-  'Athenaïs Ozanne-de Buchy',
-  'Elsa Lopez',
-  'Eugénie Perrin',
-  'Fabien Dhondt',
-  'LAURA ARNAUD',
-  'Marie Adrait',
-  'Marlène De Almeida',
-  'Shana Briand',
-  'Tiphaine Mounier',
-]
-
-// Admin users who get the Admin role
-const ADMIN_NAMES = ['Malik Goulamhoussen', 'Vanessa Goulamhoussen']
+import { getUserByName } from '@/lib/users'
 
 const handler = NextAuth({
   providers: [
@@ -33,23 +13,16 @@ const handler = NextAuth({
       async authorize(credentials) {
         if (!credentials?.name || !credentials?.password) return null
 
-        const appPassword = process.env.APP_PASSWORD || 'peech2024'
-        if (credentials.password !== appPassword) return null
+        const user = getUserByName(credentials.name.trim())
+        if (!user) return null
+        if (credentials.password !== user.password) return null
 
-        const name = credentials.name.trim()
-        const allNames = [...PM_NAMES, ...ADMIN_NAMES]
-        const matched = allNames.find(
-          (n) => n.toLowerCase() === name.toLowerCase()
-        )
-        if (!matched) return null
-
-        const role = ADMIN_NAMES.some(
-          (n) => n.toLowerCase() === name.toLowerCase()
-        )
-          ? 'Admin'
-          : 'PM'
-
-        return { id: matched, name: matched, email: `${matched.toLowerCase().replace(/\s+/g, '.')}@peech.studio`, role }
+        return {
+          id: user.name,
+          name: user.name,
+          email: `${user.name.toLowerCase().replace(/\s+/g, '.')}@peech.studio`,
+          role: user.role,
+        }
       },
     }),
   ],

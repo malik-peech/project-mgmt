@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Search, Calendar, X, ChevronRight, RefreshCw, AlertTriangle, TrendingUp, Plus, FileText, ExternalLink, Loader2, CheckCircle2, Circle } from 'lucide-react'
+import { Search, Calendar, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, AlertTriangle, TrendingUp, Plus, FileText, ExternalLink, Loader2, CheckCircle2, Circle } from 'lucide-react'
 import { useData } from '@/hooks/useData'
 import ForceNewTaskModal from '@/components/ForceNewTaskModal'
 import type { Projet, StatutProjet, Cogs, Task } from '@/types'
@@ -37,6 +37,11 @@ const cogsStatutColors: Record<string, string> = {
   'Refusée': 'text-red-700 bg-red-50',
 }
 
+const agenceColors: Record<string, string> = {
+  'Peech': 'bg-orange-100 text-orange-700',
+  'Newic': 'bg-blue-100 text-blue-700',
+}
+
 const fmt = (n?: number) =>
   n != null
     ? new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
@@ -64,26 +69,66 @@ function formatDate(dateStr?: string) {
   return new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
+type SortField = 'ref' | 'clientName' | 'nom' | 'agence' | 'phase' | 'statut' | 'nextTask' | 'nextTaskDate'
+type SortDir = 'asc' | 'desc'
+
 export default function DashboardPage() {
   const { data: session } = useSession()
   const [activeTab, setActiveTab] = useState<StatutProjet | 'Tous'>('Tous')
   const [selectedProjet, setSelectedProjet] = useState<Projet | null>(null)
   const [search, setSearch] = useState('')
+  const [agenceFilter, setAgenceFilter] = useState<string>('')
+  const [sortField, setSortField] = useState<SortField | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
 
   const userName = session?.user?.name || ''
   const userRole = (session?.user as { role?: string })?.role || 'PM'
-  const pmParam = userRole !== 'Admin' && userName ? `pm=${encodeURIComponent(userName)}` : ''
+
+  // Simulation support: admin can simulate a PM's view
+  const [simulatedPm, setSimulatedPm] = useState<string>('')
+  useEffect(() => {
+    if (userRole === 'Admin') {
+      const check = () => setSimulatedPm(localStorage.getItem('peechpm_simulate_pm') || '')
+      check()
+      window.addEventListener('storage', check)
+      const interval = setInterval(check, 1000)
+      return () => {
+        window.removeEventListener('storage', check)
+        clearInterval(interval)
+      }
+    }
+  }, [userRole])
+
+  const effectivePm = userRole === 'Admin' && simulatedPm ? simulatedPm : ''
+  const pmParam = userRole !== 'Admin' && userName ? `pm=${encodeURIComponent(userName)}` : effectivePm ? `pm=${encodeURIComponent(effectivePm)}` : ''
 
   const { data: projets, loading, error, revalidate } = useData<Projet[]>(
     session?.user?.name ? `/api/projets?${pmParam}` : null,
     { key: `projets-${pmParam}`, enabled: !!session?.user?.name }
   )
 
+  // Fetch users for PM/DA dropdowns in panel
+  const { data: allUsers } = useData<{ name: string; role: string }[]>(
+    userRole === 'Admin' ? '/api/users' : null,
+    { key: 'users-list', enabled: userRole === 'Admin' }
+  )
+
+  const pmOptions = useMemo(() => (allUsers ?? []).filter((u) => u.role === 'PM').map((u) => u.name), [allUsers])
+  const daOptions = useMemo(() => (allUsers ?? []).filter((u) => u.role === 'DA').map((u) => u.name), [allUsers])
+
   const allProjets = projets ?? []
+
+  // Extract unique agences for filter
+  const agences = useMemo(() => {
+    const set = new Set<string>()
+    allProjets.forEach((p) => { if (p.agence) set.add(p.agence) })
+    return Array.from(set).sort()
+  }, [allProjets])
 
   const filtered = useMemo(() => {
     let list = allProjets
     if (activeTab !== 'Tous') list = list.filter((p) => p.statut === activeTab)
+    if (agenceFilter) list = list.filter((p) => p.agence === agenceFilter)
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(
@@ -93,14 +138,50 @@ export default function DashboardPage() {
           p.ref?.toLowerCase().includes(q)
       )
     }
+    // Sorting
+    if (sortField) {
+      list = [...list].sort((a, b) => {
+        let va: string | undefined
+        let vb: string | undefined
+        switch (sortField) {
+          case 'ref': va = a.ref; vb = b.ref; break
+          case 'clientName': va = a.clientName; vb = b.clientName; break
+          case 'nom': va = a.nom; vb = b.nom; break
+          case 'agence': va = a.agence; vb = b.agence; break
+          case 'phase': va = a.phase; vb = b.phase; break
+          case 'statut': va = a.statut; vb = b.statut; break
+          case 'nextTask': va = a.nextTask; vb = b.nextTask; break
+          case 'nextTaskDate': va = a.nextTaskDate; vb = b.nextTaskDate; break
+        }
+        const cmp = (va || '').localeCompare(vb || '')
+        return sortDir === 'asc' ? cmp : -cmp
+      })
+    }
     return list
-  }, [allProjets, activeTab, search])
+  }, [allProjets, activeTab, agenceFilter, search, sortField, sortDir])
 
   useEffect(() => {
     if (selectedProjet && !filtered.find((p) => p.id === selectedProjet.id)) {
       setSelectedProjet(null)
     }
   }, [filtered, selectedProjet])
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      if (sortDir === 'asc') setSortDir('desc')
+      else { setSortField(null); setSortDir('asc') }
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+  }
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return null
+    return sortDir === 'asc'
+      ? <ChevronUp className="w-3 h-3 inline ml-0.5" />
+      : <ChevronDown className="w-3 h-3 inline ml-0.5" />
+  }
 
   if (loading && !projets) {
     return (
@@ -136,22 +217,39 @@ export default function DashboardPage() {
       <div className="flex-1 overflow-auto min-w-0">
         <div className="p-6 md:p-8">
           {/* Header + Search */}
-          <div className="flex items-center justify-between mb-5 gap-4">
+          <div className="flex items-center justify-between mb-5 gap-4 flex-wrap">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Projets</h1>
               <p className="text-sm text-gray-500 mt-0.5">
                 {filtered.length} projet{filtered.length !== 1 ? 's' : ''}
+                {simulatedPm && <span className="ml-2 text-amber-600 font-medium">(vue {simulatedPm})</span>}
               </p>
             </div>
-            <div className="relative w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Rechercher..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-              />
+            <div className="flex items-center gap-3">
+              {/* Agence filter */}
+              {agences.length > 1 && (
+                <select
+                  value={agenceFilter}
+                  onChange={(e) => setAgenceFilter(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                >
+                  <option value="">Toutes agences</option>
+                  {agences.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              )}
+              {/* Search */}
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Rechercher code, client..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                />
+              </div>
             </div>
           </div>
 
@@ -185,14 +283,31 @@ export default function DashboardPage() {
           ) : (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               {/* Header */}
-              <div className="hidden md:grid grid-cols-[0.6fr_1fr_1.5fr_0.7fr_0.7fr_1.5fr_0.6fr_28px] gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                <span>Code</span>
-                <span>Client</span>
-                <span>Projet</span>
-                <span>Phase</span>
-                <span>Statut</span>
-                <span>Next Task</span>
-                <span>Date</span>
+              <div className="hidden md:grid grid-cols-[0.5fr_0.5fr_1fr_1.2fr_0.6fr_0.6fr_1.3fr_0.5fr_28px] gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                <button onClick={() => handleSort('ref')} className="text-left hover:text-gray-700 transition">
+                  Code<SortIcon field="ref" />
+                </button>
+                <button onClick={() => handleSort('agence')} className="text-left hover:text-gray-700 transition">
+                  Agence<SortIcon field="agence" />
+                </button>
+                <button onClick={() => handleSort('clientName')} className="text-left hover:text-gray-700 transition">
+                  Client<SortIcon field="clientName" />
+                </button>
+                <button onClick={() => handleSort('nom')} className="text-left hover:text-gray-700 transition">
+                  Projet<SortIcon field="nom" />
+                </button>
+                <button onClick={() => handleSort('phase')} className="text-left hover:text-gray-700 transition">
+                  Phase<SortIcon field="phase" />
+                </button>
+                <button onClick={() => handleSort('statut')} className="text-left hover:text-gray-700 transition">
+                  Statut<SortIcon field="statut" />
+                </button>
+                <button onClick={() => handleSort('nextTask')} className="text-left hover:text-gray-700 transition">
+                  Next Task<SortIcon field="nextTask" />
+                </button>
+                <button onClick={() => handleSort('nextTaskDate')} className="text-left hover:text-gray-700 transition">
+                  Date<SortIcon field="nextTaskDate" />
+                </button>
                 <span />
               </div>
 
@@ -205,7 +320,7 @@ export default function DashboardPage() {
                     <button
                       key={projet.id}
                       onClick={() => setSelectedProjet(isActive ? null : projet)}
-                      className={`w-full text-left grid grid-cols-1 md:grid-cols-[0.6fr_1fr_1.5fr_0.7fr_0.7fr_1.5fr_0.6fr_28px] gap-x-3 gap-y-1 px-4 py-2.5 transition-colors duration-150 group cursor-pointer ${
+                      className={`w-full text-left grid grid-cols-1 md:grid-cols-[0.5fr_0.5fr_1fr_1.2fr_0.6fr_0.6fr_1.3fr_0.5fr_28px] gap-x-3 gap-y-1 px-4 py-2.5 transition-colors duration-150 group cursor-pointer ${
                         isActive
                           ? 'bg-indigo-50 border-l-2 border-l-indigo-500'
                           : 'hover:bg-gray-50 border-l-2 border-l-transparent'
@@ -216,6 +331,15 @@ export default function DashboardPage() {
                         <span className="text-[11px] font-mono text-gray-500 truncate">
                           {projet.ref || '—'}
                         </span>
+                      </div>
+
+                      {/* Agence */}
+                      <div className="flex items-center min-w-0">
+                        {projet.agence ? (
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full leading-tight ${agenceColors[projet.agence] || 'bg-gray-100 text-gray-600'}`}>
+                            {projet.agence}
+                          </span>
+                        ) : <span className="text-xs text-gray-300">—</span>}
                       </div>
 
                       {/* Client */}
@@ -312,6 +436,9 @@ export default function DashboardPage() {
             pmParam={pmParam}
             allProjets={allProjets}
             onTasksChanged={revalidate}
+            isAdmin={userRole === 'Admin'}
+            pmOptions={pmOptions}
+            daOptions={daOptions}
           />
         )}
       </div>
@@ -327,17 +454,37 @@ function SidePanel({
   pmParam,
   allProjets,
   onTasksChanged,
+  isAdmin,
+  pmOptions,
+  daOptions,
 }: {
   projet: Projet
   onClose: () => void
   pmParam: string
   allProjets: Projet[]
   onTasksChanged: () => void
+  isAdmin: boolean
+  pmOptions: string[]
+  daOptions: string[]
 }) {
   const [showForceTask, setShowForceTask] = useState<{ projetId: string; projetName: string } | null>(null)
   const [inlineTaskName, setInlineTaskName] = useState('')
   const [inlineTaskDate, setInlineTaskDate] = useState('')
   const [creatingTask, setCreatingTask] = useState(false)
+
+  // Editable PM/DA state
+  const [editingPm, setEditingPm] = useState(false)
+  const [editingDa, setEditingDa] = useState(false)
+  const [localPm, setLocalPm] = useState(projet.pm || '')
+  const [localDa, setLocalDa] = useState(projet.daOfficial || '')
+
+  // Reset when project changes
+  useEffect(() => {
+    setLocalPm(projet.pm || '')
+    setLocalDa(projet.daOfficial || '')
+    setEditingPm(false)
+    setEditingDa(false)
+  }, [projet.id, projet.pm, projet.daOfficial])
 
   // Fetch tasks for this project
   const { data: projectTasks, revalidate: revalidateProjectTasks } = useData<Task[]>(
@@ -399,6 +546,28 @@ function SidePanel({
     }
   }
 
+  const updateProjetField = async (field: 'pm' | 'daOfficial', value: string) => {
+    try {
+      await fetch('/api/projets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: projet.id, [field]: value }),
+      })
+      onTasksChanged() // revalidate projets
+    } catch {
+      // silent
+    }
+  }
+
+  // Team members for display
+  const teamMembers = [
+    { label: 'PM', name: localPm, editable: true, editing: editingPm, setEditing: setEditingPm, options: pmOptions, onChange: (v: string) => { setLocalPm(v); updateProjetField('pm', v); setEditingPm(false) } },
+    { label: 'DA', name: localDa, editable: true, editing: editingDa, setEditing: setEditingDa, options: daOptions, onChange: (v: string) => { setLocalDa(v); updateProjetField('daOfficial', v); setEditingDa(false) } },
+    { label: 'AM', name: projet.am, editable: false },
+    { label: 'PC', name: projet.pc, editable: false },
+    { label: 'Film', name: projet.filmmaker, editable: false },
+  ]
+
   return (
     <div className="p-6 min-w-[320px]">
       {/* Close */}
@@ -415,6 +584,11 @@ function SidePanel({
           {projet.ref && (
             <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
               {projet.ref}
+            </span>
+          )}
+          {projet.agence && (
+            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${agenceColors[projet.agence] || 'bg-gray-100 text-gray-600'}`}>
+              {projet.agence}
             </span>
           )}
         </div>
@@ -441,31 +615,57 @@ function SidePanel({
       </div>
 
       {/* Team */}
-      {(projet.am || projet.da || projet.pc || projet.filmmaker) && (
-        <div className="mb-6">
-          <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Equipe</h3>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { label: 'AM', name: projet.am },
-              { label: 'DA', name: projet.da },
-              { label: 'PC', name: projet.pc },
-              { label: 'Film', name: projet.filmmaker },
-            ]
-              .filter((m) => m.name)
-              .map((member) => (
-                <div key={member.label} className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5">
+      <div className="mb-6">
+        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Equipe</h3>
+        <div className="flex flex-wrap gap-2">
+          {teamMembers
+            .filter((m) => m.name || (m.editable && isAdmin))
+            .map((member) => {
+              // Editable inline dropdown
+              if (member.editable && isAdmin && member.editing) {
+                return (
+                  <div key={member.label} className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5">
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-indigo-500 font-medium leading-none mb-1">{member.label}</p>
+                      <select
+                        value={member.name || ''}
+                        onChange={(e) => member.onChange!(e.target.value)}
+                        onBlur={() => member.setEditing!(false)}
+                        autoFocus
+                        className="text-xs border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                      >
+                        <option value="">— Aucun —</option>
+                        {member.options!.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )
+              }
+
+              return (
+                <div
+                  key={member.label}
+                  className={`flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 ${
+                    member.editable && isAdmin ? 'cursor-pointer hover:border-indigo-300 hover:bg-indigo-50 transition' : ''
+                  }`}
+                  onClick={() => {
+                    if (member.editable && isAdmin && member.setEditing) member.setEditing(true)
+                  }}
+                >
                   <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[8px] font-bold shrink-0">
                     {getInitials(member.name)}
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] text-gray-400 font-medium leading-none">{member.label}</p>
-                    <p className="text-xs text-gray-700 truncate leading-tight">{member.name}</p>
+                    <p className="text-xs text-gray-700 truncate leading-tight">{member.name || '—'}</p>
                   </div>
                 </div>
-              ))}
-          </div>
+              )
+            })}
         </div>
-      )}
+      </div>
 
       {/* Budget */}
       <div className="mb-6">

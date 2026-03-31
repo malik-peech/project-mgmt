@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { ensureStore, buildLookupMap } from '@/lib/store'
+import { ensureStore, buildLookupMap, refreshTable } from '@/lib/store'
 import { sanitize } from '@/lib/sanitize'
+import { updateRecord, TABLES } from '@/lib/airtable'
 import type { Projet } from '@/types'
 
 /** Safely extract a number from an Airtable field (handles {specialValue} objects) */
@@ -49,15 +50,27 @@ export async function GET(request: Request) {
       const clientIds = f['Client link'] as string[] | undefined
       const clientId = clientIds?.[0]
 
+      // Agence and DA (official) are singleSelect → may be {id, name} objects
+      const agenceRaw = f['Agence']
+      const agence = typeof agenceRaw === 'object' && agenceRaw && 'name' in (agenceRaw as Record<string, unknown>)
+        ? String((agenceRaw as Record<string, unknown>).name)
+        : str(agenceRaw)
+      const daOfficialRaw = f['DA (official)']
+      const daOfficial = typeof daOfficialRaw === 'object' && daOfficialRaw && 'name' in (daOfficialRaw as Record<string, unknown>)
+        ? String((daOfficialRaw as Record<string, unknown>).name)
+        : str(daOfficialRaw)
+
       projets.push({
         id: r.id,
         ref: str(f['Project réf']),
         nom: str(f['Projet']) || '',
         clientId,
         clientName: clientId ? clientMap.get(clientId) || '' : '',
+        agence,
         am: str(f['Account Manager (AM)']),
         pm,
         da: str(f['DA']),
+        daOfficial,
         pc: str(f['Project Coordinator (PC)']),
         filmmaker: str(f['Filmmaker']),
         phase: str(f['Phase']) as Projet['phase'],
@@ -106,5 +119,28 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Error fetching projets:', error)
     return NextResponse.json({ error: 'Failed to fetch projets' }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json()
+    const { id, pm, daOfficial } = body as { id?: string; pm?: string; daOfficial?: string }
+
+    if (!id) {
+      return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    }
+
+    const fields: Record<string, string | null> = {}
+    if (pm !== undefined) fields['PM (manual)'] = pm || null
+    if (daOfficial !== undefined) fields['DA (official)'] = daOfficial || null
+
+    await updateRecord(TABLES.PROJETS, id, fields as Record<string, string>)
+    await refreshTable(TABLES.PROJETS)
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('Error updating projet:', error)
+    return NextResponse.json({ error: 'Failed to update projet' }, { status: 500 })
   }
 }
