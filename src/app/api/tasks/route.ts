@@ -60,13 +60,18 @@ export async function GET(request: Request) {
       // Filter done/not done
       if (wantDone !== isDone) continue
 
-      // Filter by PM (project PM) OR assigné manuel
+      // Filter by PM (project PM) OR DA (official) on linked project OR assigné manuel
       if (pmFilter) {
         const pms = f['PM'] as string[] | undefined
         const assigneManuel = str(f['Assigné'])
+        const projetIds = f['Projets'] as string[] | undefined
         const matchesPm = pms?.some((p) => p === pmFilter)
         const matchesAssignee = assigneManuel === pmFilter
-        if (!matchesPm && !matchesAssignee) continue
+        const matchesDa = projetIds?.some((pid) => {
+          const proj = store.projets.byId.get(pid)
+          return proj && str(proj.fields['DA (official)']) === pmFilter
+        })
+        if (!matchesPm && !matchesAssignee && !matchesDa) continue
       }
 
       // Filter by project
