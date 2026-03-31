@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createRecord, TABLES } from '@/lib/airtable'
 import { ensureStore, buildLookupMap, refreshTable } from '@/lib/store'
+import { sanitize } from '@/lib/sanitize'
 import type { Cogs } from '@/types'
 
 /** Safely extract a number from an Airtable field (handles {specialValue} objects) */
@@ -96,7 +97,7 @@ export async function GET(request: Request) {
       return b.createdAt.localeCompare(a.createdAt)
     })
 
-    return NextResponse.json(cogs, {
+    return NextResponse.json(sanitize(cogs), {
       headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=10' },
     })
   } catch (error) {

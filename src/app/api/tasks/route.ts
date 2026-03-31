@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createRecord, TABLES } from '@/lib/airtable'
 import { ensureStore, refreshTable } from '@/lib/store'
+import { sanitize } from '@/lib/sanitize'
 import type { Task } from '@/types'
 
 /** Safely extract a string from an Airtable field (handles {specialValue} objects) */
@@ -76,7 +77,7 @@ export async function GET(request: Request) {
       return a.dueDate.localeCompare(b.dueDate)
     })
 
-    return NextResponse.json(tasks, {
+    return NextResponse.json(sanitize(tasks), {
       headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=10' },
     })
   } catch (error) {
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
     // Refresh store in background
     refreshTable(TABLES.TASKS).catch(() => {})
 
-    return NextResponse.json(mapRecord({ id: record.id, fields: record.fields as Record<string, unknown> }), { status: 201 })
+    return NextResponse.json(sanitize(mapRecord({ id: record.id, fields: record.fields as Record<string, unknown> })), { status: 201 })
   } catch (error) {
     console.error('Error creating task:', error)
     return NextResponse.json({ error: 'Failed to create task' }, { status: 500 })

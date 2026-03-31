@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { ensureStore, buildLookupMap } from '@/lib/store'
+import { sanitize } from '@/lib/sanitize'
 import type { Projet } from '@/types'
 
 /** Safely extract a number from an Airtable field (handles {specialValue} objects) */
@@ -91,7 +92,7 @@ export async function GET(request: Request) {
       return (a.nom || '').localeCompare(b.nom || '')
     })
 
-    return NextResponse.json(projets, {
+    return NextResponse.json(sanitize(projets), {
       headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=10' },
     })
   } catch (error) {

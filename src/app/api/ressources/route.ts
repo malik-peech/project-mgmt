@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createRecord, TABLES } from '@/lib/airtable'
 import { ensureStore, refreshTable } from '@/lib/store'
+import { sanitize } from '@/lib/sanitize'
 import type { Ressource } from '@/types'
 
 export async function GET() {
@@ -28,7 +29,7 @@ export async function GET() {
     // Sort by name
     ressources.sort((a, b) => a.name.localeCompare(b.name))
 
-    return NextResponse.json(ressources)
+    return NextResponse.json(sanitize(ressources))
   } catch (error) {
     console.error('Error fetching ressources:', error)
     return NextResponse.json({ error: 'Failed to fetch ressources' }, { status: 500 })
