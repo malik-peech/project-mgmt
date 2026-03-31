@@ -60,10 +60,13 @@ export async function GET(request: Request) {
       // Filter done/not done
       if (wantDone !== isDone) continue
 
-      // Filter by PM
+      // Filter by PM (project PM) OR assigné manuel
       if (pmFilter) {
         const pms = f['PM'] as string[] | undefined
-        if (!pms || !pms.some((p) => p === pmFilter)) continue
+        const assigneManuel = str(f['Assigné'])
+        const matchesPm = pms?.some((p) => p === pmFilter)
+        const matchesAssignee = assigneManuel === pmFilter
+        if (!matchesPm && !matchesAssignee) continue
       }
 
       // Filter by project
