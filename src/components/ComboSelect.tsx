@@ -17,6 +17,7 @@ interface Props {
   clearable?: boolean
   className?: string
   size?: 'sm' | 'md'
+  autoOpen?: boolean
 }
 
 export default function ComboSelect({
@@ -27,8 +28,14 @@ export default function ComboSelect({
   clearable = false,
   className = '',
   size = 'md',
+  autoOpen = false,
 }: Props) {
   const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (autoOpen) setOpen(true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [query, setQuery] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)

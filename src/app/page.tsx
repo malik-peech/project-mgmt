@@ -471,19 +471,23 @@ function SidePanel({
   const [viewer, setViewer] = useState<{ url: string; filename: string } | null>(null)
   const [creatingTask, setCreatingTask] = useState(false)
 
-  // Editable PM/DA state
+  // Editable PM/DA/Phase state
   const [editingPm, setEditingPm] = useState(false)
   const [editingDa, setEditingDa] = useState(false)
+  const [editingPhase, setEditingPhase] = useState(false)
   const [localPm, setLocalPm] = useState(projet.pm || '')
   const [localDa, setLocalDa] = useState(projet.daOfficial || '')
+  const [localPhase, setLocalPhase] = useState(projet.phase || '')
 
   // Reset when project changes
   useEffect(() => {
     setLocalPm(projet.pm || '')
     setLocalDa(projet.daOfficial || '')
+    setLocalPhase(projet.phase || '')
     setEditingPm(false)
     setEditingDa(false)
-  }, [projet.id, projet.pm, projet.daOfficial])
+    setEditingPhase(false)
+  }, [projet.id, projet.pm, projet.daOfficial, projet.phase])
 
   // Fetch tasks for this project
   const { data: projectTasks, revalidate: revalidateProjectTasks } = useData<Task[]>(
@@ -545,7 +549,7 @@ function SidePanel({
     }
   }
 
-  const updateProjetField = async (field: 'pm' | 'daOfficial', value: string) => {
+  const updateProjetField = async (field: 'pm' | 'daOfficial' | 'phase', value: string) => {
     try {
       await fetch('/api/projets', {
         method: 'PATCH',
@@ -593,10 +597,34 @@ function SidePanel({
 
       {/* Badges */}
       <div className="flex flex-wrap gap-2 mb-6">
-        {projet.phase && (
-          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${phaseColors[projet.phase] || 'bg-gray-100 text-gray-600'}`}>
-            {projet.phase}
-          </span>
+        {/* Phase — editable inline */}
+        {editingPhase ? (
+          <select
+            value={localPhase}
+            onChange={(e) => {
+              const v = e.target.value
+              setLocalPhase(v)
+              updateProjetField('phase', v)
+              setEditingPhase(false)
+            }}
+            onBlur={() => setEditingPhase(false)}
+            autoFocus
+            className="text-xs border border-indigo-300 rounded-full px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+          >
+            {(['Démarrage', 'Conception', 'Production', 'Last modifs', 'Done', 'Archivé'] as const).map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        ) : (
+          <button
+            onClick={() => setEditingPhase(true)}
+            className={`text-xs font-medium px-2.5 py-1 rounded-full transition hover:opacity-75 ${
+              localPhase ? phaseColors[localPhase] || 'bg-gray-100 text-gray-600' : 'bg-gray-100 text-gray-400 border border-dashed border-gray-300'
+            }`}
+            title="Cliquer pour changer la phase"
+          >
+            {localPhase || '+ phase'}
+          </button>
         )}
         {projet.statut && (
           <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statutColors[projet.statut] || 'bg-gray-100 text-gray-600'}`}>

@@ -125,7 +125,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json()
-    const { id, pm, daOfficial } = body as { id?: string; pm?: string; daOfficial?: string }
+    const { id, pm, daOfficial, phase } = body as { id?: string; pm?: string; daOfficial?: string; phase?: string }
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
@@ -134,6 +134,7 @@ export async function PATCH(request: Request) {
     const fields: Record<string, string | null> = {}
     if (pm !== undefined) fields['PM (manual)'] = pm || null
     if (daOfficial !== undefined) fields['DA (official)'] = daOfficial || null
+    if (phase !== undefined) fields['Phase'] = phase || null
 
     await updateRecord(TABLES.PROJETS, id, fields as Record<string, string>)
     await refreshTable(TABLES.PROJETS)

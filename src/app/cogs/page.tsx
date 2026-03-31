@@ -361,7 +361,11 @@ export default function CogsPage() {
                         }}
                       >
                         <td className="px-4 py-3">
-                          <div className="text-xs font-mono text-gray-500">{c.projetRef || c.numeroCommande || '—'}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                            {c.projetRef && <span className="text-xs font-mono text-gray-500">{c.projetRef}</span>}
+                            {c.numeroCommande && <span className="text-xs font-mono text-gray-400 bg-gray-50 px-1 rounded">{c.numeroCommande}</span>}
+                            {!c.projetRef && !c.numeroCommande && <span className="text-xs text-gray-400">—</span>}
+                          </div>
                           <div className="text-sm text-gray-900 truncate max-w-[200px]">{c.projetName || '—'}</div>
                           {c.clientName && <div className="text-xs text-indigo-600">{c.clientName}</div>}
                         </td>

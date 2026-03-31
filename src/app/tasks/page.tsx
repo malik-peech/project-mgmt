@@ -372,40 +372,16 @@ export default function TasksPage() {
             ))}
           </div>
 
-          {/* Type filter pills */}
-          {allTypes.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              <button
-                onClick={() => setTypeFilter('all')}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
-                  typeFilter === 'all' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                }`}
-              >
-                Tous types
-              </button>
-              {allTypes.slice(0, 8).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTypeFilter(typeFilter === t ? 'all' : t)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
-                    typeFilter === t ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-              {allTypes.length > 8 && (
-                <select
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value)}
-                  className="text-xs border border-gray-200 rounded-full px-2 py-1 text-gray-500 bg-white"
-                >
-                  <option value="all">+ {allTypes.length - 8} types</option>
-                  {allTypes.slice(8).map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              )}
-            </div>
-          )}
+          {/* Type filter */}
+          <div className="w-40">
+            <ComboSelect
+              options={[{ value: 'all', label: 'Tous types' }, ...TYPE_OPTIONS.map((t) => ({ value: t, label: t }))]}
+              value={typeFilter}
+              onChange={setTypeFilter}
+              placeholder="Tous types"
+              size="sm"
+            />
+          </div>
         </div>
       </div>
 
@@ -497,6 +473,7 @@ export default function TasksPage() {
                     placeholder="Priorité"
                     clearable
                     size="sm"
+                    autoOpen
                   />
                 </div>
               ) : (
@@ -523,6 +500,7 @@ export default function TasksPage() {
                     placeholder="Type"
                     clearable
                     size="sm"
+                    autoOpen
                   />
                 </div>
               ) : (
