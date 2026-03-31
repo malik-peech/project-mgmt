@@ -79,6 +79,14 @@ export async function GET(request: Request) {
         progression: str(f['Progression']),
         percentCogs: str(f['% COGS']),
         ehr: str(f['EHR']),
+        devisSigne: Array.isArray(f['Devis signé'])
+          ? (f['Devis signé'] as { url: string; filename: string; type?: string; size?: number }[]).map((a) => ({
+              url: a.url,
+              filename: a.filename,
+              type: a.type,
+              size: a.size,
+            }))
+          : undefined,
         taskIds: f['Task'] as string[] | undefined,
         cogsIds: f['Dépenses (COGS)'] as string[] | undefined,
       })

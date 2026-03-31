@@ -24,16 +24,21 @@ function str(val: unknown): string | undefined {
 
 function mapRecord(
   r: { id: string; fields: Record<string, unknown> },
-  resMap: Map<string, string>
+  resMap: Map<string, string>,
+  projetNameMap: Map<string, string>,
+  projetRefMap: Map<string, string>
 ): Cogs {
   const f = r.fields
   const ressourceIds = f['Ressource'] as string[] | undefined
   const ressourceId = ressourceIds?.[0]
+  const projetId = (f['Projet'] as string[])?.[0]
   return {
     id: r.id,
     numeroCommande: str(f['Numéro de commande']),
     statut: str(f['Statut de la dépense']) as Cogs['statut'],
-    projetId: (f['Projet'] as string[])?.[0],
+    projetId,
+    projetName: projetId ? projetNameMap.get(projetId) || '' : '',
+    projetRef: projetId ? projetRefMap.get(projetId) || '' : '',
     clientName: str((f['Client'] as unknown[])?.[0]),
     categorie: str((f['Catégorie'] as unknown[])?.[0]),
     ressourceId,
@@ -44,6 +49,11 @@ function mapRecord(
     montantTTC: num(f['Montant TTC']),
     bdcEnvoye: !!f['BDC envoyé'],
     numeroFacture: str(f['Numéro de facture']),
+    facture: Array.isArray(f['Facture'])
+      ? (f['Facture'] as { url: string; filename: string; type?: string; size?: number }[]).map((a) => ({
+          url: a.url, filename: a.filename, type: a.type, size: a.size,
+        }))
+      : undefined,
     commentaire: str(f['Commentaire COGS']),
     pm: str((f['PM'] as unknown[])?.[0]),
     okPourPaiement: !!f['OK pour paiement'],
@@ -60,8 +70,10 @@ export async function GET(request: Request) {
     const statutFilter = searchParams.get('statut')
     const projetId = searchParams.get('projetId')
 
-    // Build resource name lookup from store
+    // Build lookup maps from store
     const resMap = buildLookupMap(store.ressources, 'Name')
+    const projetNameMap = buildLookupMap(store.projets, 'Projet')
+    const projetRefMap = buildLookupMap(store.projets, 'Project réf')
 
     const cogs: Cogs[] = []
 
@@ -86,7 +98,7 @@ export async function GET(request: Request) {
         if (!projets || !projets.includes(projetId)) continue
       }
 
-      cogs.push(mapRecord(r, resMap))
+      cogs.push(mapRecord(r, resMap, projetNameMap, projetRefMap))
     }
 
     // Sort by creation date desc

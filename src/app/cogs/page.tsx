@@ -4,18 +4,7 @@ import { useState, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useData } from '@/hooks/useData'
 import {
-  Plus,
-  X,
-  Search,
-  Check,
-  FileText,
-  TrendingUp,
-  CreditCard,
-  Wallet,
-  Copy,
-  Trash2,
-  RefreshCw,
-  AlertTriangle,
+  Plus, X, Search, Check, FileText, Copy, Trash2, RefreshCw, AlertTriangle, ExternalLink, Loader2, Upload,
 } from 'lucide-react'
 import ContextMenu from '@/components/ContextMenu'
 import type { Cogs, StatutCogs, Projet, Ressource } from '@/types'
@@ -34,27 +23,20 @@ const statutColors: Record<string, string> = {
   'Stand-by': 'bg-gray-100 text-gray-800',
 }
 
-const statutTabs: (string | 'Tous')[] = [
-  'Tous',
-  'A Approuver (CDP)',
-  'Engagée',
-  'A payer',
-  'Payée',
-]
+const statutTabs: string[] = ['Tous', 'A Approuver (CDP)', 'Engagée', 'A payer', 'Payée']
 
 const fmt = (n?: number) =>
   n != null
-    ? new Intl.NumberFormat('fr-FR', {
-        style: 'currency',
-        currency: 'EUR',
-        maximumFractionDigits: 0,
-      }).format(n)
-    : '\u2014'
+    ? new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
+    : '—'
 
 export default function CogsPage() {
   const { data: session } = useSession()
   const [activeTab, setActiveTab] = useState('Tous')
+  const [search, setSearch] = useState('')
+  const [projetFilter, setProjetFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [selectedCog, setSelectedCog] = useState<Cogs | null>(null)
 
   // Modal state
   const [formProjetId, setFormProjetId] = useState('')
@@ -64,6 +46,11 @@ export default function CogsPage() {
   const [ressourceSearch, setRessourceSearch] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; cog: Cogs } | null>(null)
+
+  // Side panel edit state
+  const [editNumFacture, setEditNumFacture] = useState('')
+  const [editCommentaire, setEditCommentaire] = useState('')
+  const [savingCog, setSavingCog] = useState(false)
 
   const userName = session?.user?.name || ''
   const userRole = (session?.user as { role?: string })?.role || 'PM'
@@ -89,15 +76,23 @@ export default function CogsPage() {
   const projetList = projets ?? []
   const ressourceList = ressources ?? []
 
+  // Unique projects from COGS for filter
+  const cogsProjets = useMemo(() => {
+    const map = new Map<string, { id: string; ref?: string; name: string; client?: string }>()
+    for (const c of cogsList) {
+      if (c.projetId) {
+        map.set(c.projetId, { id: c.projetId, ref: c.projetRef, name: c.projetName || '', client: c.clientName })
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+  }, [cogsList])
+
   const deleteCog = async (cog: Cogs) => {
-    // Optimistic
     mutateCogs(prev => (prev ?? []).filter(c => c.id !== cog.id))
+    if (selectedCog?.id === cog.id) setSelectedCog(null)
     try {
       await fetch(`/api/cogs/${cog.id}`, { method: 'DELETE' })
-    } catch (err) {
-      console.error('Failed to delete cog', err)
-      revalidateCogs()
-    }
+    } catch { revalidateCogs() }
   }
 
   const duplicateCog = async (cog: Cogs) => {
@@ -113,45 +108,50 @@ export default function CogsPage() {
         }),
       })
       if (res.ok) revalidateCogs()
-    } catch (err) {
-      console.error('Failed to duplicate cog', err)
-    }
+    } catch {}
+  }
+
+  const saveCogEdits = async () => {
+    if (!selectedCog) return
+    setSavingCog(true)
+    try {
+      const body: Record<string, unknown> = {}
+      if (editNumFacture !== (selectedCog.numeroFacture || '')) body.numeroFacture = editNumFacture
+      if (editCommentaire !== (selectedCog.commentaire || '')) body.commentaire = editCommentaire
+      if (Object.keys(body).length > 0) {
+        await fetch(`/api/cogs/${selectedCog.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        revalidateCogs()
+      }
+    } catch {} finally { setSavingCog(false) }
   }
 
   const filtered = useMemo(() => {
-    if (activeTab === 'Tous') return cogsList
-    return cogsList.filter((c) => c.statut === activeTab)
-  }, [cogsList, activeTab])
-
-  const totalEngage = useMemo(
-    () => cogsList.reduce((sum, c) => sum + (c.montantEngageProd || 0), 0),
-    [cogsList]
-  )
-
-  const totalAPayer = useMemo(
-    () =>
-      cogsList
-        .filter((c) => c.statut === 'A payer')
-        .reduce((sum, c) => sum + (c.montantTTC || c.montantEngageProd || 0), 0),
-    [cogsList]
-  )
-
-  const totalPaye = useMemo(
-    () =>
-      cogsList
-        .filter((c) => c.statut === 'Payée')
-        .reduce((sum, c) => sum + (c.montantTTC || c.montantEngageProd || 0), 0),
-    [cogsList]
-  )
+    let list = cogsList
+    if (activeTab !== 'Tous') list = list.filter((c) => c.statut === activeTab)
+    if (projetFilter) list = list.filter((c) => c.projetId === projetFilter)
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter((c) =>
+        c.ressourceName?.toLowerCase().includes(q) ||
+        c.clientName?.toLowerCase().includes(q) ||
+        c.projetName?.toLowerCase().includes(q) ||
+        c.projetRef?.toLowerCase().includes(q) ||
+        c.numeroCommande?.toLowerCase().includes(q) ||
+        c.categorie?.toLowerCase().includes(q)
+      )
+    }
+    return list
+  }, [cogsList, activeTab, projetFilter, search])
 
   const filteredRessources = useMemo(() => {
     if (!ressourceSearch) return ressourceList
     const q = ressourceSearch.toLowerCase()
     return ressourceList.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.email?.toLowerCase().includes(q) ||
-        r.categorie?.some((c) => c.toLowerCase().includes(q))
+      (r) => r.name.toLowerCase().includes(q) || r.email?.toLowerCase().includes(q) || r.categorie?.some((c) => c.toLowerCase().includes(q))
     )
   }, [ressourceList, ressourceSearch])
 
@@ -174,11 +174,7 @@ export default function CogsPage() {
         resetForm()
         revalidateCogs()
       }
-    } catch {
-      // silent
-    } finally {
-      setSubmitting(false)
-    }
+    } catch {} finally { setSubmitting(false) }
   }
 
   const resetForm = () => {
@@ -189,16 +185,17 @@ export default function CogsPage() {
     setRessourceSearch('')
   }
 
+  const openCogPanel = (cog: Cogs) => {
+    setSelectedCog(cog)
+    setEditNumFacture(cog.numeroFacture || '')
+    setEditCommentaire(cog.commentaire || '')
+  }
+
   if (loading && !cogs) {
     return (
       <div className="p-6 md:p-8">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-gray-200 rounded w-48" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-24 bg-gray-100 rounded-xl" />
-            ))}
-          </div>
           <div className="h-96 bg-gray-100 rounded-xl" />
         </div>
       </div>
@@ -211,13 +208,8 @@ export default function CogsPage() {
         <div className="flex flex-col items-center justify-center py-20 text-gray-500">
           <AlertTriangle className="w-10 h-10 text-orange-400 mb-3" />
           <p className="text-lg font-medium mb-1">Impossible de charger les COGS</p>
-          <p className="text-sm text-gray-400 mb-4">Vérifiez votre connexion ou réessayez</p>
-          <button
-            onClick={() => revalidateCogs()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Réessayer
+          <button onClick={() => revalidateCogs()} className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition mt-3">
+            <RefreshCw className="w-4 h-4" /> Réessayer
           </button>
         </div>
       </div>
@@ -225,187 +217,161 @@ export default function CogsPage() {
   }
 
   return (
-    <div className="p-6 md:p-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">COGS</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {cogsList.length} d&eacute;pense{cogsList.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
-        >
-          <Plus className="w-4 h-4" />
-          Nouvelle d&eacute;pense
-        </button>
-      </div>
-
-      {/* Summary stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-indigo-600" />
-            </div>
+    <div className="flex h-[calc(100vh)] overflow-hidden">
+      {/* Main content */}
+      <div className="flex-1 overflow-auto min-w-0">
+        <div className="p-6 md:p-8">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-5">
             <div>
-              <p className="text-xs text-gray-500 font-medium">Total engag&eacute;</p>
-              <p className="text-lg font-bold text-gray-900">{fmt(totalEngage)}</p>
+              <h1 className="text-2xl font-bold text-gray-900">COGS</h1>
+              <p className="text-sm text-gray-500 mt-0.5">{cogsList.length} dépense{cogsList.length !== 1 ? 's' : ''}</p>
             </div>
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
+            >
+              <Plus className="w-4 h-4" /> Nouvelle dépense
+            </button>
           </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-              <CreditCard className="w-5 h-5 text-orange-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 font-medium">Total &agrave; payer</p>
-              <p className="text-lg font-bold text-gray-900">{fmt(totalAPayer)}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
-              <Wallet className="w-5 h-5 text-green-600" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 font-medium">Total pay&eacute;</p>
-              <p className="text-lg font-bold text-gray-900">{fmt(totalPaye)}</p>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-6 overflow-x-auto">
-        {statutTabs.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-              activeTab === tab
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {tab}
-            {tab !== 'Tous' && (
-              <span className="ml-1.5 text-xs opacity-75">
-                {cogsList.filter((c) => c.statut === tab).length}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+          {/* Search + Filters */}
+          <div className="space-y-3 mb-5">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Rechercher une dépense, ressource, projet..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              />
+            </div>
 
-      {/* Table */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-          <p className="text-lg font-medium">Aucune d&eacute;pense</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/50">
-                  <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                    N&deg; Commande
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                    Client / Projet
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                    Ressource
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                    Cat&eacute;gorie
-                  </th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                    Montant HT
-                  </th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                    Montant TTC
-                  </th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                    Statut
-                  </th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">
-                    BDC
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {filtered.map((c) => (
-                  <tr
-                    key={c.id}
-                    className="hover:bg-gray-50/50 transition"
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      setContextMenu({ x: e.clientX, y: e.clientY, cog: c })
-                    }}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Status tabs */}
+              <div className="flex gap-1 flex-wrap">
+                {statutTabs.map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition ${
+                      activeTab === tab ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
                   >
-                    <td className="px-4 py-3 text-gray-600 font-mono text-xs">
-                      {c.numeroCommande || '\u2014'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-xs text-indigo-600 font-medium">
-                        {c.clientName || '\u2014'}
-                      </div>
-                      <div className="text-gray-900 text-sm truncate max-w-[200px]">
-                        {c.projetId ? `#${c.projetId.slice(0, 6)}` : '\u2014'}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-700">
-                      {c.ressourceName || '\u2014'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {c.categorie ? (
-                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                          {c.categorie}
-                        </span>
-                      ) : (
-                        '\u2014'
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-900">
-                      {fmt(c.montantEngageProd)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-600">
-                      {fmt(c.montantTTC)}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {c.statut ? (
-                        <span
-                          className={`inline-block text-[11px] font-medium px-2.5 py-0.5 rounded-full ${
-                            statutColors[c.statut] || 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {c.statut}
-                        </span>
-                      ) : (
-                        '\u2014'
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {c.bdcEnvoye ? (
-                        <Check className="w-4 h-4 text-green-600 mx-auto" />
-                      ) : (
-                        <span className="text-gray-300">\u2014</span>
-                      )}
-                    </td>
-                  </tr>
+                    {tab}
+                    {tab !== 'Tous' && (
+                      <span className="ml-1 opacity-75">{cogsList.filter((c) => c.statut === tab).length}</span>
+                    )}
+                  </button>
                 ))}
-              </tbody>
-            </table>
+              </div>
+
+              {/* Project filter */}
+              <select
+                value={projetFilter}
+                onChange={(e) => setProjetFilter(e.target.value)}
+                className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-[200px]"
+              >
+                <option value="">Tous les projets</option>
+                {cogsProjets.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.ref ? `${p.ref} - ` : ''}{p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+
+          {/* Table */}
+          {filtered.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p className="text-lg font-medium">Aucune dépense</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/50">
+                      <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">Code / Projet</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">Ressource</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">Catégorie</th>
+                      <th className="text-right px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">Montant HT</th>
+                      <th className="text-center px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">Statut</th>
+                      <th className="text-center px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider">BDC</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filtered.map((c) => (
+                      <tr
+                        key={c.id}
+                        className={`hover:bg-gray-50/50 transition cursor-pointer ${selectedCog?.id === c.id ? 'bg-indigo-50' : ''}`}
+                        onClick={() => openCogPanel(c)}
+                        onContextMenu={(e) => {
+                          e.preventDefault()
+                          setContextMenu({ x: e.clientX, y: e.clientY, cog: c })
+                        }}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="text-xs font-mono text-gray-500">{c.projetRef || c.numeroCommande || '—'}</div>
+                          <div className="text-sm text-gray-900 truncate max-w-[200px]">{c.projetName || '—'}</div>
+                          {c.clientName && <div className="text-xs text-indigo-600">{c.clientName}</div>}
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">{c.ressourceName || '—'}</td>
+                        <td className="px-4 py-3">
+                          {c.categorie ? (
+                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{c.categorie}</span>
+                          ) : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium text-gray-900 tabular-nums">{fmt(c.montantEngageProd)}</td>
+                        <td className="px-4 py-3 text-center">
+                          {c.statut ? (
+                            <span className={`inline-block text-[11px] font-medium px-2.5 py-0.5 rounded-full ${statutColors[c.statut] || 'bg-gray-100 text-gray-600'}`}>
+                              {c.statut}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {c.bdcEnvoye ? <Check className="w-4 h-4 text-green-600 mx-auto" /> : <span className="text-gray-300">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Mobile backdrop */}
+      {selectedCog && (
+        <div className="fixed inset-0 bg-black/30 z-30 md:hidden" onClick={() => setSelectedCog(null)} />
       )}
+
+      {/* Side panel */}
+      <div
+        className={`fixed md:relative right-0 top-0 h-full z-40 md:z-0 bg-white border-l border-gray-200 shadow-xl md:shadow-none overflow-y-auto transition-all duration-300 ease-in-out ${
+          selectedCog
+            ? 'w-full md:w-[420px] translate-x-0 opacity-100'
+            : 'w-0 md:w-0 translate-x-full md:translate-x-full opacity-0'
+        }`}
+      >
+        {selectedCog && (
+          <CogSidePanel
+            cog={selectedCog}
+            onClose={() => setSelectedCog(null)}
+            editNumFacture={editNumFacture}
+            setEditNumFacture={setEditNumFacture}
+            editCommentaire={editCommentaire}
+            setEditCommentaire={setEditCommentaire}
+            onSave={saveCogEdits}
+            saving={savingCog}
+          />
+        )}
+      </div>
 
       {/* Context Menu */}
       {contextMenu && (
@@ -424,139 +390,225 @@ export default function CogsPage() {
       {/* Modal: Nouvelle depense */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => {
-              setShowModal(false)
-              resetForm()
-            }}
-          />
+          <div className="absolute inset-0 bg-black/40" onClick={() => { setShowModal(false); resetForm() }} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-gray-900">
-                Nouvelle d&eacute;pense
-              </h2>
-              <button
-                onClick={() => {
-                  setShowModal(false)
-                  resetForm()
-                }}
-                className="p-1 rounded-lg hover:bg-gray-100 transition"
-              >
+              <h2 className="text-lg font-bold text-gray-900">Nouvelle dépense</h2>
+              <button onClick={() => { setShowModal(false); resetForm() }} className="p-1 rounded-lg hover:bg-gray-100 transition">
                 <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
-
             <div className="space-y-4">
-              {/* Projet */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Projet <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formProjetId}
-                  onChange={(e) => setFormProjetId(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  <option value="">S&eacute;lectionner un projet</option>
-                  {projetList.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.clientName ? `${p.clientName} - ` : ''}
-                      {p.nom}
-                    </option>
-                  ))}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Projet <span className="text-red-500">*</span></label>
+                <select value={formProjetId} onChange={(e) => setFormProjetId(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="">Sélectionner un projet</option>
+                  {projetList.map((p) => <option key={p.id} value={p.id}>{p.clientName ? `${p.clientName} - ` : ''}{p.nom}</option>)}
                 </select>
               </div>
-
-              {/* Ressource with search */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Ressource <span className="text-red-500">*</span>
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ressource <span className="text-red-500">*</span></label>
                 <div className="relative mb-2">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Rechercher une ressource..."
-                    value={ressourceSearch}
+                  <input type="text" placeholder="Rechercher une ressource..." value={ressourceSearch}
                     onChange={(e) => setRessourceSearch(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  />
+                    className="w-full rounded-lg border border-gray-200 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
-                <select
-                  value={formRessourceId}
-                  onChange={(e) => setFormRessourceId(e.target.value)}
-                  size={5}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  <option value="">S&eacute;lectionner une ressource</option>
-                  {filteredRessources.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                      {r.categorie?.length ? ` (${r.categorie.join(', ')})` : ''}
-                    </option>
-                  ))}
+                <select value={formRessourceId} onChange={(e) => setFormRessourceId(e.target.value)} size={5}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="">Sélectionner une ressource</option>
+                  {filteredRessources.map((r) => <option key={r.id} value={r.id}>{r.name}{r.categorie?.length ? ` (${r.categorie.join(', ')})` : ''}</option>)}
                 </select>
               </div>
-
-              {/* Montant */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Montant HT engag&eacute; <span className="text-red-500">*</span>
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Montant HT engagé <span className="text-red-500">*</span></label>
                 <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={formMontant}
+                  <input type="number" min="0" step="0.01" placeholder="0.00" value={formMontant}
                     onChange={(e) => setFormMontant(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
-                    &euro;
-                  </span>
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">€</span>
                 </div>
               </div>
-
-              {/* Commentaire */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Commentaire
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Ajouter un commentaire..."
-                  value={formCommentaire}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
+                <textarea rows={3} placeholder="Ajouter un commentaire..." value={formCommentaire}
                   onChange={(e) => setFormCommentaire(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-                />
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none" />
               </div>
             </div>
-
-            {/* Actions */}
             <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => {
-                  setShowModal(false)
-                  resetForm()
-                }}
-                className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={!formProjetId || !formRessourceId || !formMontant || submitting}
-                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {submitting ? 'Cr\u00e9ation...' : 'Cr\u00e9er la d\u00e9pense'}
+              <button onClick={() => { setShowModal(false); resetForm() }}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Annuler</button>
+              <button onClick={handleSubmit} disabled={!formProjetId || !formRessourceId || !formMontant || submitting}
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
+                {submitting ? 'Création...' : 'Créer la dépense'}
               </button>
             </div>
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ─── COGS Side Panel ─── */
+
+function CogSidePanel({
+  cog,
+  onClose,
+  editNumFacture,
+  setEditNumFacture,
+  editCommentaire,
+  setEditCommentaire,
+  onSave,
+  saving,
+}: {
+  cog: Cogs
+  onClose: () => void
+  editNumFacture: string
+  setEditNumFacture: (v: string) => void
+  editCommentaire: string
+  setEditCommentaire: (v: string) => void
+  onSave: () => void
+  saving: boolean
+}) {
+  return (
+    <div className="p-6 min-w-[320px]">
+      <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
+        <X className="w-5 h-5" />
+      </button>
+
+      {/* Header */}
+      <div className="pr-8 mb-5">
+        <div className="flex items-center gap-2 mb-1">
+          {cog.projetRef && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{cog.projetRef}</span>}
+          {cog.statut && (
+            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${statutColors[cog.statut] || 'bg-gray-100 text-gray-600'}`}>
+              {cog.statut}
+            </span>
+          )}
+        </div>
+        <h2 className="text-lg font-bold text-gray-900">{cog.ressourceName || 'Dépense'}</h2>
+        {cog.projetName && <p className="text-sm text-gray-500">{cog.projetName}</p>}
+        {cog.clientName && <p className="text-xs text-indigo-600">{cog.clientName}</p>}
+      </div>
+
+      {/* Details */}
+      <div className="space-y-4">
+        {/* Montants */}
+        <div className="bg-gray-50 rounded-xl p-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-[10px] text-gray-400 mb-0.5">Montant HT engagé</p>
+              <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantEngageProd)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-400 mb-0.5">Montant TTC</p>
+              <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantTTC)}</p>
+            </div>
+            {cog.montantBudgeteSales != null && (
+              <div>
+                <p className="text-[10px] text-gray-400 mb-0.5">Budget sales</p>
+                <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantBudgeteSales)}</p>
+              </div>
+            )}
+            {cog.tva != null && (
+              <div>
+                <p className="text-[10px] text-gray-400 mb-0.5">TVA</p>
+                <p className="text-sm font-semibold text-gray-800">{cog.tva}%</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Info rows */}
+        <div className="space-y-2">
+          {cog.categorie && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Catégorie</span>
+              <span className="font-medium text-gray-700">{cog.categorie}</span>
+            </div>
+          )}
+          {cog.numeroCommande && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">N° commande</span>
+              <span className="font-mono text-gray-700">{cog.numeroCommande}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">BDC envoyé</span>
+            <span>{cog.bdcEnvoye ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">Non</span>}</span>
+          </div>
+          {cog.methodePaiement && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Méthode paiement</span>
+              <span className="text-gray-700">{cog.methodePaiement}</span>
+            </div>
+          )}
+          {cog.createdAt && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Créé le</span>
+              <span className="text-gray-700">{new Date(cog.createdAt).toLocaleDateString('fr-FR')}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Facture (attachment) */}
+        {cog.facture && cog.facture.length > 0 && (
+          <div>
+            <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Facture</h4>
+            {cog.facture.map((f, i) => (
+              <a
+                key={i}
+                href={f.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-200 transition group"
+              >
+                <FileText className="w-4 h-4 text-gray-400 group-hover:text-indigo-500 shrink-0" />
+                <span className="text-sm text-gray-700 group-hover:text-indigo-700 truncate flex-1">{f.filename}</span>
+                <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-indigo-400 shrink-0" />
+              </a>
+            ))}
+          </div>
+        )}
+
+        {/* Editable: N° facture */}
+        <div>
+          <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">N° de facture</label>
+          <input
+            type="text"
+            value={editNumFacture}
+            onChange={(e) => setEditNumFacture(e.target.value)}
+            placeholder="Ex: FAC-2024-001"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        {/* Editable: Commentaire */}
+        <div>
+          <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Commentaire</label>
+          <textarea
+            value={editCommentaire}
+            onChange={(e) => setEditCommentaire(e.target.value)}
+            rows={3}
+            placeholder="Notes..."
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+          />
+        </div>
+
+        {/* Save button */}
+        {(editNumFacture !== (cog.numeroFacture || '') || editCommentaire !== (cog.commentaire || '')) && (
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium transition disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enregistrer'}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createRecord, TABLES } from '@/lib/airtable'
-import { ensureStore, refreshTable } from '@/lib/store'
+import { ensureStore, refreshTable, buildLookupMap } from '@/lib/store'
 import { sanitize } from '@/lib/sanitize'
 import type { Task } from '@/types'
 
@@ -13,17 +13,19 @@ function str(val: unknown): string | undefined {
   return String(val)
 }
 
-function mapRecord(r: { id: string; fields: Record<string, unknown> }): Task {
+function mapRecord(r: { id: string; fields: Record<string, unknown> }, refMap?: Map<string, string>): Task {
   const f = r.fields
   const assignee = f['Assignee'] as { id?: string; email?: string; name?: string } | undefined
+  const projetId = (f['Projets'] as string[])?.[0]
   return {
     id: r.id,
     name: str(f['Name']) || '',
     done: !!f['Done'],
     clientName: str((f['Client'] as unknown[])?.[0]),
     priority: str(f['Priority']) as Task['priority'],
-    projetId: (f['Projets'] as string[])?.[0],
+    projetId,
     projetName: str((f['Projet'] as unknown[])?.[0]),
+    projetRef: projetId && refMap ? refMap.get(projetId) : undefined,
     assigneeId: assignee?.id,
     assigneeName: str(assignee?.name),
     dueDate: str(f['Due date']),
@@ -44,6 +46,9 @@ export async function GET(request: Request) {
     const projetId = searchParams.get('projetId')
 
     const wantDone = doneFilter === 'true'
+
+    // Build project ref lookup
+    const refMap = buildLookupMap(store.projets, 'Project réf')
 
     const tasks: Task[] = []
 
@@ -66,7 +71,7 @@ export async function GET(request: Request) {
         if (!projets || !projets.includes(projetId)) continue
       }
 
-      tasks.push(mapRecord(r))
+      tasks.push(mapRecord(r, refMap))
     }
 
     // Sort by due date (nulls last)

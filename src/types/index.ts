@@ -3,6 +3,13 @@ export type Phase = 'Démarrage' | 'Conception' | 'Production' | 'Last modifs' |
 export type StatutProjet = 'Stand-by' | 'En cours' | 'Finalisation' | 'Done' | 'Tentative' | 'Intention'
 export type TypeProjet = 'Live' | '2D' | 'Film' | 'Film scénarisé (acting)' | '3D' | 'Web' | 'Learning' | 'Stock' | 'Adapt' | 'Illustrations' | 'Photo' | 'Podcast' | 'Solo' | 'Duo'
 
+export interface Attachment {
+  url: string
+  filename: string
+  type?: string
+  size?: number
+}
+
 export interface Projet {
   id: string
   ref?: string
@@ -37,6 +44,8 @@ export interface Projet {
   progression?: string
   percentCogs?: string
   ehr?: string
+  // Attachments
+  devisSigne?: Attachment[]
   // IDs
   taskIds?: string[]
   cogsIds?: string[]
@@ -54,6 +63,7 @@ export interface Task {
   priority?: TaskPriority
   projetId?: string
   projetName?: string
+  projetRef?: string
   assigneeId?: string
   assigneeName?: string
   dueDate?: string
@@ -73,6 +83,7 @@ export interface Cogs {
   statut?: StatutCogs
   projetId?: string
   projetName?: string
+  projetRef?: string
   clientName?: string
   categorie?: string
   ressourceId?: string
@@ -83,6 +94,7 @@ export interface Cogs {
   montantTTC?: number
   bdcEnvoye?: boolean
   numeroFacture?: string
+  facture?: Attachment[]
   commentaire?: string
   pm?: string
   createdAt?: string
