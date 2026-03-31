@@ -68,6 +68,7 @@ export interface Task {
   projetRef?: string
   assigneeId?: string
   assigneeName?: string
+  assigneManuel?: string
   dueDate?: string
   pm?: string
   type?: TaskType

@@ -62,6 +62,7 @@ export default function TasksPage() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null)
   const [editingDate, setEditingDate] = useState<string | null>(null)
   const [editingField, setEditingField] = useState<{ id: string; field: 'type' | 'priority' } | null>(null)
+  const [editingAssignee, setEditingAssignee] = useState<string | null>(null)
   const [showForceTask, setShowForceTask] = useState<{ projetId?: string; projetName?: string; clientName?: string } | null>(null)
 
   // Inline create
@@ -91,6 +92,13 @@ export default function TasksPage() {
     ready ? '/api/projets' : null,
     { key: 'projets-all', enabled: ready, staleTime: 60_000 }
   )
+
+  const { data: users } = useData<{ name: string; role: string }[]>(
+    ready ? '/api/users' : null,
+    { key: 'users-all', enabled: ready, staleTime: 300_000 }
+  )
+
+  const userOptions = (users ?? []).map((u) => ({ value: u.name, label: u.name, sub: u.role }))
 
   const loading = loadingTodo || loadingDone
   const fetchTasks = useCallback(async () => {
@@ -205,6 +213,18 @@ export default function TasksPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [field]: value }),
+      })
+    } catch { fetchTasks() }
+  }
+
+  const updateAssignee = async (taskId: string, name: string) => {
+    mutateTasks(prev => (prev ?? []).map(t => t.id === taskId ? { ...t, assigneManuel: name || undefined } : t))
+    setEditingAssignee(null)
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assigneManuel: name }),
       })
     } catch { fetchTasks() }
   }
@@ -548,11 +568,34 @@ export default function TasksPage() {
                 </button>
               )}
 
-              {/* Assignee */}
-              {task.assigneeName && (
-                <span className="shrink-0 w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-xs font-medium flex items-center justify-center" title={task.assigneeName}>
-                  {task.assigneeName.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)}
-                </span>
+              {/* Assignee (click to edit) */}
+              {editingAssignee === task.id ? (
+                <div className="w-36 shrink-0">
+                  <ComboSelect
+                    options={userOptions}
+                    value={task.assigneManuel || ''}
+                    onChange={(v) => updateAssignee(task.id, v)}
+                    placeholder="Assigné"
+                    clearable
+                    size="sm"
+                    autoOpen
+                  />
+                </div>
+              ) : (
+                <button
+                  onClick={() => setEditingAssignee(task.id)}
+                  title={task.assigneManuel || task.assigneeName || 'Assigner'}
+                  className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition hover:ring-2 hover:ring-indigo-400 hover:ring-offset-1"
+                  style={task.assigneManuel || task.assigneeName ? {} : { background: 'rgb(243 244 246)' }}
+                >
+                  {task.assigneManuel || task.assigneeName ? (
+                    <span className="w-full h-full rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                      {(task.assigneManuel || task.assigneeName || '?').split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)}
+                    </span>
+                  ) : (
+                    <span className="w-full h-full rounded-full border-2 border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-[10px]">+</span>
+                  )}
+                </button>
               )}
             </div>
           ))}

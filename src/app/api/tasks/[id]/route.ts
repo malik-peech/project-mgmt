@@ -18,6 +18,7 @@ export async function PATCH(
     if (body.dueDate !== undefined) fields['Due date'] = body.dueDate
     if (body.description !== undefined) fields['Description'] = body.description
     if (body.projetId !== undefined) fields['Projets'] = [body.projetId]
+    if (body.assigneManuel !== undefined) fields['Assigné'] = body.assigneManuel
 
     const record = await updateRecord(TABLES.TASKS, id, fields as any)
 

@@ -28,6 +28,7 @@ function mapRecord(r: { id: string; fields: Record<string, unknown> }, refMap?: 
     projetRef: projetId && refMap ? refMap.get(projetId) : undefined,
     assigneeId: assignee?.id,
     assigneeName: str(assignee?.name),
+    assigneManuel: str(f['Assigné']),
     dueDate: str(f['Due date']),
     pm: str((f['PM'] as unknown[])?.[0]),
     type: str(f['Type']) as Task['type'],
