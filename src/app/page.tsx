@@ -109,8 +109,8 @@ export default function DashboardPage() {
 
   // Fetch users for PM/DA dropdowns in panel
   const { data: allUsers } = useData<{ name: string; role: string }[]>(
-    userRole === 'Admin' ? '/api/users' : null,
-    { key: 'users-list', enabled: userRole === 'Admin' }
+    '/api/users',
+    { key: 'users-list', enabled: !!session?.user?.name }
   )
 
   const pmOptions = useMemo(() => (allUsers ?? []).filter((u) => u.role === 'PM').map((u) => u.name), [allUsers])
@@ -436,7 +436,6 @@ export default function DashboardPage() {
             pmParam={pmParam}
             allProjets={allProjets}
             onTasksChanged={revalidate}
-            isAdmin={userRole === 'Admin'}
             pmOptions={pmOptions}
             daOptions={daOptions}
           />
@@ -454,7 +453,6 @@ function SidePanel({
   pmParam,
   allProjets,
   onTasksChanged,
-  isAdmin,
   pmOptions,
   daOptions,
 }: {
@@ -463,7 +461,6 @@ function SidePanel({
   pmParam: string
   allProjets: Projet[]
   onTasksChanged: () => void
-  isAdmin: boolean
   pmOptions: string[]
   daOptions: string[]
 }) {
@@ -561,11 +558,8 @@ function SidePanel({
 
   // Team members for display
   const teamMembers = [
-    { label: 'PM', name: localPm, editable: true, editing: editingPm, setEditing: setEditingPm, options: pmOptions, onChange: (v: string) => { setLocalPm(v); updateProjetField('pm', v); setEditingPm(false) } },
-    { label: 'DA', name: localDa, editable: true, editing: editingDa, setEditing: setEditingDa, options: daOptions, onChange: (v: string) => { setLocalDa(v); updateProjetField('daOfficial', v); setEditingDa(false) } },
-    { label: 'AM', name: projet.am, editable: false },
-    { label: 'PC', name: projet.pc, editable: false },
-    { label: 'Film', name: projet.filmmaker, editable: false },
+    { label: 'PM', name: localPm, editing: editingPm, setEditing: setEditingPm, options: pmOptions, onChange: (v: string) => { setLocalPm(v); updateProjetField('pm', v); setEditingPm(false) } },
+    { label: 'DA', name: localDa, editing: editingDa, setEditing: setEditingDa, options: daOptions, onChange: (v: string) => { setLocalDa(v); updateProjetField('daOfficial', v); setEditingDa(false) } },
   ]
 
   return (
@@ -618,52 +612,45 @@ function SidePanel({
       <div className="mb-6">
         <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Equipe</h3>
         <div className="flex flex-wrap gap-2">
-          {teamMembers
-            .filter((m) => m.name || (m.editable && isAdmin))
-            .map((member) => {
-              // Editable inline dropdown
-              if (member.editable && isAdmin && member.editing) {
-                return (
-                  <div key={member.label} className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5">
-                    <div className="min-w-0">
-                      <p className="text-[10px] text-indigo-500 font-medium leading-none mb-1">{member.label}</p>
-                      <select
-                        value={member.name || ''}
-                        onChange={(e) => member.onChange!(e.target.value)}
-                        onBlur={() => member.setEditing!(false)}
-                        autoFocus
-                        className="text-xs border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
-                      >
-                        <option value="">— Aucun —</option>
-                        {member.options!.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )
-              }
-
+          {teamMembers.map((member) => {
+            if (member.editing) {
               return (
-                <div
-                  key={member.label}
-                  className={`flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 ${
-                    member.editable && isAdmin ? 'cursor-pointer hover:border-indigo-300 hover:bg-indigo-50 transition' : ''
-                  }`}
-                  onClick={() => {
-                    if (member.editable && isAdmin && member.setEditing) member.setEditing(true)
-                  }}
-                >
-                  <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[8px] font-bold shrink-0">
-                    {getInitials(member.name)}
-                  </div>
+                <div key={member.label} className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5">
                   <div className="min-w-0">
-                    <p className="text-[10px] text-gray-400 font-medium leading-none">{member.label}</p>
-                    <p className="text-xs text-gray-700 truncate leading-tight">{member.name || '—'}</p>
+                    <p className="text-[10px] text-indigo-500 font-medium leading-none mb-1">{member.label}</p>
+                    <select
+                      value={member.name || ''}
+                      onChange={(e) => member.onChange(e.target.value)}
+                      onBlur={() => member.setEditing(false)}
+                      autoFocus
+                      className="text-xs border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                    >
+                      <option value="">— Aucun —</option>
+                      {member.options.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               )
-            })}
+            }
+
+            return (
+              <div
+                key={member.label}
+                className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-indigo-300 hover:bg-indigo-50 transition"
+                onClick={() => member.setEditing(true)}
+              >
+                <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[8px] font-bold shrink-0">
+                  {getInitials(member.name)}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] text-gray-400 font-medium leading-none">{member.label}</p>
+                  <p className="text-xs text-gray-700 truncate leading-tight">{member.name || '—'}</p>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
