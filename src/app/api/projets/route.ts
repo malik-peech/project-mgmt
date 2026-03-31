@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     // Build filter formula
     const activeStatuts = statutFilter
       ? [statutFilter]
-      : ['En cours', 'Finalisation', 'Stand-by']
+      : ['En cours', 'Finalisation', 'Stand-by', 'Tentative', 'Intention']
 
     const statutFormula = activeStatuts.length === 1
       ? `{Statut} = '${activeStatuts[0]}'`
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 
     let formula = statutFormula
     if (pmFilter) {
-      formula = `AND(${statutFormula}, {Project Manager (PM)} = '${pmFilter}')`
+      formula = `AND(${statutFormula}, {PM (manual)} = '${pmFilter}')`
     }
 
     const records = await getAll(TABLES.PROJETS, {
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
         clientId,
         clientName: clientId ? clientMap.get(clientId) || '' : '',
         am: f['Account Manager (AM)'] as string | undefined,
-        pm: f['Project Manager (PM)'] as string | undefined,
+        pm: f['PM (manual)'] as string | undefined,
         da: f['DA'] as string | undefined,
         pc: f['Project Coordinator (PC)'] as string | undefined,
         filmmaker: f['Filmmaker'] as string | undefined,

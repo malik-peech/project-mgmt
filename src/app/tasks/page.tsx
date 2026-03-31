@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, X, CheckCircle2, Circle, CalendarDays, Loader2 } from 'lucide-react'
+import { Plus, X, CheckCircle2, Circle, CalendarDays, Loader2, Copy, Trash2 } from 'lucide-react'
+import ContextMenu from '@/components/ContextMenu'
 import type { Task, TaskPriority, TaskType, Projet } from '@/types'
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -65,6 +66,7 @@ export default function TasksPage() {
   const [showModal, setShowModal] = useState(false)
   const [projets, setProjets] = useState<Projet[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null)
 
   // Form state
   const [form, setForm] = useState({
@@ -114,6 +116,38 @@ export default function TasksPage() {
       fetchProjets()
     }
   }, [session, fetchTasks, fetchProjets])
+
+  const deleteTask = async (task: Task) => {
+    try {
+      await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
+      setTasks(prev => prev.filter(t => t.id !== task.id))
+      setDoneTasks(prev => prev.filter(t => t.id !== task.id))
+    } catch (err) {
+      console.error('Failed to delete task', err)
+    }
+  }
+
+  const duplicateTask = async (task: Task) => {
+    try {
+      const body: Record<string, any> = { name: `${task.name} (copie)` }
+      if (task.projetId) body.projetId = task.projetId
+      if (task.dueDate) body.dueDate = task.dueDate
+      if (task.priority) body.priority = task.priority
+      if (task.type) body.type = task.type
+      if (task.description) body.description = task.description
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        const newTask = await res.json()
+        setTasks(prev => [newTask, ...prev])
+      }
+    } catch (err) {
+      console.error('Failed to duplicate task', err)
+    }
+  }
 
   const toggleDone = async (task: Task) => {
     const newDone = !task.done
@@ -256,6 +290,10 @@ export default function TasksPage() {
             <div
               key={task.id}
               className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50/50 transition-colors group"
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setContextMenu({ x: e.clientX, y: e.clientY, task })
+              }}
             >
               {/* Checkbox */}
               <button
@@ -328,6 +366,20 @@ export default function TasksPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          items={[
+            { label: 'Dupliquer', icon: <Copy className="w-4 h-4" />, onClick: () => duplicateTask(contextMenu.task) },
+            { separator: true },
+            { label: 'Supprimer', icon: <Trash2 className="w-4 h-4" />, onClick: () => deleteTask(contextMenu.task), danger: true },
+          ]}
+        />
       )}
 
       {/* New Task Modal */}

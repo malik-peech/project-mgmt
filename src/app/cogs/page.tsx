@@ -11,7 +11,10 @@ import {
   TrendingUp,
   CreditCard,
   Wallet,
+  Copy,
+  Trash2,
 } from 'lucide-react'
+import ContextMenu from '@/components/ContextMenu'
 import type { Cogs, StatutCogs, Projet, Ressource } from '@/types'
 
 const statutColors: Record<string, string> = {
@@ -61,6 +64,34 @@ export default function CogsPage() {
   const [formCommentaire, setFormCommentaire] = useState('')
   const [ressourceSearch, setRessourceSearch] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; cog: Cogs } | null>(null)
+
+  const deleteCog = async (cog: Cogs) => {
+    try {
+      await fetch(`/api/cogs/${cog.id}`, { method: 'DELETE' })
+      setCogs(prev => prev.filter(c => c.id !== cog.id))
+    } catch (err) {
+      console.error('Failed to delete cog', err)
+    }
+  }
+
+  const duplicateCog = async (cog: Cogs) => {
+    try {
+      const res = await fetch('/api/cogs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projetId: cog.projetId,
+          ressourceId: cog.ressourceId,
+          montantEngageProd: cog.montantEngageProd,
+          commentaire: cog.commentaire ? `${cog.commentaire} (copie)` : '(copie)',
+        }),
+      })
+      if (res.ok) fetchCogs()
+    } catch (err) {
+      console.error('Failed to duplicate cog', err)
+    }
+  }
 
   const fetchCogs = () => {
     if (!session?.user?.name) return
@@ -304,6 +335,10 @@ export default function CogsPage() {
                   <tr
                     key={c.id}
                     className="hover:bg-gray-50/50 transition"
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      setContextMenu({ x: e.clientX, y: e.clientY, cog: c })
+                    }}
                   >
                     <td className="px-4 py-3 text-gray-600 font-mono text-xs">
                       {c.numeroCommande || '\u2014'}
@@ -360,6 +395,20 @@ export default function CogsPage() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          items={[
+            { label: 'Dupliquer', icon: <Copy className="w-4 h-4" />, onClick: () => duplicateCog(contextMenu.cog) },
+            { separator: true },
+            { label: 'Supprimer', icon: <Trash2 className="w-4 h-4" />, onClick: () => deleteCog(contextMenu.cog), danger: true },
+          ]}
+        />
       )}
 
       {/* Modal: Nouvelle depense */}

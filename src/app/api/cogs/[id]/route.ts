@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { updateRecord, TABLES } from '@/lib/airtable'
+import { updateRecord, deleteRecord, TABLES } from '@/lib/airtable'
 
 export async function PATCH(
   request: Request,
@@ -22,5 +22,19 @@ export async function PATCH(
   } catch (error) {
     console.error('Error updating COGS:', error)
     return NextResponse.json({ error: 'Failed to update COGS' }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    await deleteRecord(TABLES.COGS, id)
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error deleting cog:', error)
+    return NextResponse.json({ error: 'Failed to delete cog' }, { status: 500 })
   }
 }
