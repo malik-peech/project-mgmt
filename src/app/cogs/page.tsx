@@ -166,8 +166,15 @@ export default function CogsPage() {
       const fd = new FormData()
       for (const f of files) fd.append('files', f, f.name)
       const res = await fetch(`/api/cogs/${selectedCog.id}/upload`, { method: 'POST', body: fd })
-      if (res.ok) revalidateCogs()
-    } catch {} finally { setUploadingCog(false) }
+      if (!res.ok) {
+        const err = await res.text()
+        console.error('Upload failed:', err)
+        throw new Error(err)
+      }
+      revalidateCogs()
+    } finally {
+      setUploadingCog(false)
+    }
   }
 
   const filtered = useMemo(() => {
@@ -522,18 +529,30 @@ function CogSidePanel({
 }) {
   const [viewer, setViewer] = useState<{ url: string; filename: string } | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const doUpload = async (files: File[]) => {
+    setUploadError(null)
+    try {
+      await onUpload(files)
+    } catch (err) {
+      console.error('Upload error:', err)
+      setUploadError('Erreur lors de l\'envoi. Réessayez.')
+    }
+  }
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
+    e.stopPropagation()
     setDragging(false)
     const files = Array.from(e.dataTransfer.files)
-    if (files.length > 0) onUpload(files)
+    if (files.length > 0) doUpload(files)
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
-    if (files.length > 0) onUpload(files)
+    if (files.length > 0) doUpload(files)
     e.target.value = ''
   }
 
@@ -641,16 +660,23 @@ function CogSidePanel({
             )}
 
             {/* Drag & drop upload zone */}
+            {uploadError && (
+              <p className="text-xs text-red-500 mb-2 px-1">{uploadError}</p>
+            )}
             <div
-              onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-              onDragLeave={() => setDragging(false)}
+              onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragging(true) }}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragging(true) }}
+              onDragLeave={(e) => {
+                // Only clear when leaving the zone itself, not its children
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false)
+              }}
               onDrop={handleDrop}
               onClick={() => !uploading && fileInputRef.current?.click()}
               className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition ${
                 dragging
                   ? 'border-indigo-400 bg-indigo-50'
                   : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
-              } ${uploading ? 'pointer-events-none opacity-60' : ''}`}
+              } ${uploading ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               {uploading ? (
                 <div className="flex items-center justify-center gap-2 text-indigo-600">
