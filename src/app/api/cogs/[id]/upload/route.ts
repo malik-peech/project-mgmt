@@ -3,7 +3,7 @@ import { refreshTable } from '@/lib/store'
 import { TABLES } from '@/lib/airtable'
 
 const BASE_ID = process.env.AIRTABLE_BASE_ID || 'appYFl5MvR7VeL0uB'
-const FIELD_NAME = 'Facture'
+const FIELD_ID = 'fldNQHfv3ez1sWNhE' // Facture field in COGS table
 
 export async function POST(
   request: Request,
@@ -38,7 +38,7 @@ export async function POST(
       fileFormData.append('contentType', file.type || 'application/octet-stream')
 
       const res = await fetch(
-        `https://content.airtable.com/v0/${BASE_ID}/${recordId}/${FIELD_NAME}/uploadAttachment`,
+        `https://content.airtable.com/v0/${BASE_ID}/${recordId}/${FIELD_ID}/uploadAttachment`,
         {
           method: 'POST',
           headers: {
