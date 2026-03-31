@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useData } from '@/hooks/useData'
 import {
-  Plus, X, Search, Check, FileText, Copy, Trash2, RefreshCw, AlertTriangle, ExternalLink, Loader2, Upload,
+  Plus, X, Search, Check, FileText, Copy, Trash2, RefreshCw, AlertTriangle, Loader2, Upload, CloudUpload,
 } from 'lucide-react'
 import ContextMenu from '@/components/ContextMenu'
-import type { Cogs, StatutCogs, Projet, Ressource } from '@/types'
+import ComboSelect from '@/components/ComboSelect'
+import FileViewer from '@/components/FileViewer'
+import type { Cogs, Projet, Ressource } from '@/types'
 
 const statutColors: Record<string, string> = {
   'A Approuver (CDP)': 'bg-pink-100 text-pink-800',
@@ -37,6 +39,7 @@ export default function CogsPage() {
   const [projetFilter, setProjetFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [selectedCog, setSelectedCog] = useState<Cogs | null>(null)
+  const [uploadingCog, setUploadingCog] = useState(false)
 
   // Modal state
   const [formProjetId, setFormProjetId] = useState('')
@@ -76,6 +79,15 @@ export default function CogsPage() {
   const projetList = projets ?? []
   const ressourceList = ressources ?? []
 
+  // Keep selectedCog in sync with refreshed cogs data
+  useEffect(() => {
+    if (selectedCog && cogs) {
+      const updated = cogs.find((c) => c.id === selectedCog.id)
+      if (updated) setSelectedCog(updated)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cogs])
+
   // Unique projects from COGS for filter
   const cogsProjets = useMemo(() => {
     const map = new Map<string, { id: string; ref?: string; name: string; client?: string }>()
@@ -86,6 +98,24 @@ export default function CogsPage() {
     }
     return Array.from(map.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
   }, [cogsList])
+
+  const cogsProjetOptions = useMemo(() =>
+    cogsProjets.map((p) => ({
+      value: p.id,
+      label: p.name,
+      sub: [p.ref, p.client].filter(Boolean).join(' · ') || undefined,
+    })),
+    [cogsProjets]
+  )
+
+  const projetComboOptions = useMemo(() =>
+    projetList.map((p) => ({
+      value: p.id,
+      label: p.nom,
+      sub: [p.ref, p.clientName].filter(Boolean).join(' · ') || undefined,
+    })),
+    [projetList]
+  )
 
   const deleteCog = async (cog: Cogs) => {
     mutateCogs(prev => (prev ?? []).filter(c => c.id !== cog.id))
@@ -127,6 +157,17 @@ export default function CogsPage() {
         revalidateCogs()
       }
     } catch {} finally { setSavingCog(false) }
+  }
+
+  const handleUpload = async (files: File[]) => {
+    if (!selectedCog || files.length === 0) return
+    setUploadingCog(true)
+    try {
+      const fd = new FormData()
+      for (const f of files) fd.append('files', f, f.name)
+      const res = await fetch(`/api/cogs/${selectedCog.id}/upload`, { method: 'POST', body: fd })
+      if (res.ok) revalidateCogs()
+    } catch {} finally { setUploadingCog(false) }
   }
 
   const filtered = useMemo(() => {
@@ -268,18 +309,16 @@ export default function CogsPage() {
               </div>
 
               {/* Project filter */}
-              <select
-                value={projetFilter}
-                onChange={(e) => setProjetFilter(e.target.value)}
-                className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-[200px]"
-              >
-                <option value="">Tous les projets</option>
-                {cogsProjets.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.ref ? `${p.ref} - ` : ''}{p.name}
-                  </option>
-                ))}
-              </select>
+              <div className="w-52">
+                <ComboSelect
+                  options={cogsProjetOptions}
+                  value={projetFilter}
+                  onChange={setProjetFilter}
+                  placeholder="Tous les projets"
+                  clearable
+                  size="sm"
+                />
+              </div>
             </div>
           </div>
 
@@ -369,6 +408,8 @@ export default function CogsPage() {
             setEditCommentaire={setEditCommentaire}
             onSave={saveCogEdits}
             saving={savingCog}
+            onUpload={handleUpload}
+            uploading={uploadingCog}
           />
         )}
       </div>
@@ -401,11 +442,13 @@ export default function CogsPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Projet <span className="text-red-500">*</span></label>
-                <select value={formProjetId} onChange={(e) => setFormProjetId(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="">Sélectionner un projet</option>
-                  {projetList.map((p) => <option key={p.id} value={p.id}>{p.clientName ? `${p.clientName} - ` : ''}{p.nom}</option>)}
-                </select>
+                <ComboSelect
+                  options={projetComboOptions}
+                  value={formProjetId}
+                  onChange={setFormProjetId}
+                  placeholder="Sélectionner un projet"
+                  clearable
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Ressource <span className="text-red-500">*</span></label>
@@ -463,6 +506,8 @@ function CogSidePanel({
   setEditCommentaire,
   onSave,
   saving,
+  onUpload,
+  uploading,
 }: {
   cog: Cogs
   onClose: () => void
@@ -472,143 +517,211 @@ function CogSidePanel({
   setEditCommentaire: (v: string) => void
   onSave: () => void
   saving: boolean
+  onUpload: (files: File[]) => Promise<void>
+  uploading: boolean
 }) {
+  const [viewer, setViewer] = useState<{ url: string; filename: string } | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragging(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) onUpload(files)
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length > 0) onUpload(files)
+    e.target.value = ''
+  }
+
   return (
-    <div className="p-6 min-w-[320px]">
-      <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
-        <X className="w-5 h-5" />
-      </button>
+    <>
+      <div className="p-6 min-w-[320px]">
+        <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
+          <X className="w-5 h-5" />
+        </button>
 
-      {/* Header */}
-      <div className="pr-8 mb-5">
-        <div className="flex items-center gap-2 mb-1">
-          {cog.projetRef && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{cog.projetRef}</span>}
-          {cog.statut && (
-            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${statutColors[cog.statut] || 'bg-gray-100 text-gray-600'}`}>
-              {cog.statut}
-            </span>
-          )}
+        {/* Header */}
+        <div className="pr-8 mb-5">
+          <div className="flex items-center gap-2 mb-1">
+            {cog.projetRef && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{cog.projetRef}</span>}
+            {cog.statut && (
+              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${statutColors[cog.statut] || 'bg-gray-100 text-gray-600'}`}>
+                {cog.statut}
+              </span>
+            )}
+          </div>
+          <h2 className="text-lg font-bold text-gray-900">{cog.ressourceName || 'Dépense'}</h2>
+          {cog.projetName && <p className="text-sm text-gray-500">{cog.projetName}</p>}
+          {cog.clientName && <p className="text-xs text-indigo-600">{cog.clientName}</p>}
         </div>
-        <h2 className="text-lg font-bold text-gray-900">{cog.ressourceName || 'Dépense'}</h2>
-        {cog.projetName && <p className="text-sm text-gray-500">{cog.projetName}</p>}
-        {cog.clientName && <p className="text-xs text-indigo-600">{cog.clientName}</p>}
-      </div>
 
-      {/* Details */}
-      <div className="space-y-4">
-        {/* Montants */}
-        <div className="bg-gray-50 rounded-xl p-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-[10px] text-gray-400 mb-0.5">Montant HT engagé</p>
-              <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantEngageProd)}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 mb-0.5">Montant TTC</p>
-              <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantTTC)}</p>
-            </div>
-            {cog.montantBudgeteSales != null && (
+        {/* Details */}
+        <div className="space-y-4">
+          {/* Montants */}
+          <div className="bg-gray-50 rounded-xl p-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-[10px] text-gray-400 mb-0.5">Budget sales</p>
-                <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantBudgeteSales)}</p>
+                <p className="text-[10px] text-gray-400 mb-0.5">Montant HT engagé</p>
+                <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantEngageProd)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-400 mb-0.5">Montant TTC</p>
+                <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantTTC)}</p>
+              </div>
+              {cog.montantBudgeteSales != null && (
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">Budget sales</p>
+                  <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantBudgeteSales)}</p>
+                </div>
+              )}
+              {cog.tva != null && (
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">TVA</p>
+                  <p className="text-sm font-semibold text-gray-800">{cog.tva}%</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Info rows */}
+          <div className="space-y-2">
+            {cog.categorie && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Catégorie</span>
+                <span className="font-medium text-gray-700">{cog.categorie}</span>
               </div>
             )}
-            {cog.tva != null && (
-              <div>
-                <p className="text-[10px] text-gray-400 mb-0.5">TVA</p>
-                <p className="text-sm font-semibold text-gray-800">{cog.tva}%</p>
+            {cog.numeroCommande && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">N° commande</span>
+                <span className="font-mono text-gray-700">{cog.numeroCommande}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">BDC envoyé</span>
+              <span>{cog.bdcEnvoye ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">Non</span>}</span>
+            </div>
+            {cog.methodePaiement && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Méthode paiement</span>
+                <span className="text-gray-700">{cog.methodePaiement}</span>
+              </div>
+            )}
+            {cog.createdAt && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Créé le</span>
+                <span className="text-gray-700">{new Date(cog.createdAt).toLocaleDateString('fr-FR')}</span>
               </div>
             )}
           </div>
-        </div>
 
-        {/* Info rows */}
-        <div className="space-y-2">
-          {cog.categorie && (
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Catégorie</span>
-              <span className="font-medium text-gray-700">{cog.categorie}</span>
-            </div>
-          )}
-          {cog.numeroCommande && (
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">N° commande</span>
-              <span className="font-mono text-gray-700">{cog.numeroCommande}</span>
-            </div>
-          )}
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-500">BDC envoyé</span>
-            <span>{cog.bdcEnvoye ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">Non</span>}</span>
-          </div>
-          {cog.methodePaiement && (
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Méthode paiement</span>
-              <span className="text-gray-700">{cog.methodePaiement}</span>
-            </div>
-          )}
-          {cog.createdAt && (
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Créé le</span>
-              <span className="text-gray-700">{new Date(cog.createdAt).toLocaleDateString('fr-FR')}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Facture (attachment) */}
-        {cog.facture && cog.facture.length > 0 && (
+          {/* Facture (attachment) */}
           <div>
             <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Facture</h4>
-            {cog.facture.map((f, i) => (
-              <a
-                key={i}
-                href={f.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-200 transition group"
-              >
-                <FileText className="w-4 h-4 text-gray-400 group-hover:text-indigo-500 shrink-0" />
-                <span className="text-sm text-gray-700 group-hover:text-indigo-700 truncate flex-1">{f.filename}</span>
-                <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-indigo-400 shrink-0" />
-              </a>
-            ))}
+
+            {cog.facture && cog.facture.length > 0 && (
+              <div className="space-y-1 mb-2">
+                {cog.facture.map((f, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setViewer({ url: f.url, filename: f.filename })}
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-200 transition group text-left"
+                  >
+                    <FileText className="w-4 h-4 text-gray-400 group-hover:text-indigo-500 shrink-0" />
+                    <span className="text-sm text-gray-700 group-hover:text-indigo-700 truncate flex-1">{f.filename}</span>
+                    <Upload className="w-3 h-3 text-gray-300 group-hover:text-indigo-400 shrink-0 rotate-180" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Drag & drop upload zone */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => !uploading && fileInputRef.current?.click()}
+              className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition ${
+                dragging
+                  ? 'border-indigo-400 bg-indigo-50'
+                  : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
+              } ${uploading ? 'pointer-events-none opacity-60' : ''}`}
+            >
+              {uploading ? (
+                <div className="flex items-center justify-center gap-2 text-indigo-600">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-xs font-medium">Envoi en cours...</span>
+                </div>
+              ) : (
+                <>
+                  <CloudUpload className={`w-6 h-6 mx-auto mb-1 ${dragging ? 'text-indigo-500' : 'text-gray-300'}`} />
+                  <p className={`text-xs font-medium ${dragging ? 'text-indigo-600' : 'text-gray-400'}`}>
+                    {dragging ? 'Déposez ici' : 'Glisser-déposer ou cliquer'}
+                  </p>
+                  <p className="text-[10px] text-gray-300 mt-0.5">PDF, images — plusieurs fichiers acceptés</p>
+                </>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="*/*"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
           </div>
-        )}
 
-        {/* Editable: N° facture */}
-        <div>
-          <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">N° de facture</label>
-          <input
-            type="text"
-            value={editNumFacture}
-            onChange={(e) => setEditNumFacture(e.target.value)}
-            placeholder="Ex: FAC-2024-001"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          {/* Editable: N° facture */}
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">N° de facture</label>
+            <input
+              type="text"
+              value={editNumFacture}
+              onChange={(e) => setEditNumFacture(e.target.value)}
+              placeholder="Ex: FAC-2024-001"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          {/* Editable: Commentaire */}
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Commentaire</label>
+            <textarea
+              value={editCommentaire}
+              onChange={(e) => setEditCommentaire(e.target.value)}
+              rows={3}
+              placeholder="Notes..."
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+            />
+          </div>
+
+          {/* Save button */}
+          {(editNumFacture !== (cog.numeroFacture || '') || editCommentaire !== (cog.commentaire || '')) && (
+            <button
+              onClick={onSave}
+              disabled={saving}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium transition disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enregistrer'}
+            </button>
+          )}
         </div>
-
-        {/* Editable: Commentaire */}
-        <div>
-          <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Commentaire</label>
-          <textarea
-            value={editCommentaire}
-            onChange={(e) => setEditCommentaire(e.target.value)}
-            rows={3}
-            placeholder="Notes..."
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-          />
-        </div>
-
-        {/* Save button */}
-        {(editNumFacture !== (cog.numeroFacture || '') || editCommentaire !== (cog.commentaire || '')) && (
-          <button
-            onClick={onSave}
-            disabled={saving}
-            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg text-sm font-medium transition disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enregistrer'}
-          </button>
-        )}
       </div>
-    </div>
+
+      {/* File viewer modal */}
+      {viewer && (
+        <FileViewer
+          url={viewer.url}
+          filename={viewer.filename}
+          onClose={() => setViewer(null)}
+        />
+      )}
+    </>
   )
 }

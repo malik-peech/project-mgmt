@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Search, Calendar, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, AlertTriangle, TrendingUp, Plus, FileText, ExternalLink, Loader2, CheckCircle2, Circle } from 'lucide-react'
+import { Search, Calendar, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, AlertTriangle, TrendingUp, Plus, FileText, Loader2, CheckCircle2, Circle } from 'lucide-react'
 import { useData } from '@/hooks/useData'
 import ForceNewTaskModal from '@/components/ForceNewTaskModal'
+import FileViewer from '@/components/FileViewer'
 import type { Projet, StatutProjet, Cogs, Task } from '@/types'
 
 const phaseColors: Record<string, string> = {
@@ -467,6 +468,7 @@ function SidePanel({
   const [showForceTask, setShowForceTask] = useState<{ projetId: string; projetName: string } | null>(null)
   const [inlineTaskName, setInlineTaskName] = useState('')
   const [inlineTaskDate, setInlineTaskDate] = useState('')
+  const [viewer, setViewer] = useState<{ url: string; filename: string } | null>(null)
   const [creatingTask, setCreatingTask] = useState(false)
 
   // Editable PM/DA state
@@ -697,17 +699,15 @@ function SidePanel({
           <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Devis signé</h3>
           <div className="space-y-1.5">
             {projet.devisSigne.map((doc, i) => (
-              <a
+              <button
                 key={i}
-                href={doc.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-200 transition group"
+                type="button"
+                onClick={() => setViewer({ url: doc.url, filename: doc.filename })}
+                className="w-full flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-200 transition group text-left"
               >
                 <FileText className="w-4 h-4 text-gray-400 group-hover:text-indigo-500 shrink-0" />
                 <span className="text-sm text-gray-700 group-hover:text-indigo-700 truncate flex-1">{doc.filename}</span>
-                <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-indigo-400 shrink-0" />
-              </a>
+              </button>
             ))}
           </div>
         </div>
@@ -819,6 +819,15 @@ function SidePanel({
             revalidateProjectTasks()
             onTasksChanged()
           }}
+        />
+      )}
+
+      {/* File viewer */}
+      {viewer && (
+        <FileViewer
+          url={viewer.url}
+          filename={viewer.filename}
+          onClose={() => setViewer(null)}
         />
       )}
     </div>

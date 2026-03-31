@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { X, Loader2, AlertCircle } from 'lucide-react'
 import type { Projet } from '@/types'
+import ComboSelect from '@/components/ComboSelect'
+import DatePicker from '@/components/DatePicker'
 
 const TYPE_OPTIONS = [
   'Brief', 'Call client', 'Email client', 'Demande float', 'Shooting',
@@ -17,13 +19,14 @@ type Props = {
   /** The project the completed task belonged to */
   projetId?: string
   projetName?: string
+  clientName?: string
   /** All projets for dropdown if projetId is not set */
   projets?: Projet[]
   onClose: () => void
   onCreated: () => void
 }
 
-export default function ForceNewTaskModal({ projetId, projetName, projets, onClose, onCreated }: Props) {
+export default function ForceNewTaskModal({ projetId, projetName, clientName, projets, onClose, onCreated }: Props) {
   const [name, setName] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [type, setType] = useState('')
@@ -35,6 +38,14 @@ export default function ForceNewTaskModal({ projetId, projetName, projets, onClo
   const tomorrow = new Date()
   tomorrow.setDate(tomorrow.getDate() + 1)
   const minDate = tomorrow.toISOString().split('T')[0]
+
+  const typeOptions = TYPE_OPTIONS.map((t) => ({ value: t, label: t }))
+  const priorityOptions = PRIORITY_OPTIONS.map((p) => ({ value: p, label: p }))
+  const projetOptions = (projets || []).map((p) => ({
+    value: p.id,
+    label: p.nom,
+    sub: p.ref || undefined,
+  }))
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -73,9 +84,11 @@ export default function ForceNewTaskModal({ projetId, projetName, projets, onClo
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-semibold text-gray-900">Planifier la prochaine task</h2>
             <p className="text-sm text-gray-500 mt-0.5">
-              {projetName
-                ? `Créez une task future pour ${projetName}`
-                : 'Chaque projet actif doit avoir une prochaine action planifiée'}
+              {clientName
+                ? clientName
+                : projetName
+                  ? `Créez une task future pour ${projetName}`
+                  : 'Chaque projet actif doit avoir une prochaine action planifiée'}
             </p>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -86,18 +99,13 @@ export default function ForceNewTaskModal({ projetId, projetName, projets, onClo
         <form onSubmit={handleSubmit} className="space-y-3">
           {/* Project selector (only if no projetId) */}
           {!projetId && projets && (
-            <select
+            <ComboSelect
+              options={projetOptions}
               value={selectedProjetId}
-              onChange={(e) => setSelectedProjetId(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">-- Projet --</option>
-              {projets.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.ref ? `${p.ref} - ` : ''}{p.nom}
-                </option>
-              ))}
-            </select>
+              onChange={setSelectedProjetId}
+              placeholder="-- Projet --"
+              clearable
+            />
           )}
 
           {/* Task name */}
@@ -112,44 +120,35 @@ export default function ForceNewTaskModal({ projetId, projetName, projets, onClo
           />
 
           {/* Due date (must be future) */}
-          <input
-            type="date"
-            required
+          <DatePicker
             value={dueDate}
+            onChange={setDueDate}
             min={minDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="Date d'échéance *"
           />
 
           {/* Type + Priority */}
           <div className="grid grid-cols-2 gap-2">
-            <select
+            <ComboSelect
+              options={typeOptions}
               value={type}
-              onChange={(e) => setType(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">Type</option>
-              {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-            <select
+              onChange={setType}
+              placeholder="Type"
+              clearable
+              size="sm"
+            />
+            <ComboSelect
+              options={priorityOptions}
               value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">Priorité</option>
-              {PRIORITY_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
+              onChange={setPriority}
+              placeholder="Priorité"
+              clearable
+              size="sm"
+            />
           </div>
 
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
-            >
-              Passer
-            </button>
             <button
               type="submit"
               disabled={submitting || !name.trim() || !dueDate}

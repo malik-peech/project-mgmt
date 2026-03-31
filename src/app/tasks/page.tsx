@@ -2,9 +2,11 @@
 
 import { useState, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, X, CheckCircle2, Circle, CalendarDays, Loader2, Copy, Trash2, RefreshCw, AlertTriangle, Search } from 'lucide-react'
+import { Plus, X, CheckCircle2, Circle, Loader2, Copy, Trash2, RefreshCw, AlertTriangle, Search } from 'lucide-react'
 import ContextMenu from '@/components/ContextMenu'
 import ForceNewTaskModal from '@/components/ForceNewTaskModal'
+import ComboSelect from '@/components/ComboSelect'
+import DatePicker from '@/components/DatePicker'
 import { useData } from '@/hooks/useData'
 import type { Task, TaskPriority, TaskType, Projet } from '@/types'
 
@@ -26,28 +28,18 @@ const TYPE_OPTIONS: TaskType[] = [
   'Casting acteur', 'Prepa Tournage', 'Call presta', 'Calendar',
 ]
 
+const priorityComboOptions = PRIORITY_OPTIONS.map((p) => ({ value: p, label: p }))
+const typeComboOptions = TYPE_OPTIONS.map((t) => ({ value: t, label: t }))
+
 function getPriorityColor(priority?: string): string {
   if (!priority) return 'bg-gray-100 text-gray-500'
   return PRIORITY_COLORS[priority] ?? 'bg-gray-100 text-gray-500'
 }
 
-function getDateColor(dueDate?: string): string {
-  if (!dueDate) return 'text-gray-400'
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  const due = new Date(dueDate); due.setHours(0, 0, 0, 0)
-  if (due < today) return 'text-amber-600 font-medium'
-  if (due.getTime() === today.getTime()) return 'text-orange-500 font-medium'
-  return 'text-gray-500'
-}
-
-function formatDate(dateStr?: string): string {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
-}
-
-function getInitials(name?: string): string {
-  if (!name) return '?'
-  return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
+/** Strip Airtable record IDs (rec + 8+ alphanumeric chars) from display strings */
+function stripRecIds(text?: string): string {
+  if (!text) return ''
+  return text.replace(/\brec[A-Za-z0-9]{8,}\b/g, '').replace(/\s{2,}/g, ' ').trim()
 }
 
 const DATE_FILTERS = [
@@ -69,7 +61,8 @@ export default function TasksPage() {
   const [submitting, setSubmitting] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null)
   const [editingDate, setEditingDate] = useState<string | null>(null)
-  const [showForceTask, setShowForceTask] = useState<{ projetId?: string; projetName?: string } | null>(null)
+  const [editingField, setEditingField] = useState<{ id: string; field: 'type' | 'priority' } | null>(null)
+  const [showForceTask, setShowForceTask] = useState<{ projetId?: string; projetName?: string; clientName?: string } | null>(null)
 
   // Inline create
   const [inlineName, setInlineName] = useState('')
@@ -118,6 +111,24 @@ export default function TasksPage() {
     }
     return Array.from(map.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
   }, [todoList, doneList])
+
+  const taskProjetOptions = useMemo(() =>
+    taskProjets.map((p) => ({
+      value: p.id,
+      label: p.name,
+      sub: [p.ref, p.client].filter(Boolean).join(' · ') || undefined,
+    })),
+    [taskProjets]
+  )
+
+  const projetComboOptions = useMemo(() =>
+    projetList.map((p) => ({
+      value: p.id,
+      label: p.nom,
+      sub: [p.ref, p.clientName].filter(Boolean).join(' · ') || undefined,
+    })),
+    [projetList]
+  )
 
   // Unique types from tasks
   const allTypes = useMemo(() =>
@@ -168,16 +179,15 @@ export default function TasksPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ done: newDone }),
       })
-      // If marking done, show force new task modal
       if (newDone && task.projetId) {
-        setShowForceTask({ projetId: task.projetId, projetName: task.projetName })
+        setShowForceTask({ projetId: task.projetId, projetName: task.projetName, clientName: task.clientName })
       }
     } catch { fetchTasks() }
   }
 
   const updateTaskDate = async (taskId: string, newDate: string) => {
-    // Optimistic
     mutateTasks(prev => (prev ?? []).map(t => t.id === taskId ? { ...t, dueDate: newDate } : t))
+    setEditingDate(null)
     try {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
@@ -185,7 +195,18 @@ export default function TasksPage() {
         body: JSON.stringify({ dueDate: newDate }),
       })
     } catch { fetchTasks() }
-    setEditingDate(null)
+  }
+
+  const updateTaskField = async (taskId: string, field: 'type' | 'priority', value: string) => {
+    mutateTasks(prev => (prev ?? []).map(t => t.id === taskId ? { ...t, [field]: value || undefined } : t))
+    setEditingField(null)
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+      })
+    } catch { fetchTasks() }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -217,7 +238,6 @@ export default function TasksPage() {
     setInlineCreating(true)
     try {
       const body: Record<string, string> = { name: inlineName }
-      // If filtered by project, auto-assign
       if (projetFilter) body.projetId = projetFilter
       if (inlineDate) body.dueDate = inlineDate
       const res = await fetch('/api/tasks', {
@@ -324,18 +344,16 @@ export default function TasksPage() {
           </div>
 
           {/* Project filter */}
-          <select
-            value={projetFilter}
-            onChange={(e) => setProjetFilter(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-[200px]"
-          >
-            <option value="">Tous les projets</option>
-            {taskProjets.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.ref ? `${p.ref} - ` : ''}{p.name}
-              </option>
-            ))}
-          </select>
+          <div className="w-52">
+            <ComboSelect
+              options={taskProjetOptions}
+              value={projetFilter}
+              onChange={setProjetFilter}
+              placeholder="Tous les projets"
+              clearable
+              size="sm"
+            />
+          </div>
 
           {/* Date filter pills */}
           <div className="flex gap-1 flex-wrap">
@@ -457,7 +475,7 @@ export default function TasksPage() {
               {/* Name + Project */}
               <div className="flex-1 min-w-0">
                 <p className={`text-sm font-medium truncate ${task.done ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                  {task.name}
+                  {stripRecIds(task.name)}
                 </p>
                 {(task.projetName || task.projetRef) && (
                   <p className="text-xs text-gray-400 truncate mt-0.5">
@@ -469,48 +487,93 @@ export default function TasksPage() {
                 )}
               </div>
 
-              {/* Priority */}
-              {task.priority && (
-                <span className={`hidden sm:inline-flex shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${getPriorityColor(task.priority)}`}>
-                  {task.priority}
-                </span>
+              {/* Priority (click to edit) */}
+              {editingField?.id === task.id && editingField?.field === 'priority' ? (
+                <div className="w-36 shrink-0">
+                  <ComboSelect
+                    options={priorityComboOptions}
+                    value={task.priority || ''}
+                    onChange={(v) => updateTaskField(task.id, 'priority', v)}
+                    placeholder="Priorité"
+                    clearable
+                    size="sm"
+                  />
+                </div>
+              ) : (
+                <button
+                  onClick={() => setEditingField({ id: task.id, field: 'priority' })}
+                  className={`hidden sm:inline-flex shrink-0 text-xs px-2 py-0.5 rounded-full font-medium transition hover:opacity-75 ${
+                    task.priority
+                      ? getPriorityColor(task.priority)
+                      : 'bg-gray-50 text-gray-300 border border-dashed border-gray-200'
+                  }`}
+                  title="Cliquer pour modifier la priorité"
+                >
+                  {task.priority || '+ priorité'}
+                </button>
               )}
 
-              {/* Type */}
-              {task.type && (
-                <span className="hidden md:inline-flex shrink-0 text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-medium">
-                  {task.type}
-                </span>
+              {/* Type (click to edit) */}
+              {editingField?.id === task.id && editingField?.field === 'type' ? (
+                <div className="w-36 shrink-0">
+                  <ComboSelect
+                    options={typeComboOptions}
+                    value={task.type || ''}
+                    onChange={(v) => updateTaskField(task.id, 'type', v)}
+                    placeholder="Type"
+                    clearable
+                    size="sm"
+                  />
+                </div>
+              ) : (
+                <button
+                  onClick={() => setEditingField({ id: task.id, field: 'type' })}
+                  className={`hidden md:inline-flex shrink-0 text-xs px-2 py-0.5 rounded-full font-medium transition hover:opacity-75 ${
+                    task.type
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'bg-gray-50 text-gray-300 border border-dashed border-gray-200'
+                  }`}
+                  title="Cliquer pour modifier le type"
+                >
+                  {task.type || '+ type'}
+                </button>
               )}
 
-              {/* Due date (editable) */}
+              {/* Due date (DatePicker) */}
               {editingDate === task.id ? (
-                <input
-                  type="date"
-                  autoFocus
-                  defaultValue={task.dueDate || ''}
-                  onBlur={(e) => updateTaskDate(task.id, e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') updateTaskDate(task.id, (e.target as HTMLInputElement).value)
-                    if (e.key === 'Escape') setEditingDate(null)
-                  }}
-                  className="text-xs border border-indigo-300 rounded px-1.5 py-0.5 w-28 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                <DatePicker
+                  value={task.dueDate || ''}
+                  onChange={(v) => updateTaskDate(task.id, v)}
+                  placeholder="Date"
+                  clearable
+                  size="sm"
+                  autoOpen
+                  className="w-32 shrink-0"
                 />
               ) : (
                 <button
                   onClick={() => setEditingDate(task.id)}
-                  className={`hidden sm:inline-flex items-center gap-1 shrink-0 text-xs hover:bg-gray-100 px-1.5 py-0.5 rounded transition ${getDateColor(task.dueDate)}`}
+                  className={`hidden sm:inline-flex items-center gap-1 shrink-0 text-xs hover:bg-gray-100 px-1.5 py-0.5 rounded transition ${
+                    !task.dueDate ? 'text-gray-400' : (() => {
+                      const today = new Date(); today.setHours(0,0,0,0)
+                      const due = new Date(task.dueDate!); due.setHours(0,0,0,0)
+                      if (due < today) return 'text-amber-600 font-medium'
+                      if (due.getTime() === today.getTime()) return 'text-orange-500 font-medium'
+                      return 'text-gray-500'
+                    })()
+                  }`}
                   title="Cliquer pour modifier la date"
                 >
-                  <CalendarDays className="w-3.5 h-3.5" />
-                  {task.dueDate ? formatDate(task.dueDate) : 'Date'}
+                  {task.dueDate
+                    ? new Date(task.dueDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+                    : 'Date'}
                 </button>
               )}
 
               {/* Assignee */}
               {task.assigneeName && (
                 <span className="shrink-0 w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-xs font-medium flex items-center justify-center" title={task.assigneeName}>
-                  {getInitials(task.assigneeName)}
+                  {task.assigneeName.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)}
                 </span>
               )}
             </div>
@@ -537,6 +600,7 @@ export default function TasksPage() {
         <ForceNewTaskModal
           projetId={showForceTask.projetId}
           projetName={showForceTask.projetName}
+          clientName={showForceTask.clientName}
           projets={projetList}
           onClose={() => setShowForceTask(null)}
           onCreated={() => {
@@ -560,18 +624,13 @@ export default function TasksPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Projet</label>
-                <select
+                <ComboSelect
+                  options={projetComboOptions}
                   value={form.projetId}
-                  onChange={(e) => setForm({ ...form, projetId: e.target.value })}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                >
-                  <option value="">-- Sélectionner un projet --</option>
-                  {projetList.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.ref ? `${p.ref} - ` : ''}{p.nom} {p.clientName ? `(${p.clientName})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setForm({ ...form, projetId: v })}
+                  placeholder="-- Sélectionner un projet --"
+                  clearable
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nom de la task <span className="text-red-500">*</span></label>
@@ -582,25 +641,33 @@ export default function TasksPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                  <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                    <option value="">-- Type --</option>
-                    {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
+                  <ComboSelect
+                    options={typeComboOptions}
+                    value={form.type}
+                    onChange={(v) => setForm({ ...form, type: v })}
+                    placeholder="-- Type --"
+                    clearable
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Priorité</label>
-                  <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                    <option value="">-- Priorité --</option>
-                    {PRIORITY_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
-                  </select>
+                  <ComboSelect
+                    options={priorityComboOptions}
+                    value={form.priority}
+                    onChange={(v) => setForm({ ...form, priority: v })}
+                    placeholder="-- Priorité --"
+                    clearable
+                  />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Date d&apos;échéance</label>
-                <input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <DatePicker
+                  value={form.dueDate}
+                  onChange={(v) => setForm({ ...form, dueDate: v })}
+                  placeholder="Choisir une date"
+                  clearable
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
