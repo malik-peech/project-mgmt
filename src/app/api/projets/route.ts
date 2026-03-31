@@ -2,6 +2,24 @@ import { NextResponse } from 'next/server'
 import { ensureStore, buildLookupMap } from '@/lib/store'
 import type { Projet } from '@/types'
 
+/** Safely extract a number from an Airtable field (handles {specialValue} objects) */
+function num(val: unknown): number | undefined {
+  if (val == null) return undefined
+  if (typeof val === 'number') return val
+  if (typeof val === 'object') return undefined // {specialValue: ...}
+  const n = Number(val)
+  return isNaN(n) ? undefined : n
+}
+
+/** Safely extract a string from an Airtable field */
+function str(val: unknown): string | undefined {
+  if (val == null) return undefined
+  if (typeof val === 'string') return val
+  if (typeof val === 'number') return String(val)
+  if (typeof val === 'object') return undefined // {specialValue: ...}
+  return String(val)
+}
+
 export async function GET(request: Request) {
   try {
     const store = await ensureStore()
@@ -32,34 +50,34 @@ export async function GET(request: Request) {
 
       projets.push({
         id: r.id,
-        ref: f['Project réf'] as string | undefined,
-        nom: (f['Projet'] as string) || '',
+        ref: str(f['Project réf']),
+        nom: str(f['Projet']) || '',
         clientId,
         clientName: clientId ? clientMap.get(clientId) || '' : '',
-        am: f['Account Manager (AM)'] as string | undefined,
+        am: str(f['Account Manager (AM)']),
         pm,
-        da: f['DA'] as string | undefined,
-        pc: f['Project Coordinator (PC)'] as string | undefined,
-        filmmaker: f['Filmmaker'] as string | undefined,
-        phase: f['Phase'] as Projet['phase'],
+        da: str(f['DA']),
+        pc: str(f['Project Coordinator (PC)']),
+        filmmaker: str(f['Filmmaker']),
+        phase: str(f['Phase']) as Projet['phase'],
         statut: statut as Projet['statut'],
-        typeProjet: f['Type de projet'] as Projet['typeProjet'],
-        cogsBudget: f['COGS - budget (€)'] as number | undefined,
-        cogsReels: f['COGS - réels (€)'] as number | undefined,
-        cogsPrevus: f['COGS - prévus (€)'] as number | undefined,
-        cogsAEngager: f['COGS - à engager (€)'] as number | undefined,
-        timeCreaBudget: f['Time Créa - budget (h)'] as number | undefined,
-        sizing: f['Sizing (h)'] as number | undefined,
-        travelBudget: f['Travel - budget (€)'] as number | undefined,
-        offreInitiale: f['Offre - Valeur initiale'] as number | undefined,
-        offreFinale: f['Offre - Valeur finale'] as number | undefined,
-        dateFinalisationPrevue: f['Date de finalisation prévue'] as string | undefined,
-        nextTaskDate: (f['#next_task_date'] as string[] | undefined)?.[0],
-        nextTask: (f['next task'] as string[] | undefined)?.[0],
-        alerteHeures: f['Alerte Heures'] as string | undefined,
-        progression: f['Progression'] as string | undefined,
-        percentCogs: f['% COGS'] as string | undefined,
-        ehr: f['EHR'] as string | undefined,
+        typeProjet: str(f['Type de projet']) as Projet['typeProjet'],
+        cogsBudget: num(f['COGS - budget (€)']),
+        cogsReels: num(f['COGS - réels (€)']),
+        cogsPrevus: num(f['COGS - prévus (€)']),
+        cogsAEngager: num(f['COGS - à engager (€)']),
+        timeCreaBudget: num(f['Time Créa - budget (h)']),
+        sizing: num(f['Sizing (h)']),
+        travelBudget: num(f['Travel - budget (€)']),
+        offreInitiale: num(f['Offre - Valeur initiale']),
+        offreFinale: num(f['Offre - Valeur finale']),
+        dateFinalisationPrevue: str(f['Date de finalisation prévue']),
+        nextTaskDate: str((f['#next_task_date'] as unknown[])?.[0]),
+        nextTask: str((f['next task'] as unknown[])?.[0]),
+        alerteHeures: str(f['Alerte Heures']),
+        progression: str(f['Progression']),
+        percentCogs: str(f['% COGS']),
+        ehr: str(f['EHR']),
         taskIds: f['Task'] as string[] | undefined,
         cogsIds: f['Dépenses (COGS)'] as string[] | undefined,
       })

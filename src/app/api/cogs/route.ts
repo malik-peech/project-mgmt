@@ -3,6 +3,24 @@ import { createRecord, TABLES } from '@/lib/airtable'
 import { ensureStore, buildLookupMap, refreshTable } from '@/lib/store'
 import type { Cogs } from '@/types'
 
+/** Safely extract a number from an Airtable field (handles {specialValue} objects) */
+function num(val: unknown): number | undefined {
+  if (val == null) return undefined
+  if (typeof val === 'number') return val
+  if (typeof val === 'object') return undefined
+  const n = Number(val)
+  return isNaN(n) ? undefined : n
+}
+
+/** Safely extract a string from an Airtable field */
+function str(val: unknown): string | undefined {
+  if (val == null) return undefined
+  if (typeof val === 'string') return val
+  if (typeof val === 'number') return String(val)
+  if (typeof val === 'object') return undefined
+  return String(val)
+}
+
 function mapRecord(
   r: { id: string; fields: Record<string, unknown> },
   resMap: Map<string, string>
@@ -12,24 +30,24 @@ function mapRecord(
   const ressourceId = ressourceIds?.[0]
   return {
     id: r.id,
-    numeroCommande: f['Numéro de commande'] as string | undefined,
-    statut: f['Statut de la dépense'] as Cogs['statut'],
+    numeroCommande: str(f['Numéro de commande']),
+    statut: str(f['Statut de la dépense']) as Cogs['statut'],
     projetId: (f['Projet'] as string[])?.[0],
-    clientName: (f['Client'] as string[])?.[0],
-    categorie: (f['Catégorie'] as string[])?.[0],
+    clientName: str((f['Client'] as unknown[])?.[0]),
+    categorie: str((f['Catégorie'] as unknown[])?.[0]),
     ressourceId,
     ressourceName: ressourceId ? resMap.get(ressourceId) || '' : '',
-    montantBudgeteSales: f['Montant HT budgété (sales)'] as number | undefined,
-    montantEngageProd: f['Montant HT engagé (prod)'] as number | undefined,
-    tva: f['TVA'] as number | undefined,
-    montantTTC: f['Montant TTC'] as number | undefined,
+    montantBudgeteSales: num(f['Montant HT budgété (sales)']),
+    montantEngageProd: num(f['Montant HT engagé (prod)']),
+    tva: num(f['TVA']),
+    montantTTC: num(f['Montant TTC']),
     bdcEnvoye: !!f['BDC envoyé'],
-    numeroFacture: f['Numéro de facture'] as string | undefined,
-    commentaire: f['Commentaire COGS'] as string | undefined,
-    pm: (f['PM'] as string[])?.[0],
+    numeroFacture: str(f['Numéro de facture']),
+    commentaire: str(f['Commentaire COGS']),
+    pm: str((f['PM'] as unknown[])?.[0]),
     okPourPaiement: !!f['OK pour paiement'],
-    methodePaiement: f['Méthode de paiement'] as string | undefined,
-    createdAt: f['Date de création'] as string | undefined,
+    methodePaiement: str(f['Méthode de paiement']),
+    createdAt: str(f['Date de création']),
   }
 }
 
