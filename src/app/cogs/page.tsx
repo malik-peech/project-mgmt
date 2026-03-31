@@ -14,6 +14,8 @@ import {
   Wallet,
   Copy,
   Trash2,
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react'
 import ContextMenu from '@/components/ContextMenu'
 import type { Cogs, StatutCogs, Projet, Ressource } from '@/types'
@@ -68,7 +70,7 @@ export default function CogsPage() {
   const pmParam = userRole !== 'Admin' && userName ? `pm=${encodeURIComponent(userName)}` : ''
   const ready = !!session?.user?.name
 
-  const { data: cogs, mutate: mutateCogs, revalidate: revalidateCogs, loading } = useData<Cogs[]>(
+  const { data: cogs, mutate: mutateCogs, revalidate: revalidateCogs, loading, error } = useData<Cogs[]>(
     ready ? `/api/cogs?${pmParam}` : null,
     { key: `cogs-${pmParam}`, enabled: ready }
   )
@@ -187,7 +189,7 @@ export default function CogsPage() {
     setRessourceSearch('')
   }
 
-  if (loading) {
+  if (loading && !cogs) {
     return (
       <div className="p-6 md:p-8">
         <div className="animate-pulse space-y-4">
@@ -198,6 +200,25 @@ export default function CogsPage() {
             ))}
           </div>
           <div className="h-96 bg-gray-100 rounded-xl" />
+        </div>
+      </div>
+    )
+  }
+
+  if (error && !cogs) {
+    return (
+      <div className="p-6 md:p-8">
+        <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+          <AlertTriangle className="w-10 h-10 text-orange-400 mb-3" />
+          <p className="text-lg font-medium mb-1">Impossible de charger les COGS</p>
+          <p className="text-sm text-gray-400 mb-4">Vérifiez votre connexion ou réessayez</p>
+          <button
+            onClick={() => revalidateCogs()}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Réessayer
+          </button>
         </div>
       </div>
     )

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, X, CheckCircle2, Circle, CalendarDays, Loader2, Copy, Trash2 } from 'lucide-react'
+import { Plus, X, CheckCircle2, Circle, CalendarDays, Loader2, Copy, Trash2, RefreshCw, AlertTriangle } from 'lucide-react'
 import ContextMenu from '@/components/ContextMenu'
 import { useData } from '@/hooks/useData'
 import type { Task, TaskPriority, TaskType, Projet } from '@/types'
@@ -80,12 +80,12 @@ export default function TasksPage() {
   const pmParam = userRole === 'Admin' ? '' : `pm=${encodeURIComponent(userName)}`
   const ready = !!session?.user?.name
 
-  const { data: tasks, mutate: mutateTasks, revalidate: revalidateTasks, loading: loadingTodo } = useData<Task[]>(
+  const { data: tasks, mutate: mutateTasks, revalidate: revalidateTasks, loading: loadingTodo, error: errorTodo } = useData<Task[]>(
     ready ? `/api/tasks?${pmParam}` : null,
     { key: `tasks-todo-${pmParam}`, enabled: ready }
   )
 
-  const { data: doneTasks, mutate: mutateDone, revalidate: revalidateDone, loading: loadingDone } = useData<Task[]>(
+  const { data: doneTasks, mutate: mutateDone, revalidate: revalidateDone, loading: loadingDone, error: errorDone } = useData<Task[]>(
     ready ? `/api/tasks?done=true&${pmParam}` : null,
     { key: `tasks-done-${pmParam}`, enabled: ready }
   )
@@ -260,10 +260,23 @@ export default function TasksPage() {
       </div>
 
       {/* Task list */}
-      {loading ? (
+      {loading && !tasks && !doneTasks ? (
         <div className="flex items-center justify-center py-20 text-gray-400">
           <Loader2 className="w-6 h-6 animate-spin mr-2" />
           Chargement...
+        </div>
+      ) : (errorTodo || errorDone) && !tasks && !doneTasks ? (
+        <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+          <AlertTriangle className="w-10 h-10 text-orange-400 mb-3" />
+          <p className="text-lg font-medium mb-1">Impossible de charger les tasks</p>
+          <p className="text-sm text-gray-400 mb-4">Vérifiez votre connexion ou réessayez</p>
+          <button
+            onClick={() => fetchTasks()}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Réessayer
+          </button>
         </div>
       ) : filteredTasks.length === 0 ? (
         <div className="text-center py-20 text-gray-400">

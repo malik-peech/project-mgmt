@@ -68,21 +68,34 @@ export function useData<T>(
     abortRef.current = controller
 
     setRevalidating(true)
-    try {
-      const res = await fetch(url, { signal: controller.signal })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const freshData = await res.json()
-      setData(freshData)
-      writeCache(key, freshData)
-      setError(null)
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        setError(err)
+
+    // Retry up to 2 times with backoff
+    let lastErr: Error | null = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(url, { signal: controller.signal })
+        if (res.status === 429 || res.status >= 500) {
+          throw new Error(`HTTP ${res.status}`)
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const freshData = await res.json()
+        setData(freshData)
+        writeCache(key, freshData)
+        setError(null)
+        lastErr = null
+        break
+      } catch (err: any) {
+        if (err.name === 'AbortError') return
+        lastErr = err
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)))
+        }
       }
-    } finally {
-      setRevalidating(false)
-      setLoading(false)
     }
+
+    if (lastErr) setError(lastErr)
+    setRevalidating(false)
+    setLoading(false)
   }, [url, key, enabled])
 
   // On mount: serve cached data, then revalidate if stale

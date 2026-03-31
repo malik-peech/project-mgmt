@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
-import { AlertTriangle, Calendar, TrendingUp, X, ChevronRight } from 'lucide-react'
+import { AlertTriangle, Calendar, TrendingUp, X, ChevronRight, RefreshCw } from 'lucide-react'
 import { useData } from '@/hooks/useData'
 import type { Projet, StatutProjet } from '@/types'
 
@@ -85,7 +85,7 @@ export default function DashboardPage() {
   const userRole = (session?.user as { role?: string })?.role || 'PM'
   const pmParam = userRole !== 'Admin' && userName ? `pm=${encodeURIComponent(userName)}` : ''
 
-  const { data: projets, loading } = useData<Projet[]>(
+  const { data: projets, loading, error, revalidate } = useData<Projet[]>(
     session?.user?.name ? `/api/projets?${pmParam}` : null,
     { key: `projets-${pmParam}`, enabled: !!session?.user?.name }
   )
@@ -104,7 +104,7 @@ export default function DashboardPage() {
     }
   }, [filtered, selectedProjet])
 
-  if (loading) {
+  if (loading && !projets) {
     return (
       <div className="p-6 md:p-8">
         <div className="animate-pulse space-y-3">
@@ -113,6 +113,25 @@ export default function DashboardPage() {
           {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
             <div key={i} className="h-11 bg-gray-50 rounded" />
           ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (error && !projets) {
+    return (
+      <div className="p-6 md:p-8">
+        <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+          <AlertTriangle className="w-10 h-10 text-orange-400 mb-3" />
+          <p className="text-lg font-medium mb-1">Impossible de charger les projets</p>
+          <p className="text-sm text-gray-400 mb-4">Vérifiez votre connexion ou réessayez</p>
+          <button
+            onClick={() => revalidate()}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Réessayer
+          </button>
         </div>
       </div>
     )
