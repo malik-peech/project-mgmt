@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
-import { getAll, createRecord, TABLES } from '@/lib/airtable'
+import { createRecord, TABLES } from '@/lib/airtable'
+import { ensureStore, refreshTable } from '@/lib/store'
 import type { Task } from '@/types'
 
-function mapTask(r: any): Task {
+function mapRecord(r: { id: string; fields: Record<string, unknown> }): Task {
   const f = r.fields
   const assignee = f['Assignee'] as { id?: string; email?: string; name?: string } | undefined
   return {
@@ -26,28 +27,39 @@ function mapTask(r: any): Task {
 
 export async function GET(request: Request) {
   try {
+    const store = await ensureStore()
     const { searchParams } = new URL(request.url)
     const pmFilter = searchParams.get('pm')
     const doneFilter = searchParams.get('done')
     const projetId = searchParams.get('projetId')
 
-    let formula = doneFilter === 'true' ? '{Done}' : 'NOT({Done})'
+    const wantDone = doneFilter === 'true'
 
-    if (pmFilter) {
-      formula = `AND(${formula}, FIND('${pmFilter}', ARRAYJOIN({PM})))`
+    const tasks: Task[] = []
+
+    for (const r of store.tasks.records) {
+      const f = r.fields
+      const isDone = !!f['Done']
+
+      // Filter done/not done
+      if (wantDone !== isDone) continue
+
+      // Filter by PM
+      if (pmFilter) {
+        const pms = f['PM'] as string[] | undefined
+        if (!pms || !pms.some((p) => p === pmFilter)) continue
+      }
+
+      // Filter by project
+      if (projetId) {
+        const projets = f['Projets'] as string[] | undefined
+        if (!projets || !projets.includes(projetId)) continue
+      }
+
+      tasks.push(mapRecord(r))
     }
-    if (projetId) {
-      formula = `AND(${formula}, FIND('${projetId}', ARRAYJOIN(RECORD_ID({Projets}))))`
-    }
 
-    const records = await getAll(TABLES.TASKS, {
-      filterByFormula: formula,
-      sort: [{ field: 'Due date', direction: 'asc' }],
-    })
-
-    const tasks = records.map(mapTask)
-
-    // Sort nulls last (Airtable puts them first with asc)
+    // Sort by due date (nulls last)
     tasks.sort((a, b) => {
       if (!a.dueDate && !b.dueDate) return 0
       if (!a.dueDate) return 1
@@ -56,7 +68,7 @@ export async function GET(request: Request) {
     })
 
     return NextResponse.json(tasks, {
-      headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=20' },
+      headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=10' },
     })
   } catch (error) {
     console.error('Error fetching tasks:', error)
@@ -72,7 +84,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required field: name' }, { status: 400 })
     }
 
-    const fields: Record<string, any> = {
+    const fields: Record<string, unknown> = {
       'Name': body.name,
     }
     if (body.projetId) fields['Projets'] = [body.projetId]
@@ -81,8 +93,12 @@ export async function POST(request: Request) {
     if (body.type) fields['Type'] = body.type
     if (body.description) fields['Description'] = body.description
 
-    const record = await createRecord(TABLES.TASKS, fields)
-    return NextResponse.json(mapTask(record), { status: 201 })
+    const record = await createRecord(TABLES.TASKS, fields as any)
+
+    // Refresh store in background
+    refreshTable(TABLES.TASKS).catch(() => {})
+
+    return NextResponse.json(mapRecord({ id: record.id, fields: record.fields as Record<string, unknown> }), { status: 201 })
   } catch (error) {
     console.error('Error creating task:', error)
     return NextResponse.json({ error: 'Failed to create task' }, { status: 500 })

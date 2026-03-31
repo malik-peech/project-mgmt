@@ -1,67 +1,48 @@
 import { NextResponse } from 'next/server'
-import { getAll, TABLES } from '@/lib/airtable'
-import { getOrFetch } from '@/lib/cache'
+import { ensureStore, buildLookupMap } from '@/lib/store'
 import type { Projet } from '@/types'
 
 export async function GET(request: Request) {
   try {
+    const store = await ensureStore()
     const { searchParams } = new URL(request.url)
     const pmFilter = searchParams.get('pm')
     const statutFilter = searchParams.get('statut')
 
-    // Fetch clients for name resolution (cached 2 min)
-    const clientMap = await getOrFetch<Map<string, string>>(
-      'clients-map',
-      async () => {
-        const clientRecords = await getAll(TABLES.CLIENTS)
-        const map = new Map<string, string>()
-        for (const r of clientRecords) {
-          map.set(r.id, r.fields['Client'] as string || '')
-        }
-        return map
-      },
-      120_000
-    )
+    // Build client name lookup from store
+    const clientMap = buildLookupMap(store.clients, 'Client')
 
-    // Build filter formula
+    // Filter statuts
     const activeStatuts = statutFilter
       ? [statutFilter]
       : ['En cours', 'Finalisation', 'Stand-by', 'Tentative', 'Intention']
 
-    const statutFormula = activeStatuts.length === 1
-      ? `{Statut} = '${activeStatuts[0]}'`
-      : `OR(${activeStatuts.map(s => `{Statut} = '${s}'`).join(',')})`
+    const projets: Projet[] = []
 
-    let formula = statutFormula
-    if (pmFilter) {
-      formula = `AND(${statutFormula}, {PM (manual)} = '${pmFilter}')`
-    }
-
-    const records = await getAll(TABLES.PROJETS, {
-      filterByFormula: formula,
-      sort: [
-        { field: 'Statut', direction: 'asc' },
-        { field: 'Projet', direction: 'asc' },
-      ],
-    })
-
-    const projets: Projet[] = records.map((r) => {
+    for (const r of store.projets.records) {
       const f = r.fields
+      const statut = f['Statut'] as string | undefined
+      if (!statut || !activeStatuts.includes(statut)) continue
+
+      const pm = f['PM (manual)'] as string | undefined
+      if (pmFilter && pm !== pmFilter) continue
+
       const clientIds = f['Client link'] as string[] | undefined
       const clientId = clientIds?.[0]
-      return {
+
+      projets.push({
         id: r.id,
         ref: f['Project réf'] as string | undefined,
         nom: (f['Projet'] as string) || '',
         clientId,
         clientName: clientId ? clientMap.get(clientId) || '' : '',
         am: f['Account Manager (AM)'] as string | undefined,
-        pm: f['PM (manual)'] as string | undefined,
+        pm,
         da: f['DA'] as string | undefined,
         pc: f['Project Coordinator (PC)'] as string | undefined,
         filmmaker: f['Filmmaker'] as string | undefined,
         phase: f['Phase'] as Projet['phase'],
-        statut: f['Statut'] as Projet['statut'],
+        statut: statut as Projet['statut'],
         typeProjet: f['Type de projet'] as Projet['typeProjet'],
         cogsBudget: f['COGS - budget (€)'] as number | undefined,
         cogsReels: f['COGS - réels (€)'] as number | undefined,
@@ -81,11 +62,19 @@ export async function GET(request: Request) {
         ehr: f['EHR'] as string | undefined,
         taskIds: f['Task'] as string[] | undefined,
         cogsIds: f['Dépenses (COGS)'] as string[] | undefined,
-      }
+      })
+    }
+
+    // Sort by statut then project name
+    projets.sort((a, b) => {
+      const si = activeStatuts.indexOf(a.statut || '')
+      const sj = activeStatuts.indexOf(b.statut || '')
+      if (si !== sj) return si - sj
+      return (a.nom || '').localeCompare(b.nom || '')
     })
 
     return NextResponse.json(projets, {
-      headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=30' },
+      headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=10' },
     })
   } catch (error) {
     console.error('Error fetching projets:', error)
