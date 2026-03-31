@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAll, TABLES } from '@/lib/airtable'
+import { getOrFetch } from '@/lib/cache'
 import type { Projet } from '@/types'
 
 export async function GET(request: Request) {
@@ -8,12 +9,19 @@ export async function GET(request: Request) {
     const pmFilter = searchParams.get('pm')
     const statutFilter = searchParams.get('statut')
 
-    // Fetch clients for name resolution
-    const clientRecords = await getAll(TABLES.CLIENTS)
-    const clientMap = new Map<string, string>()
-    for (const r of clientRecords) {
-      clientMap.set(r.id, r.fields['Client'] as string || '')
-    }
+    // Fetch clients for name resolution (cached 2 min)
+    const clientMap = await getOrFetch<Map<string, string>>(
+      'clients-map',
+      async () => {
+        const clientRecords = await getAll(TABLES.CLIENTS)
+        const map = new Map<string, string>()
+        for (const r of clientRecords) {
+          map.set(r.id, r.fields['Client'] as string || '')
+        }
+        return map
+      },
+      120_000
+    )
 
     // Build filter formula
     const activeStatuts = statutFilter
@@ -76,7 +84,9 @@ export async function GET(request: Request) {
       }
     })
 
-    return NextResponse.json(projets)
+    return NextResponse.json(projets, {
+      headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=30' },
+    })
   } catch (error) {
     console.error('Error fetching projets:', error)
     return NextResponse.json({ error: 'Failed to fetch projets' }, { status: 500 })

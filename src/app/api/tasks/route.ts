@@ -55,7 +55,9 @@ export async function GET(request: Request) {
       return a.dueDate.localeCompare(b.dueDate)
     })
 
-    return NextResponse.json(tasks)
+    return NextResponse.json(tasks, {
+      headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=20' },
+    })
   } catch (error) {
     console.error('Error fetching tasks:', error)
     return NextResponse.json({ error: 'Failed to fetch tasks' }, { status: 500 })

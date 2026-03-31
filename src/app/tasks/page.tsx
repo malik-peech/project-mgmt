@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { Plus, X, CheckCircle2, Circle, CalendarDays, Loader2, Copy, Trash2 } from 'lucide-react'
 import ContextMenu from '@/components/ContextMenu'
+import { useData } from '@/hooks/useData'
 import type { Task, TaskPriority, TaskType, Projet } from '@/types'
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -58,13 +59,9 @@ function getInitials(name?: string): string {
 
 export default function TasksPage() {
   const { data: session } = useSession()
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [doneTasks, setDoneTasks] = useState<Task[]>([])
-  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'todo' | 'done'>('todo')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [showModal, setShowModal] = useState(false)
-  const [projets, setProjets] = useState<Projet[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null)
 
@@ -80,50 +77,42 @@ export default function TasksPage() {
 
   const userName = (session?.user as any)?.name || ''
   const userRole = (session?.user as any)?.role || 'PM'
+  const pmParam = userRole === 'Admin' ? '' : `pm=${encodeURIComponent(userName)}`
+  const ready = !!session?.user?.name
 
+  const { data: tasks, mutate: mutateTasks, revalidate: revalidateTasks, loading: loadingTodo } = useData<Task[]>(
+    ready ? `/api/tasks?${pmParam}` : null,
+    { key: `tasks-todo-${pmParam}`, enabled: ready }
+  )
+
+  const { data: doneTasks, mutate: mutateDone, revalidate: revalidateDone, loading: loadingDone } = useData<Task[]>(
+    ready ? `/api/tasks?done=true&${pmParam}` : null,
+    { key: `tasks-done-${pmParam}`, enabled: ready }
+  )
+
+  const { data: projets } = useData<Projet[]>(
+    ready ? '/api/projets' : null,
+    { key: 'projets-all', enabled: ready, staleTime: 60_000 }
+  )
+
+  const loading = loadingTodo || loadingDone
   const fetchTasks = useCallback(async () => {
-    setLoading(true)
-    try {
-      const pmParam = userRole === 'Admin' ? '' : `pm=${encodeURIComponent(userName)}`
-      const [todoRes, doneRes] = await Promise.all([
-        fetch(`/api/tasks?${pmParam}`),
-        fetch(`/api/tasks?done=true&${pmParam}`),
-      ])
-      const todoData = await todoRes.json()
-      const doneData = await doneRes.json()
-      setTasks(Array.isArray(todoData) ? todoData : [])
-      setDoneTasks(Array.isArray(doneData) ? doneData : [])
-    } catch (err) {
-      console.error('Failed to fetch tasks', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [userName, userRole])
+    await Promise.all([revalidateTasks(), revalidateDone()])
+  }, [revalidateTasks, revalidateDone])
 
-  const fetchProjets = useCallback(async () => {
-    try {
-      const res = await fetch('/api/projets')
-      const data = await res.json()
-      setProjets(Array.isArray(data) ? data : [])
-    } catch (err) {
-      console.error('Failed to fetch projets', err)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (session) {
-      fetchTasks()
-      fetchProjets()
-    }
-  }, [session, fetchTasks, fetchProjets])
+  const todoList = tasks ?? []
+  const doneList = doneTasks ?? []
+  const projetList = projets ?? []
 
   const deleteTask = async (task: Task) => {
+    // Optimistic
+    mutateTasks(prev => (prev ?? []).filter(t => t.id !== task.id))
+    mutateDone(prev => (prev ?? []).filter(t => t.id !== task.id))
     try {
       await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
-      setTasks(prev => prev.filter(t => t.id !== task.id))
-      setDoneTasks(prev => prev.filter(t => t.id !== task.id))
     } catch (err) {
       console.error('Failed to delete task', err)
+      fetchTasks()
     }
   }
 
@@ -142,7 +131,7 @@ export default function TasksPage() {
       })
       if (res.ok) {
         const newTask = await res.json()
-        setTasks(prev => [newTask, ...prev])
+        mutateTasks(prev => [newTask, ...(prev ?? [])])
       }
     } catch (err) {
       console.error('Failed to duplicate task', err)
@@ -151,22 +140,23 @@ export default function TasksPage() {
 
   const toggleDone = async (task: Task) => {
     const newDone = !task.done
+    // Optimistic update
+    if (newDone) {
+      mutateTasks(prev => (prev ?? []).filter(t => t.id !== task.id))
+      mutateDone(prev => [{ ...task, done: true }, ...(prev ?? [])])
+    } else {
+      mutateDone(prev => (prev ?? []).filter(t => t.id !== task.id))
+      mutateTasks(prev => [{ ...task, done: false }, ...(prev ?? [])])
+    }
     try {
       await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ done: newDone }),
       })
-      // Optimistic update
-      if (newDone) {
-        setTasks((prev) => prev.filter((t) => t.id !== task.id))
-        setDoneTasks((prev) => [{ ...task, done: true }, ...prev])
-      } else {
-        setDoneTasks((prev) => prev.filter((t) => t.id !== task.id))
-        setTasks((prev) => [{ ...task, done: false }, ...prev])
-      }
     } catch (err) {
       console.error('Failed to toggle task', err)
+      fetchTasks()
     }
   }
 
@@ -199,7 +189,7 @@ export default function TasksPage() {
     }
   }
 
-  const displayedTasks = activeTab === 'todo' ? tasks : doneTasks
+  const displayedTasks = activeTab === 'todo' ? todoList : doneList
   const filteredTasks =
     typeFilter === 'all'
       ? displayedTasks
@@ -207,7 +197,7 @@ export default function TasksPage() {
 
   // Collect unique types from all tasks for filter
   const allTypes = Array.from(
-    new Set([...tasks, ...doneTasks].map((t) => t.type).filter(Boolean))
+    new Set([...todoList, ...doneList].map((t) => t.type).filter(Boolean))
   ) as string[]
 
   return (
@@ -217,7 +207,7 @@ export default function TasksPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {tasks.length} tache{tasks.length !== 1 ? 's' : ''} en cours
+            {todoList.length} tache{todoList.length !== 1 ? 's' : ''} en cours
           </p>
         </div>
         <button
@@ -240,7 +230,7 @@ export default function TasksPage() {
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            A faire ({tasks.length})
+            A faire ({todoList.length})
           </button>
           <button
             onClick={() => setActiveTab('done')}
@@ -250,7 +240,7 @@ export default function TasksPage() {
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            Termin\u00e9es ({doneTasks.length})
+            Termin\u00e9es ({doneList.length})
           </button>
         </div>
         {allTypes.length > 0 && (
@@ -413,7 +403,7 @@ export default function TasksPage() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                 >
                   <option value="">-- S\u00e9lectionner un projet --</option>
-                  {projets.map((p) => (
+                  {projetList.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.nom} {p.clientName ? `(${p.clientName})` : ''}
                     </option>

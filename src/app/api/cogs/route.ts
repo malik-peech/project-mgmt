@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAll, createRecord, TABLES } from '@/lib/airtable'
+import { getOrFetch } from '@/lib/cache'
 import type { Cogs } from '@/types'
 
 export async function GET(request: Request) {
@@ -9,12 +10,19 @@ export async function GET(request: Request) {
     const statutFilter = searchParams.get('statut')
     const projetId = searchParams.get('projetId')
 
-    // Fetch resources for name resolution
-    const resRecords = await getAll(TABLES.RESSOURCES)
-    const resMap = new Map<string, string>()
-    for (const r of resRecords) {
-      resMap.set(r.id, (r.fields['Name'] as string) || '')
-    }
+    // Fetch resources for name resolution (cached 2 min)
+    const resMap = await getOrFetch<Map<string, string>>(
+      'ressources-map',
+      async () => {
+        const resRecords = await getAll(TABLES.RESSOURCES)
+        const map = new Map<string, string>()
+        for (const r of resRecords) {
+          map.set(r.id, (r.fields['Name'] as string) || '')
+        }
+        return map
+      },
+      120_000
+    )
 
     let formula = ''
     const conditions: string[] = []
@@ -65,7 +73,9 @@ export async function GET(request: Request) {
       }
     })
 
-    return NextResponse.json(cogs)
+    return NextResponse.json(cogs, {
+      headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=30' },
+    })
   } catch (error) {
     console.error('Error fetching COGS:', error)
     return NextResponse.json({ error: 'Failed to fetch COGS' }, { status: 500 })

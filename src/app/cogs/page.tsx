@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
+import { useData } from '@/hooks/useData'
 import {
   Plus,
   X,
@@ -50,14 +51,10 @@ const fmt = (n?: number) =>
 
 export default function CogsPage() {
   const { data: session } = useSession()
-  const [cogs, setCogs] = useState<Cogs[]>([])
-  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('Tous')
   const [showModal, setShowModal] = useState(false)
 
   // Modal state
-  const [projets, setProjets] = useState<Projet[]>([])
-  const [ressources, setRessources] = useState<Ressource[]>([])
   const [formProjetId, setFormProjetId] = useState('')
   const [formRessourceId, setFormRessourceId] = useState('')
   const [formMontant, setFormMontant] = useState('')
@@ -66,12 +63,38 @@ export default function CogsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; cog: Cogs } | null>(null)
 
+  const userName = session?.user?.name || ''
+  const userRole = (session?.user as { role?: string })?.role || 'PM'
+  const pmParam = userRole !== 'Admin' && userName ? `pm=${encodeURIComponent(userName)}` : ''
+  const ready = !!session?.user?.name
+
+  const { data: cogs, mutate: mutateCogs, revalidate: revalidateCogs, loading } = useData<Cogs[]>(
+    ready ? `/api/cogs?${pmParam}` : null,
+    { key: `cogs-${pmParam}`, enabled: ready }
+  )
+
+  const { data: projets } = useData<Projet[]>(
+    showModal ? '/api/projets' : null,
+    { key: 'projets-all', enabled: showModal, staleTime: 60_000 }
+  )
+
+  const { data: ressources } = useData<Ressource[]>(
+    showModal ? '/api/ressources' : null,
+    { key: 'ressources-all', enabled: showModal, staleTime: 60_000 }
+  )
+
+  const cogsList = cogs ?? []
+  const projetList = projets ?? []
+  const ressourceList = ressources ?? []
+
   const deleteCog = async (cog: Cogs) => {
+    // Optimistic
+    mutateCogs(prev => (prev ?? []).filter(c => c.id !== cog.id))
     try {
       await fetch(`/api/cogs/${cog.id}`, { method: 'DELETE' })
-      setCogs(prev => prev.filter(c => c.id !== cog.id))
     } catch (err) {
       console.error('Failed to delete cog', err)
+      revalidateCogs()
     }
   }
 
@@ -87,82 +110,48 @@ export default function CogsPage() {
           commentaire: cog.commentaire ? `${cog.commentaire} (copie)` : '(copie)',
         }),
       })
-      if (res.ok) fetchCogs()
+      if (res.ok) revalidateCogs()
     } catch (err) {
       console.error('Failed to duplicate cog', err)
     }
   }
 
-  const fetchCogs = () => {
-    if (!session?.user?.name) return
-    const role = (session.user as { role?: string }).role
-    const params = new URLSearchParams()
-    if (role !== 'Admin') {
-      params.set('pm', session.user.name)
-    }
-    fetch(`/api/cogs?${params}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setCogs(data)
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    fetchCogs()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session])
-
-  // Fetch projets and ressources when modal opens
-  useEffect(() => {
-    if (!showModal) return
-    fetch('/api/projets')
-      .then((r) => r.json())
-      .then(setProjets)
-      .catch(() => {})
-    fetch('/api/ressources')
-      .then((r) => r.json())
-      .then(setRessources)
-      .catch(() => {})
-  }, [showModal])
-
   const filtered = useMemo(() => {
-    if (activeTab === 'Tous') return cogs
-    return cogs.filter((c) => c.statut === activeTab)
-  }, [cogs, activeTab])
+    if (activeTab === 'Tous') return cogsList
+    return cogsList.filter((c) => c.statut === activeTab)
+  }, [cogsList, activeTab])
 
   const totalEngage = useMemo(
-    () => cogs.reduce((sum, c) => sum + (c.montantEngageProd || 0), 0),
-    [cogs]
+    () => cogsList.reduce((sum, c) => sum + (c.montantEngageProd || 0), 0),
+    [cogsList]
   )
 
   const totalAPayer = useMemo(
     () =>
-      cogs
+      cogsList
         .filter((c) => c.statut === 'A payer')
         .reduce((sum, c) => sum + (c.montantTTC || c.montantEngageProd || 0), 0),
-    [cogs]
+    [cogsList]
   )
 
   const totalPaye = useMemo(
     () =>
-      cogs
+      cogsList
         .filter((c) => c.statut === 'Payée')
         .reduce((sum, c) => sum + (c.montantTTC || c.montantEngageProd || 0), 0),
-    [cogs]
+    [cogsList]
   )
 
   const filteredRessources = useMemo(() => {
-    if (!ressourceSearch) return ressources
+    if (!ressourceSearch) return ressourceList
     const q = ressourceSearch.toLowerCase()
-    return ressources.filter(
+    return ressourceList.filter(
       (r) =>
         r.name.toLowerCase().includes(q) ||
         r.email?.toLowerCase().includes(q) ||
         r.categorie?.some((c) => c.toLowerCase().includes(q))
     )
-  }, [ressources, ressourceSearch])
+  }, [ressourceList, ressourceSearch])
 
   const handleSubmit = async () => {
     if (!formProjetId || !formRessourceId || !formMontant) return
@@ -181,7 +170,7 @@ export default function CogsPage() {
       if (res.ok) {
         setShowModal(false)
         resetForm()
-        fetchCogs()
+        revalidateCogs()
       }
     } catch {
       // silent
@@ -221,7 +210,7 @@ export default function CogsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">COGS</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {cogs.length} d&eacute;pense{cogs.length !== 1 ? 's' : ''}
+            {cogsList.length} d&eacute;pense{cogsList.length !== 1 ? 's' : ''}
           </p>
         </div>
         <button
@@ -285,7 +274,7 @@ export default function CogsPage() {
             {tab}
             {tab !== 'Tous' && (
               <span className="ml-1.5 text-xs opacity-75">
-                {cogs.filter((c) => c.statut === tab).length}
+                {cogsList.filter((c) => c.statut === tab).length}
               </span>
             )}
           </button>
@@ -449,7 +438,7 @@ export default function CogsPage() {
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 >
                   <option value="">S&eacute;lectionner un projet</option>
-                  {projets.map((p) => (
+                  {projetList.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.clientName ? `${p.clientName} - ` : ''}
                       {p.nom}

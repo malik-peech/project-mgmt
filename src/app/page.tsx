@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { AlertTriangle, Calendar, TrendingUp, X, ChevronRight } from 'lucide-react'
+import { useData } from '@/hooks/useData'
 import type { Projet, StatutProjet } from '@/types'
 
 const phaseColors: Record<string, string> = {
@@ -77,31 +78,24 @@ function formatDate(dateStr?: string) {
 
 export default function DashboardPage() {
   const { data: session } = useSession()
-  const [projets, setProjets] = useState<Projet[]>([])
-  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<StatutProjet | 'Tous'>('Tous')
   const [selectedProjet, setSelectedProjet] = useState<Projet | null>(null)
 
-  useEffect(() => {
-    if (!session?.user?.name) return
-    const role = (session.user as { role?: string }).role
-    const params = new URLSearchParams()
-    if (role !== 'Admin') {
-      params.set('pm', session.user.name)
-    }
-    fetch(`/api/projets?${params}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setProjets(data)
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
-  }, [session])
+  const userName = session?.user?.name || ''
+  const userRole = (session?.user as { role?: string })?.role || 'PM'
+  const pmParam = userRole !== 'Admin' && userName ? `pm=${encodeURIComponent(userName)}` : ''
+
+  const { data: projets, loading } = useData<Projet[]>(
+    session?.user?.name ? `/api/projets?${pmParam}` : null,
+    { key: `projets-${pmParam}`, enabled: !!session?.user?.name }
+  )
+
+  const allProjets = projets ?? []
 
   const filtered = useMemo(() => {
-    if (activeTab === 'Tous') return projets
-    return projets.filter((p) => p.statut === activeTab)
-  }, [projets, activeTab])
+    if (activeTab === 'Tous') return allProjets
+    return allProjets.filter((p) => p.statut === activeTab)
+  }, [allProjets, activeTab])
 
   // When tab changes, keep panel open only if selected project is still in filtered list
   useEffect(() => {
@@ -147,7 +141,7 @@ export default function DashboardPage() {
           {/* Tabs */}
           <div className="flex gap-2 mb-5 overflow-x-auto">
             {statutTabs.map((tab) => {
-              const count = tab === 'Tous' ? projets.length : projets.filter((p) => p.statut === tab).length
+              const count = tab === 'Tous' ? allProjets.length : allProjets.filter((p) => p.statut === tab).length
               return (
                 <button
                   key={tab}
