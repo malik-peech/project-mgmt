@@ -236,6 +236,10 @@ export default function TasksPage() {
 
   const toggleDone = async (task: Task) => {
     const newDone = !task.done
+    // Capture remaining todo tasks for this project BEFORE mutating state
+    const otherTodoTasks = newDone && task.projetId
+      ? (tasks ?? []).filter((t) => t.projetId === task.projetId && t.id !== task.id && !t.done)
+      : []
     if (newDone) {
       mutateTasks(prev => (prev ?? []).filter(t => t.id !== task.id))
       mutateDone(prev => [{ ...task, done: true }, ...(prev ?? [])])
@@ -249,14 +253,8 @@ export default function TasksPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ done: newDone }),
       })
-      if (newDone && task.projetId) {
-        // Only show popup if no other todo tasks remain for this project
-        const remainingTasks = (tasks ?? []).filter(
-          (t) => t.projetId === task.projetId && t.id !== task.id && !t.done
-        )
-        if (remainingTasks.length === 0) {
-          setShowForceTask({ projetId: task.projetId, projetName: task.projetName, clientName: task.clientName, projetRef: task.projetRef })
-        }
+      if (newDone && task.projetId && otherTodoTasks.length === 0) {
+        setShowForceTask({ projetId: task.projetId, projetName: task.projetName, clientName: task.clientName, projetRef: task.projetRef })
       }
     } catch { fetchTasks() }
   }
