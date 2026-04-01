@@ -20,6 +20,7 @@ import {
   Bug,
   Lightbulb,
   MessageCircle,
+  FileText,
 } from 'lucide-react'
 
 const navItems = [
@@ -153,6 +154,14 @@ export default function Sidebar() {
             <p className="text-white text-sm font-medium truncate">{session.user.name}</p>
             <p className="text-indigo-300 text-xs">{userRole}</p>
           </div>
+          <Link
+            href="/changelog"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center gap-2 px-3 py-2 text-indigo-300 hover:text-white text-sm w-full rounded-lg hover:bg-indigo-800 transition"
+          >
+            <FileText className="w-4 h-4" />
+            Changelog
+          </Link>
           <button
             onClick={() => setShowFeedback(true)}
             className="flex items-center gap-2 px-3 py-2 text-indigo-300 hover:text-white text-sm w-full rounded-lg hover:bg-indigo-800 transition"
