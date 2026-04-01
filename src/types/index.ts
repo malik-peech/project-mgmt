@@ -17,6 +17,7 @@ export interface Projet {
   clientName?: string
   clientId?: string
   agence?: string
+  bu?: string
   am?: string
   pm?: string
   da?: string

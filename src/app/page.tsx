@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Search, Calendar, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, AlertTriangle, TrendingUp, Plus, FileText, Loader2, CheckCircle2, Circle } from 'lucide-react'
+import { Search, Calendar, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, AlertTriangle, TrendingUp, Plus, FileText, Loader2, CheckCircle2, Circle, Clock } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useData } from '@/hooks/useData'
 import ForceNewTaskModal from '@/components/ForceNewTaskModal'
 import FileViewer from '@/components/FileViewer'
 import ComboSelect from '@/components/ComboSelect'
+import DatePicker from '@/components/DatePicker'
 import type { Projet, StatutProjet, Cogs, Task } from '@/types'
 
 const phaseColors: Record<string, string> = {
@@ -71,7 +73,7 @@ function formatDate(dateStr?: string) {
   return new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
-type SortField = 'ref' | 'clientName' | 'nom' | 'agence' | 'phase' | 'statut' | 'nextTask' | 'nextTaskDate'
+type SortField = 'ref' | 'clientName' | 'nom' | 'agence' | 'bu' | 'phase' | 'statut' | 'nextTask' | 'nextTaskDate'
 type SortDir = 'asc' | 'desc'
 
 export default function DashboardPage() {
@@ -80,6 +82,7 @@ export default function DashboardPage() {
   const [selectedProjet, setSelectedProjet] = useState<Projet | null>(null)
   const [search, setSearch] = useState('')
   const [agenceFilter, setAgenceFilter] = useState<string>('')
+  const [noTaskFilter, setNoTaskFilter] = useState(false)
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
@@ -118,7 +121,18 @@ export default function DashboardPage() {
   const pmOptions = useMemo(() => (allUsers ?? []).filter((u) => u.role === 'PM').map((u) => u.name), [allUsers])
   const daOptions = useMemo(() => (allUsers ?? []).filter((u) => u.role === 'DA').map((u) => u.name), [allUsers])
 
+  const router = useRouter()
   const allProjets = projets ?? []
+
+  // KPI indicators
+  const projetsWithoutTasks = useMemo(() =>
+    allProjets.filter((p) => p.statut === 'En cours' && !p.nextTask),
+    [allProjets]
+  )
+  const overdueTaskCount = useMemo(() =>
+    allProjets.filter((p) => isOverdue(p.nextTaskDate)).length,
+    [allProjets]
+  )
 
   // Extract unique agences for filter
   const agences = useMemo(() => {
@@ -131,6 +145,7 @@ export default function DashboardPage() {
     let list = allProjets
     if (activeTab !== 'Tous') list = list.filter((p) => p.statut === activeTab)
     if (agenceFilter) list = list.filter((p) => p.agence === agenceFilter)
+    if (noTaskFilter) list = list.filter((p) => p.statut === 'En cours' && !p.nextTask)
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(
@@ -150,6 +165,7 @@ export default function DashboardPage() {
           case 'clientName': va = a.clientName; vb = b.clientName; break
           case 'nom': va = a.nom; vb = b.nom; break
           case 'agence': va = a.agence; vb = b.agence; break
+          case 'bu': va = a.bu; vb = b.bu; break
           case 'phase': va = a.phase; vb = b.phase; break
           case 'statut': va = a.statut; vb = b.statut; break
           case 'nextTask': va = a.nextTask; vb = b.nextTask; break
@@ -276,6 +292,28 @@ export default function DashboardPage() {
             })}
           </div>
 
+          {/* Indicators */}
+          <div className="flex gap-3 mb-5">
+            <button
+              onClick={() => setNoTaskFilter(!noTaskFilter)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition ${
+                noTaskFilter
+                  ? 'bg-amber-50 border-amber-300 text-amber-700 ring-2 ring-amber-200'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-amber-300 hover:bg-amber-50'
+              }`}
+            >
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <span>{projetsWithoutTasks.length} projet{projetsWithoutTasks.length !== 1 ? 's' : ''} sans task</span>
+            </button>
+            <button
+              onClick={() => router.push('/tasks?filter=overdue')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:border-orange-300 hover:bg-orange-50 transition"
+            >
+              <Clock className="w-4 h-4 text-orange-500" />
+              <span>{overdueTaskCount} task{overdueTaskCount !== 1 ? 's' : ''} en retard</span>
+            </button>
+          </div>
+
           {/* List */}
           {filtered.length === 0 ? (
             <div className="text-center py-20 text-gray-400">
@@ -285,12 +323,15 @@ export default function DashboardPage() {
           ) : (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               {/* Header */}
-              <div className="hidden md:grid grid-cols-[0.5fr_0.5fr_1fr_1.2fr_0.6fr_0.6fr_1.3fr_0.5fr_28px] gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+              <div className="hidden md:grid grid-cols-[0.5fr_0.4fr_0.4fr_0.9fr_1.1fr_0.5fr_0.5fr_1.2fr_0.5fr_28px] gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
                 <button onClick={() => handleSort('ref')} className="text-left hover:text-gray-700 transition">
                   Code<SortIcon field="ref" />
                 </button>
                 <button onClick={() => handleSort('agence')} className="text-left hover:text-gray-700 transition">
                   Agence<SortIcon field="agence" />
+                </button>
+                <button onClick={() => handleSort('bu')} className="text-left hover:text-gray-700 transition">
+                  BU<SortIcon field="bu" />
                 </button>
                 <button onClick={() => handleSort('clientName')} className="text-left hover:text-gray-700 transition">
                   Client<SortIcon field="clientName" />
@@ -322,7 +363,7 @@ export default function DashboardPage() {
                     <button
                       key={projet.id}
                       onClick={() => setSelectedProjet(isActive ? null : projet)}
-                      className={`w-full text-left grid grid-cols-1 md:grid-cols-[0.5fr_0.5fr_1fr_1.2fr_0.6fr_0.6fr_1.3fr_0.5fr_28px] gap-x-3 gap-y-1 px-4 py-2.5 transition-colors duration-150 group cursor-pointer ${
+                      className={`w-full text-left grid grid-cols-1 md:grid-cols-[0.5fr_0.4fr_0.4fr_0.9fr_1.1fr_0.5fr_0.5fr_1.2fr_0.5fr_28px] gap-x-3 gap-y-1 px-4 py-2.5 transition-colors duration-150 group cursor-pointer ${
                         isActive
                           ? 'bg-indigo-50 border-l-2 border-l-indigo-500'
                           : 'hover:bg-gray-50 border-l-2 border-l-transparent'
@@ -341,6 +382,13 @@ export default function DashboardPage() {
                           <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full leading-tight ${agenceColors[projet.agence] || 'bg-gray-100 text-gray-600'}`}>
                             {projet.agence}
                           </span>
+                        ) : <span className="text-xs text-gray-300">—</span>}
+                      </div>
+
+                      {/* BU */}
+                      <div className="flex items-center min-w-0">
+                        {projet.bu ? (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 truncate">{projet.bu}</span>
                         ) : <span className="text-xs text-gray-300">—</span>}
                       </div>
 
@@ -788,12 +836,15 @@ function SidePanel({
             }}
             className="flex-1 text-sm border-none outline-none bg-transparent placeholder:text-gray-300"
           />
-          <input
-            type="date"
-            value={inlineTaskDate}
-            onChange={(e) => setInlineTaskDate(e.target.value)}
-            className="text-xs text-gray-400 border-none outline-none bg-transparent w-28"
-          />
+          <div className="w-32 shrink-0">
+            <DatePicker
+              value={inlineTaskDate}
+              onChange={setInlineTaskDate}
+              placeholder="Date"
+              clearable
+              size="sm"
+            />
+          </div>
           {inlineTaskName.trim() && (
             <button
               onClick={createInlineTask}

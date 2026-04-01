@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { Plus, X, CheckCircle2, Circle, Loader2, Copy, Trash2, RefreshCw, AlertTriangle, Search } from 'lucide-react'
 import ContextMenu from '@/components/ContextMenu'
@@ -89,6 +89,13 @@ export default function TasksPage() {
   const [activeTab, setActiveTab] = useState<'todo' | 'done'>('todo')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState('all')
+
+  // Apply URL filter param on mount (e.g. /tasks?filter=overdue)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const f = params.get('filter')
+    if (f === 'overdue') setDateFilter('overdue')
+  }, [])
   const [projetFilter, setProjetFilter] = useState('')
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -492,12 +499,15 @@ export default function TasksPage() {
               onKeyDown={(e) => { if (e.key === 'Enter' && inlineName.trim()) createInlineTask() }}
               className="flex-1 text-sm border-none outline-none bg-transparent placeholder:text-gray-300"
             />
-            <input
-              type="date"
-              value={inlineDate}
-              onChange={(e) => setInlineDate(e.target.value)}
-              className="text-xs text-gray-400 border-none outline-none bg-transparent w-28"
-            />
+            <div className="w-32 shrink-0">
+              <DatePicker
+                value={inlineDate}
+                onChange={setInlineDate}
+                placeholder="Date"
+                clearable
+                size="sm"
+              />
+            </div>
             {inlineName.trim() && (
               <button
                 onClick={createInlineTask}
