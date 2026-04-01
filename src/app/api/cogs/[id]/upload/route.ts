@@ -74,7 +74,19 @@ export async function POST(
       newAttachments.push({ url: publicUrl, filename: file.name })
     }
 
-    // Step 3: PATCH the record — Airtable will download from our URLs
+    // Step 3: Wait a moment for the files to be ready to serve
+    await new Promise((r) => setTimeout(r, 500))
+
+    // Step 4: PATCH the record — Airtable will download new files from our URLs
+    // IMPORTANT: Existing attachments must be referenced by their Airtable `id` to
+    // preserve them. Using `url` would re-download expired Airtable URLs = corruption.
+    const patchAttachments = [
+      ...existingAttachments
+        .filter((a) => a.id)
+        .map((a) => ({ id: a.id })),
+      ...newAttachments,
+    ]
+
     const updateRes = await fetch(
       `https://api.airtable.com/v0/${BASE_ID}/${COGS_TABLE_ID}/${recordId}`,
       {
@@ -85,12 +97,7 @@ export async function POST(
         },
         body: JSON.stringify({
           fields: {
-            'Facture': [
-              // Keep existing attachments (must reference by url)
-              ...existingAttachments.map((a) => ({ url: a.url })),
-              // Add new ones
-              ...newAttachments,
-            ],
+            'Facture': patchAttachments,
           },
         }),
       }
@@ -102,8 +109,8 @@ export async function POST(
       return NextResponse.json({ error: `Upload failed: ${err}` }, { status: updateRes.status })
     }
 
-    // Refresh store
-    refreshTable(TABLES.COGS).catch(() => {})
+    // Step 5: Refresh store to pick up new attachment data
+    await refreshTable(TABLES.COGS)
 
     return NextResponse.json({ ok: true, count: newAttachments.length })
   } catch (error) {
