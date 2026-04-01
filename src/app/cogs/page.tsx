@@ -104,16 +104,23 @@ function CogsPage() {
   }, [cogs])
 
   // Handle URL params (projetId and cogId from project side panel)
+  const [urlParamsApplied, setUrlParamsApplied] = useState(false)
   useEffect(() => {
+    if (urlParamsApplied || !cogs) return
     const urlProjetId = searchParams.get('projetId')
     const urlCogId = searchParams.get('cogId')
     if (urlProjetId) setProjetFilter(urlProjetId)
-    if (urlCogId && cogs) {
+    if (urlCogId) {
       const cog = cogs.find((c) => c.id === urlCogId)
-      if (cog) openCogPanel(cog)
+      if (cog) {
+        openCogPanel(cog)
+        setUrlParamsApplied(true)
+      }
+    } else if (urlProjetId) {
+      setUrlParamsApplied(true)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cogs])
+  }, [cogs, searchParams])
 
   // Unique projects from COGS for filter
   const cogsProjets = useMemo(() => {
