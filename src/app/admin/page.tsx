@@ -12,12 +12,25 @@ import {
   Check,
   Eye,
   Loader2,
+  MessageSquarePlus,
+  Bug,
+  Lightbulb,
+  MessageCircle,
 } from 'lucide-react'
 
 type UserRole = 'PM' | 'DA' | 'Admin'
 interface User {
   name: string
   role: UserRole
+}
+
+interface FeedbackItem {
+  id: string
+  author: string
+  category: 'bug' | 'feature' | 'feedback'
+  message: string
+  done: boolean
+  createdAt: string
 }
 
 const roleBadge: Record<UserRole, string> = {
@@ -37,6 +50,10 @@ export default function AdminPage() {
 
   // Simulation state
   const [simulatedPm, setSimulatedPm] = useState<string>('')
+
+  // Feedback state
+  const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([])
+  const [feedbackLoading, setFeedbackLoading] = useState(true)
 
   // Edit / create state
   const [editingUser, setEditingUser] = useState<string | null>(null)
@@ -69,6 +86,32 @@ export default function AdminPage() {
   useEffect(() => {
     fetchUsers()
   }, [fetchUsers])
+
+  const fetchFeedback = useCallback(async () => {
+    try {
+      const res = await fetch('/api/feedback')
+      if (res.ok) setFeedbackItems(await res.json())
+    } finally {
+      setFeedbackLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchFeedback()
+  }, [fetchFeedback])
+
+  const toggleFeedbackDone = async (id: string, done: boolean) => {
+    setFeedbackItems((prev) => prev.map((item) => item.id === id ? { ...item, done } : item))
+    try {
+      await fetch('/api/feedback', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, done }),
+      })
+    } catch {
+      fetchFeedback()
+    }
+  }
 
   const handleSimulate = (pmName: string) => {
     if (pmName) {
@@ -340,6 +383,56 @@ export default function AdminPage() {
                 )
               })}
             </div>
+          </div>
+        )}
+      </div>
+      {/* ── Feedback ── */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-8">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-200">
+          <MessageSquarePlus className="w-5 h-5 text-indigo-600" />
+          <h2 className="text-lg font-semibold text-gray-900">Feedback</h2>
+          <span className="text-sm text-gray-400">{feedbackItems.length}</span>
+        </div>
+
+        {feedbackLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+          </div>
+        ) : feedbackItems.length === 0 ? (
+          <p className="text-sm text-gray-400 px-5 py-8 text-center">Aucun feedback pour le moment.</p>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {feedbackItems.map((item) => {
+              const catConfig = {
+                bug: { icon: Bug, label: 'Bug', cls: 'bg-red-50 text-red-700' },
+                feature: { icon: Lightbulb, label: 'Feature', cls: 'bg-amber-50 text-amber-700' },
+                feedback: { icon: MessageCircle, label: 'Feedback', cls: 'bg-indigo-50 text-indigo-700' },
+              }[item.category]
+              const CatIcon = catConfig.icon
+              return (
+                <div key={item.id} className={`flex items-start gap-3 px-5 py-3 ${item.done ? 'opacity-50' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={item.done}
+                    onChange={(e) => toggleFeedbackDone(item.id, e.target.checked)}
+                    className="mt-1 w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-gray-800">{item.author}</span>
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${catConfig.cls}`}>
+                        <CatIcon className="w-3 h-3" />
+                        {catConfig.label}
+                      </span>
+                      <span className="text-[11px] text-gray-400 ml-auto shrink-0">
+                        {new Date(item.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className={`text-sm text-gray-600 ${item.done ? 'line-through' : ''}`}>{item.message}</p>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

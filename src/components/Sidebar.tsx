@@ -15,6 +15,11 @@ import {
   Eye,
   RefreshCw,
   Users,
+  MessageSquarePlus,
+  Loader2,
+  Bug,
+  Lightbulb,
+  MessageCircle,
 } from 'lucide-react'
 
 const navItems = [
@@ -34,6 +39,26 @@ export default function Sidebar() {
   const [simulatedPm, setSimulatedPm] = useState<string>('')
   const [refreshing, setRefreshing] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<string>('')
+  const [showFeedback, setShowFeedback] = useState(false)
+  const [fbCategory, setFbCategory] = useState<'bug' | 'feature' | 'feedback'>('feedback')
+  const [fbMessage, setFbMessage] = useState('')
+  const [fbSending, setFbSending] = useState(false)
+  const [fbSent, setFbSent] = useState(false)
+
+  const submitFeedback = async () => {
+    if (!fbMessage.trim() || !session?.user?.name) return
+    setFbSending(true)
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ author: session.user.name, category: fbCategory, message: fbMessage }),
+      })
+      setFbSent(true)
+      setFbMessage('')
+      setTimeout(() => { setFbSent(false); setShowFeedback(false) }, 1500)
+    } catch {} finally { setFbSending(false) }
+  }
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -125,6 +150,13 @@ export default function Sidebar() {
             <p className="text-indigo-300 text-xs">{userRole}</p>
           </div>
           <button
+            onClick={() => setShowFeedback(true)}
+            className="flex items-center gap-2 px-3 py-2 text-indigo-300 hover:text-white text-sm w-full rounded-lg hover:bg-indigo-800 transition"
+          >
+            <MessageSquarePlus className="w-4 h-4" />
+            Feedback
+          </button>
+          <button
             onClick={handleRefresh}
             disabled={refreshing}
             className="flex items-center gap-2 px-3 py-2 text-indigo-300 hover:text-white text-sm w-full rounded-lg hover:bg-indigo-800 transition disabled:opacity-50"
@@ -177,6 +209,59 @@ export default function Sidebar() {
       <aside className="hidden md:flex w-[250px] shrink-0 flex-col bg-[var(--color-sidebar)] min-h-screen">
         <NavContent />
       </aside>
+
+      {/* Feedback modal */}
+      {showFeedback && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onClick={() => { setShowFeedback(false); setFbSent(false) }}>
+          <div className="bg-white rounded-xl shadow-2xl w-[400px] max-w-[90vw] p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Envoyer un feedback</h3>
+              <button onClick={() => { setShowFeedback(false); setFbSent(false) }} className="p-1 text-gray-400 hover:text-gray-600 rounded">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Category selector */}
+            <div className="flex gap-2 mb-4">
+              <button onClick={() => setFbCategory('bug')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition ${fbCategory === 'bug' ? 'bg-red-50 border-red-300 text-red-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                <Bug className="w-3.5 h-3.5" /> Bug
+              </button>
+              <button onClick={() => setFbCategory('feature')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition ${fbCategory === 'feature' ? 'bg-amber-50 border-amber-300 text-amber-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                <Lightbulb className="w-3.5 h-3.5" /> Feature
+              </button>
+              <button onClick={() => setFbCategory('feedback')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition ${fbCategory === 'feedback' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                <MessageCircle className="w-3.5 h-3.5" /> Feedback
+              </button>
+            </div>
+
+            {/* Message */}
+            <textarea
+              value={fbMessage}
+              onChange={(e) => setFbMessage(e.target.value)}
+              placeholder="Décrivez votre retour..."
+              rows={4}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none mb-4"
+              autoFocus
+            />
+
+            {/* Submit */}
+            {fbSent ? (
+              <div className="text-center text-green-600 text-sm font-medium py-2">
+                Merci pour votre feedback !
+              </div>
+            ) : (
+              <button
+                onClick={submitFeedback}
+                disabled={fbSending || !fbMessage.trim()}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+              >
+                {fbSending && <Loader2 className="w-4 h-4 animate-spin" />}
+                Envoyer
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </>
   )
 }
