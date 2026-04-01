@@ -25,6 +25,9 @@ export async function GET() {
         telephone: f['Téléphone'] as string | undefined,
         description: f['Description'] as string | undefined,
         iban: f['IBAN'] as string | undefined,
+        photo: Array.isArray(f['Photo'])
+          ? (f['Photo'] as { url: string; filename: string }[]).map((a) => ({ url: a.url, filename: a.filename }))
+          : undefined,
       })
     }
 

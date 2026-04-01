@@ -118,6 +118,12 @@ export default function DashboardPage() {
     { key: 'users-list', enabled: !!session?.user?.name }
   )
 
+  // Fetch tasks for accurate overdue count
+  const { data: allTasks } = useData<Task[]>(
+    session?.user?.name ? `/api/tasks?${pmParam}` : null,
+    { key: `tasks-overdue-count-${pmParam}`, enabled: !!session?.user?.name, staleTime: 30_000 }
+  )
+
   const pmOptions = useMemo(() => (allUsers ?? []).filter((u) => u.role === 'PM').map((u) => u.name), [allUsers])
   const daOptions = useMemo(() => (allUsers ?? []).filter((u) => u.role === 'DA').map((u) => u.name), [allUsers])
 
@@ -129,10 +135,15 @@ export default function DashboardPage() {
     allProjets.filter((p) => p.statut === 'En cours' && !p.nextTask),
     [allProjets]
   )
-  const overdueTaskCount = useMemo(() =>
-    allProjets.filter((p) => isOverdue(p.nextTaskDate)).length,
-    [allProjets]
-  )
+  const overdueTaskCount = useMemo(() => {
+    if (!allTasks) return 0
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    return allTasks.filter((t) => {
+      if (!t.dueDate) return false
+      const d = new Date(t.dueDate + 'T00:00:00'); d.setHours(0, 0, 0, 0)
+      return d < today
+    }).length
+  }, [allTasks])
 
   // Extract unique agences for filter
   const agences = useMemo(() => {
@@ -176,7 +187,7 @@ export default function DashboardPage() {
       })
     }
     return list
-  }, [allProjets, activeTab, agenceFilter, search, sortField, sortDir])
+  }, [allProjets, activeTab, agenceFilter, noTaskFilter, search, sortField, sortDir])
 
   useEffect(() => {
     if (selectedProjet && !filtered.find((p) => p.id === selectedProjet.id)) {
@@ -584,7 +595,13 @@ function SidePanel({
         name: inlineTaskName,
         projetId: projet.id,
       }
-      if (inlineTaskDate) body.dueDate = inlineTaskDate
+      // Default to today if no date specified
+      if (inlineTaskDate) {
+        body.dueDate = inlineTaskDate
+      } else {
+        const d = new Date()
+        body.dueDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      }
       await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -809,6 +826,14 @@ function SidePanel({
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-gray-800 truncate">{task.name}</p>
               </div>
+              {(task.assigneManuel || task.assigneeName) && (
+                <span
+                  className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[8px] font-bold shrink-0"
+                  title={task.assigneManuel || task.assigneeName}
+                >
+                  {getInitials(task.assigneManuel || task.assigneeName)}
+                </span>
+              )}
               {task.dueDate && (
                 <span className={`text-[11px] tabular-nums shrink-0 ${
                   isOverdue(task.dueDate) ? 'text-amber-600' : isToday(task.dueDate) ? 'text-orange-500' : 'text-gray-400'
@@ -867,7 +892,7 @@ function SidePanel({
             {cogs.map((c) => (
               <a
                 key={c.id}
-                href={`/cogs?id=${c.id}`}
+                href={`/cogs?projetId=${projet.id}&cogId=${c.id}`}
                 className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition"
               >
                 <div className="flex-1 min-w-0">

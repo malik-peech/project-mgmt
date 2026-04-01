@@ -104,6 +104,8 @@ export interface Cogs {
   createdAt?: string
   okPourPaiement?: boolean
   methodePaiement?: string
+  qualiteNote?: number
+  qualiteComment?: string
 }
 
 // ── Ressources ──
@@ -116,6 +118,7 @@ export interface Ressource {
   telephone?: string
   description?: string
   iban?: string
+  photo?: { url: string; filename: string }[]
 }
 
 // ── User (session) ──

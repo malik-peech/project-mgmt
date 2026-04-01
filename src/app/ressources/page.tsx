@@ -2,23 +2,34 @@
 
 import { useState, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
-import { Search, Users, Mail, Phone, CreditCard, FileText } from 'lucide-react'
+import { Search, Users, Mail, Phone, CreditCard, FileText, ChevronDown, ChevronUp } from 'lucide-react'
 import { useData } from '@/hooks/useData'
 import type { Ressource } from '@/types'
 
+const PRIORITY_CATEGORIES = [
+  'Cadreur', 'Cadreur/Monteur', 'Concepteur-Rédacteur', 'Droniste',
+  'Expert podcast', 'Réalisateur', 'Photographe', 'Preneur de son', 'Motion 3D',
+]
+
 const categoryColors: Record<string, string> = {
-  'Motion design': 'bg-violet-100 text-violet-700',
-  'Montage': 'bg-blue-100 text-blue-700',
-  'Voix off': 'bg-pink-100 text-pink-700',
-  'Illustration': 'bg-orange-100 text-orange-700',
-  'Graphisme': 'bg-amber-100 text-amber-700',
-  'Direction artistique': 'bg-indigo-100 text-indigo-700',
-  'Réalisation': 'bg-teal-100 text-teal-700',
-  'Chef opérateur': 'bg-cyan-100 text-cyan-700',
-  'Son': 'bg-lime-100 text-lime-700',
-  'Traduction': 'bg-emerald-100 text-emerald-700',
-  'Casting': 'bg-rose-100 text-rose-700',
-  'Production': 'bg-sky-100 text-sky-700',
+  'Cadreur': 'bg-sky-100 text-sky-700 ring-sky-200',
+  'Cadreur/Monteur': 'bg-blue-100 text-blue-700 ring-blue-200',
+  'Concepteur-Rédacteur': 'bg-violet-100 text-violet-700 ring-violet-200',
+  'Droniste': 'bg-cyan-100 text-cyan-700 ring-cyan-200',
+  'Expert podcast': 'bg-rose-100 text-rose-700 ring-rose-200',
+  'Réalisateur': 'bg-indigo-100 text-indigo-700 ring-indigo-200',
+  'Photographe': 'bg-amber-100 text-amber-700 ring-amber-200',
+  'Preneur de son': 'bg-lime-100 text-lime-700 ring-lime-200',
+  'Motion 3D': 'bg-purple-100 text-purple-700 ring-purple-200',
+  'Motion design': 'bg-purple-50 text-purple-600',
+  'Montage': 'bg-blue-50 text-blue-600',
+  'Voix off': 'bg-pink-50 text-pink-600',
+  'Illustration': 'bg-orange-50 text-orange-600',
+  'Graphisme': 'bg-amber-50 text-amber-600',
+  'Direction artistique': 'bg-indigo-50 text-indigo-600',
+  'Son': 'bg-lime-50 text-lime-600',
+  'Traduction': 'bg-emerald-50 text-emerald-600',
+  'Production': 'bg-sky-50 text-sky-600',
 }
 
 function getCategoryColor(cat: string): string {
@@ -26,12 +37,7 @@ function getCategoryColor(cat: string): string {
 }
 
 function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
+  return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
 }
 
 export default function RessourcesPage() {
@@ -41,6 +47,7 @@ export default function RessourcesPage() {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [selected, setSelected] = useState<Ressource | null>(null)
+  const [showOtherCategories, setShowOtherCategories] = useState(false)
 
   const { data: ressources, loading } = useData<Ressource[]>(
     ready ? '/api/ressources' : null,
@@ -53,13 +60,17 @@ export default function RessourcesPage() {
     [ressources]
   )
 
-  // All unique categories
-  const allCategories = useMemo(() => {
+  // All unique categories split into priority and other
+  const { priorityCats, otherCats } = useMemo(() => {
     const set = new Set<string>()
     for (const r of list) {
       if (r.categorie) for (const c of r.categorie) set.add(c)
     }
-    return Array.from(set).sort()
+    const all = Array.from(set).sort()
+    return {
+      priorityCats: PRIORITY_CATEGORIES.filter((c) => all.includes(c)),
+      otherCats: all.filter((c) => !PRIORITY_CATEGORIES.includes(c)),
+    }
   }, [list])
 
   const filtered = useMemo(() => {
@@ -78,60 +89,95 @@ export default function RessourcesPage() {
     return result
   }, [list, categoryFilter, search])
 
+  // Count per category
+  const countFor = (cat: string) => list.filter((r) => r.categorie?.includes(cat)).length
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Main */}
       <div className="flex-1 overflow-auto">
-        <div className="p-6 md:p-8">
+        <div className="p-6 md:p-8 max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-5">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Ressources</h1>
-              <p className="text-sm text-gray-500 mt-0.5">{list.length} ressource{list.length !== 1 ? 's' : ''}</p>
+              <p className="text-sm text-gray-500 mt-0.5">{list.length} ressource{list.length !== 1 ? 's' : ''} validées</p>
             </div>
           </div>
 
-          {/* Search + category filters */}
-          <div className="space-y-3 mb-5">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Rechercher une ressource, email, catégorie..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-              />
-            </div>
-            <div className="flex flex-wrap gap-1.5">
+          {/* Search */}
+          <div className="relative mb-5">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Rechercher une ressource, email, catégorie..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            />
+          </div>
+
+          {/* Priority categories */}
+          <div className="mb-4">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setCategoryFilter('')}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
-                  !categoryFilter ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  !categoryFilter ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 }`}
               >
-                Toutes
+                Toutes ({list.length})
               </button>
-              {allCategories.map((cat) => (
+              {priorityCats.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setCategoryFilter(cat === categoryFilter ? '' : cat)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                     categoryFilter === cat
-                      ? `${getCategoryColor(cat)} ring-2 ring-offset-1 ring-indigo-400 shadow-sm`
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      ? `${getCategoryColor(cat)} ring-1 shadow-sm`
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
                   }`}
                 >
-                  {cat}
+                  {cat} ({countFor(cat)})
                 </button>
               ))}
             </div>
+
+            {/* Other categories (collapsible) */}
+            {otherCats.length > 0 && (
+              <div className="mt-2">
+                <button
+                  onClick={() => setShowOtherCategories(!showOtherCategories)}
+                  className="text-[11px] text-gray-400 hover:text-gray-600 flex items-center gap-1 transition"
+                >
+                  {showOtherCategories ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  Autres catégories ({otherCats.length})
+                </button>
+                {showOtherCategories && (
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {otherCats.map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setCategoryFilter(cat === categoryFilter ? '' : cat)}
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition ${
+                          categoryFilter === cat
+                            ? `${getCategoryColor(cat)} ring-1`
+                            : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                        }`}
+                      >
+                        {cat} ({countFor(cat)})
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Grid */}
           {loading && !ressources ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="h-28 bg-gray-100 rounded-xl animate-pulse" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {[...Array(10)].map((_, i) => (
+                <div key={i} className="h-44 bg-gray-100 rounded-xl animate-pulse" />
               ))}
             </div>
           ) : filtered.length === 0 ? (
@@ -140,36 +186,45 @@ export default function RessourcesPage() {
               <p className="text-lg">Aucune ressource</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {filtered.map((r) => (
                 <button
                   key={r.id}
                   onClick={() => setSelected(selected?.id === r.id ? null : r)}
-                  className={`text-left p-4 rounded-xl border transition-all hover:shadow-md ${
+                  className={`text-left rounded-xl border overflow-hidden transition-all hover:shadow-lg group ${
                     selected?.id === r.id
-                      ? 'border-indigo-300 bg-indigo-50 shadow-sm'
+                      ? 'border-indigo-300 ring-2 ring-indigo-200 shadow-md'
                       : 'border-gray-100 bg-white hover:border-gray-200'
                   }`}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold shrink-0">
-                      {getInitials(r.name)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-gray-900 truncate">{r.name}</p>
-                      {r.email && (
-                        <p className="text-xs text-gray-500 truncate mt-0.5">{r.email}</p>
-                      )}
-                      {r.categorie && r.categorie.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {r.categorie.map((c) => (
-                            <span key={c} className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${getCategoryColor(c)}`}>
-                              {c}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                  {/* Photo or initials */}
+                  <div className="aspect-[4/3] bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center overflow-hidden">
+                    {r.photo && r.photo.length > 0 ? (
+                      <img
+                        src={r.photo[0].url}
+                        alt={r.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <span className="text-3xl font-bold text-gray-300">
+                        {getInitials(r.name)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <p className="font-semibold text-gray-900 text-sm truncate">{r.name}</p>
+                    {r.categorie && r.categorie.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {r.categorie.slice(0, 2).map((c) => (
+                          <span key={c} className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full ${getCategoryColor(c)}`}>
+                            {c}
+                          </span>
+                        ))}
+                        {r.categorie.length > 2 && (
+                          <span className="text-[9px] text-gray-400">+{r.categorie.length - 2}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </button>
               ))}
@@ -191,49 +246,44 @@ export default function RessourcesPage() {
                 ✕
               </button>
 
-              <div className="flex items-center gap-4 mb-6 pr-8">
-                <div className="w-14 h-14 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xl font-bold shrink-0">
+              {/* Photo header */}
+              {selected.photo && selected.photo.length > 0 ? (
+                <div className="w-full aspect-[4/3] rounded-xl overflow-hidden mb-4 -mx-0">
+                  <img src={selected.photo[0].url} alt={selected.name} className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-2xl font-bold mx-auto mb-4">
                   {getInitials(selected.name)}
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900">{selected.name}</h2>
-                  {selected.statut && (
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full mt-1 inline-block ${
-                      selected.statut === 'Actif' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                    }`}>
-                      {selected.statut}
-                    </span>
-                  )}
-                </div>
+              )}
+
+              <div className="text-center mb-4 pr-0">
+                <h2 className="text-xl font-bold text-gray-900">{selected.name}</h2>
               </div>
 
               {selected.categorie && selected.categorie.length > 0 && (
-                <div className="mb-4">
-                  <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Catégories</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selected.categorie.map((c) => (
-                      <span key={c} className={`text-xs font-medium px-2.5 py-1 rounded-full ${getCategoryColor(c)}`}>
-                        {c}
-                      </span>
-                    ))}
-                  </div>
+                <div className="flex flex-wrap gap-1.5 justify-center mb-5">
+                  {selected.categorie.map((c) => (
+                    <span key={c} className={`text-xs font-medium px-2.5 py-1 rounded-full ${getCategoryColor(c)}`}>
+                      {c}
+                    </span>
+                  ))}
                 </div>
               )}
 
               {selected.description && (
-                <div className="mb-4">
-                  <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Description</p>
-                  <div className="flex items-start gap-2 text-sm text-gray-700">
-                    <FileText className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
-                    <p className="whitespace-pre-wrap">{selected.description}</p>
-                  </div>
+                <div className="mb-5 bg-gray-50 rounded-xl p-3">
+                  <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Description</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{selected.description}</p>
                 </div>
               )}
 
               <div className="space-y-3">
                 {selected.email && (
                   <div className="flex items-center gap-3 text-sm">
-                    <Mail className="w-4 h-4 text-gray-400 shrink-0" />
+                    <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                      <Mail className="w-4 h-4 text-blue-500" />
+                    </div>
                     <a href={`mailto:${selected.email}`} className="text-indigo-600 hover:underline truncate">
                       {selected.email}
                     </a>
@@ -241,7 +291,9 @@ export default function RessourcesPage() {
                 )}
                 {selected.telephone && (
                   <div className="flex items-center gap-3 text-sm">
-                    <Phone className="w-4 h-4 text-gray-400 shrink-0" />
+                    <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
+                      <Phone className="w-4 h-4 text-green-500" />
+                    </div>
                     <a href={`tel:${selected.telephone}`} className="text-gray-700 hover:text-indigo-600">
                       {selected.telephone}
                     </a>
@@ -249,8 +301,10 @@ export default function RessourcesPage() {
                 )}
                 {selected.iban && (
                   <div className="flex items-start gap-3 text-sm">
-                    <CreditCard className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
-                    <span className="font-mono text-gray-700 break-all">{selected.iban}</span>
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+                      <CreditCard className="w-4 h-4 text-amber-500" />
+                    </div>
+                    <span className="font-mono text-gray-700 break-all text-xs pt-1.5">{selected.iban}</span>
                   </div>
                 )}
               </div>

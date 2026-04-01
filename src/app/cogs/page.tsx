@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { useData } from '@/hooks/useData'
 import {
@@ -26,7 +27,7 @@ const statutColors: Record<string, string> = {
   'Stand-by': 'bg-gray-100 text-gray-800',
 }
 
-const statutTabs: string[] = ['Tous', 'A Approuver (CDP)', 'Engagée', 'A payer', 'Payée']
+const statutTabs: string[] = ['Tous', 'A Approuver (CDP)', 'Engagée', 'À compléter', 'A payer', 'Payée']
 
 const fmt = (n?: number) =>
   n != null
@@ -45,6 +46,7 @@ export default function CogsPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [ressourceFilter, setRessourceFilter] = useState('')
   const [categorieFilter, setCategorieFilter] = useState('')
+  const searchParams = useSearchParams()
 
   // Modal state
   const [formProjetId, setFormProjetId] = useState('')
@@ -89,6 +91,18 @@ export default function CogsPage() {
     if (selectedCog && cogs) {
       const updated = cogs.find((c) => c.id === selectedCog.id)
       if (updated) setSelectedCog(updated)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cogs])
+
+  // Handle URL params (projetId and cogId from project side panel)
+  useEffect(() => {
+    const urlProjetId = searchParams.get('projetId')
+    const urlCogId = searchParams.get('cogId')
+    if (urlProjetId) setProjetFilter(urlProjetId)
+    if (urlCogId && cogs) {
+      const cog = cogs.find((c) => c.id === urlCogId)
+      if (cog) openCogPanel(cog)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cogs])
@@ -246,7 +260,16 @@ export default function CogsPage() {
 
   const filtered = useMemo(() => {
     let list = cogsList
-    if (activeTab !== 'Tous') list = list.filter((c) => c.statut === activeTab)
+    if (activeTab === 'À compléter') {
+      // "A payer" COGS that are missing required fields
+      list = list.filter((c) => {
+        if (c.statut !== 'A payer') return false
+        const missing = !c.numeroFacture || c.qualiteNote == null || !c.qualiteComment || !c.methodePaiement || c.tva == null || !c.facture || c.facture.length === 0
+        return missing
+      })
+    } else if (activeTab !== 'Tous') {
+      list = list.filter((c) => c.statut === activeTab)
+    }
     if (projetFilter) list = list.filter((c) => c.projetId === projetFilter)
     if (ressourceFilter) list = list.filter((c) => c.ressourceName === ressourceFilter)
     if (categorieFilter) list = list.filter((c) => c.categorie === categorieFilter)
@@ -398,12 +421,21 @@ export default function CogsPage() {
                     key={tab}
                     onClick={() => setActiveTab(tab)}
                     className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition ${
-                      activeTab === tab ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      activeTab === tab
+                        ? tab === 'À compléter' ? 'bg-amber-500 text-white' : 'bg-indigo-600 text-white'
+                        : tab === 'À compléter' && cogsList.filter((c) => c.statut === 'A payer' && (!c.numeroFacture || c.qualiteNote == null || !c.qualiteComment || !c.methodePaiement || c.tva == null || !c.facture || c.facture.length === 0)).length > 0
+                          ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
                     {tab}
                     {tab !== 'Tous' && (
-                      <span className="ml-1 opacity-75">{cogsList.filter((c) => c.statut === tab).length}</span>
+                      <span className="ml-1 opacity-75">
+                        {tab === 'À compléter'
+                          ? cogsList.filter((c) => c.statut === 'A payer' && (!c.numeroFacture || c.qualiteNote == null || !c.qualiteComment || !c.methodePaiement || c.tva == null || !c.facture || c.facture.length === 0)).length
+                          : cogsList.filter((c) => c.statut === tab).length
+                        }
+                      </span>
                     )}
                   </button>
                 ))}
@@ -754,12 +786,6 @@ function CogSidePanel({
                   <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantBudgeteSales)}</p>
                 </div>
               )}
-              {cog.tva != null && (
-                <div>
-                  <p className="text-[10px] text-gray-400 mb-0.5">TVA</p>
-                  <p className="text-sm font-semibold text-gray-800">{cog.tva}%</p>
-                </div>
-              )}
             </div>
           </div>
 
@@ -781,12 +807,26 @@ function CogSidePanel({
               <span className="text-gray-500">BDC envoyé</span>
               <span>{cog.bdcEnvoye ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">Non</span>}</span>
             </div>
-            {cog.methodePaiement && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Méthode paiement</span>
+              <span className="text-gray-700">{cog.methodePaiement || <span className="text-amber-500 text-xs">Non renseigné</span>}</span>
+            </div>
+            {cog.qualiteNote != null && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Méthode paiement</span>
-                <span className="text-gray-700">{cog.methodePaiement}</span>
+                <span className="text-gray-500">Qualité (note)</span>
+                <span className="font-medium text-gray-700">{cog.qualiteNote}/5</span>
               </div>
             )}
+            {cog.qualiteComment && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Qualité</span>
+                <span className="text-gray-700 text-right max-w-[200px]">{cog.qualiteComment}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">TVA</span>
+              <span className="text-gray-700">{cog.tva != null ? `${cog.tva}%` : <span className="text-amber-500 text-xs">Non renseigné</span>}</span>
+            </div>
             {cog.createdAt && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Créé le</span>

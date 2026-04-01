@@ -338,7 +338,13 @@ export default function TasksPage() {
     try {
       const body: Record<string, string> = { name: inlineName }
       if (projetId) body.projetId = projetId
-      if (inlineDate) body.dueDate = inlineDate
+      // Default to today if no date specified
+      if (inlineDate) {
+        body.dueDate = inlineDate
+      } else {
+        const d = new Date()
+        body.dueDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      }
       if (inlineType) body.type = inlineType
       if (inlinePriority) body.priority = inlinePriority
       const res = await fetch('/api/tasks', {
@@ -426,7 +432,19 @@ export default function TasksPage() {
 
   // Calendar-specific filtered tasks (no date filter, applies type/project/search/scope)
   const calendarFilteredTasks = useMemo(() => {
-    let list: Task[] = scopedTodo
+    let list: Task[]
+    if (activeTab === 'done') {
+      list = scopedDone
+    } else if (activeTab === 'todo' && dateFilter === 'overdue') {
+      const today = new Date(); today.setHours(0, 0, 0, 0)
+      list = scopedTodo.filter((t) => {
+        if (!t.dueDate) return false
+        const d = new Date(t.dueDate + 'T00:00:00'); d.setHours(0, 0, 0, 0)
+        return d < today
+      })
+    } else {
+      list = scopedTodo
+    }
     if (typeFilter !== 'all') list = list.filter((t) => t.type === typeFilter)
     if (projetFilter) list = list.filter((t) => t.projetId === projetFilter)
     if (search.trim()) {
@@ -439,7 +457,7 @@ export default function TasksPage() {
       )
     }
     return list
-  }, [scopedTodo, typeFilter, projetFilter, search])
+  }, [scopedTodo, scopedDone, activeTab, dateFilter, typeFilter, projetFilter, search])
 
   return (
     <div className="p-6 md:p-8 max-w-5xl mx-auto">

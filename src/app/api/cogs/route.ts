@@ -67,6 +67,8 @@ function mapRecord(
     pm: str((f['PM'] as unknown[])?.[0]),
     okPourPaiement: !!f['OK pour paiement'],
     methodePaiement: str(f['Méthode de paiement']),
+    qualiteNote: num(f['Qualité (note)']),
+    qualiteComment: str(f['Qualité (comment)']),
     createdAt: str(f['Date de création']),
   }
 }
