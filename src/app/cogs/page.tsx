@@ -213,6 +213,28 @@ export default function CogsPage() {
     }
   }
 
+  const deleteAttachment = async (cogId: string, attachmentIndex: number) => {
+    const cog = cogsList.find((c) => c.id === cogId)
+    if (!cog?.facture) return
+    const remaining = cog.facture.filter((_, i) => i !== attachmentIndex)
+    // Optimistic update
+    mutateCogs((prev) =>
+      (prev ?? []).map((c) => c.id === cogId ? { ...c, facture: remaining.length > 0 ? remaining : undefined } : c)
+    )
+    try {
+      // PATCH Airtable: send remaining attachment ids to keep
+      await fetch(`/api/cogs/${cogId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ removeAttachmentIndex: attachmentIndex }),
+      })
+      await fetch('/api/admin/refresh', { method: 'POST' })
+      await revalidateCogs()
+    } catch {
+      revalidateCogs()
+    }
+  }
+
   const toggleSort = (field: typeof sortField) => {
     if (sortField === field) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -443,24 +465,22 @@ export default function CogsPage() {
                         { key: 'categorie', label: 'Catégorie', align: 'left' },
                         { key: 'montantBudgeteSales', label: 'HT sales', align: 'right' },
                         { key: 'montantEngageProd', label: 'HT engagé', align: 'right' },
-                        { key: null as unknown as string, label: 'BDC', align: 'center' },
                         { key: 'statut', label: 'Statut', align: 'center' },
-                        { key: null as unknown as string, label: '', align: 'center' },
-                      ].map(({ key, label, align }, idx) => (
+                      ].map(({ key, label, align }) => (
                         <th
-                          key={idx}
-                          className={`px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider ${key ? 'cursor-pointer select-none hover:text-gray-700' : ''} transition ${
+                          key={key}
+                          className={`px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 transition ${
                             align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
                           }`}
-                          onClick={() => key && toggleSort(key as typeof sortField)}
+                          onClick={() => toggleSort(key as typeof sortField)}
                         >
                           <span className="inline-flex items-center gap-1">
                             {label}
-                            {key && sortField === key ? (
+                            {sortField === key ? (
                               sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                            ) : key ? (
+                            ) : (
                               <ArrowUpDown className="w-3 h-3 opacity-30" />
-                            ) : null}
+                            )}
                           </span>
                         </th>
                       ))}
@@ -480,7 +500,11 @@ export default function CogsPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
                             {c.projetRef && <span className="text-xs font-mono text-gray-500">{c.projetRef}</span>}
-                            {c.numeroCommande && <span className="text-xs font-mono text-gray-400 bg-gray-50 px-1 rounded">{c.numeroCommande}</span>}
+                            {c.numeroCommande && (
+                              <span className="text-xs font-mono font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                {c.numeroCommande}
+                              </span>
+                            )}
                             {!c.projetRef && !c.numeroCommande && <span className="text-xs text-gray-400">—</span>}
                           </div>
                           <div className="text-sm text-gray-900 truncate max-w-[200px]">{c.projetName || '—'}</div>
@@ -506,31 +530,11 @@ export default function CogsPage() {
                         <td className="px-4 py-3 text-right font-medium text-gray-500 tabular-nums">{fmt(c.montantBudgeteSales)}</td>
                         <td className="px-4 py-3 text-right font-medium text-gray-900 tabular-nums">{fmt(c.montantEngageProd)}</td>
                         <td className="px-4 py-3 text-center">
-                          {c.bdcEnvoye ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                              <Check className="w-3 h-3" /> Oui
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                              Non
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center">
                           {c.statut ? (
                             <span className={`inline-block text-[11px] font-medium px-2.5 py-0.5 rounded-full ${statutColors[c.statut] || 'bg-gray-100 text-gray-600'}`}>
                               {c.statut}
                             </span>
                           ) : '—'}
-                        </td>
-                        <td className="px-2 py-3 text-center">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); deleteCog(c) }}
-                            className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition opacity-0 group-hover:opacity-100"
-                            title="Supprimer"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
                         </td>
                       </tr>
                     ))}
@@ -542,15 +546,20 @@ export default function CogsPage() {
         </div>
       </div>
 
-      {/* Panel backdrop */}
+      {/* Mobile backdrop */}
       {selectedCog && (
-        <div className="fixed inset-0 bg-black/30 z-30" onClick={() => setSelectedCog(null)} />
+        <div className="fixed inset-0 bg-black/30 z-30 md:hidden" onClick={() => setSelectedCog(null)} />
       )}
 
-      {/* Side panel — centered overlay */}
-      {selectedCog && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 pointer-events-none">
-          <div className="relative bg-white rounded-2xl shadow-2xl overflow-y-auto pointer-events-auto w-full max-w-2xl max-h-[90vh]">
+      {/* Side panel */}
+      <div
+        className={`fixed md:relative right-0 top-0 h-full z-40 md:z-0 bg-white border-l border-gray-200 shadow-xl md:shadow-none overflow-y-auto transition-all duration-300 ease-in-out ${
+          selectedCog
+            ? 'w-full md:w-[420px] translate-x-0 opacity-100'
+            : 'w-0 md:w-0 translate-x-full md:translate-x-full opacity-0'
+        }`}
+      >
+        {selectedCog && (
           <CogSidePanel
             cog={selectedCog}
             onClose={() => setSelectedCog(null)}
@@ -562,11 +571,10 @@ export default function CogsPage() {
             saving={savingCog}
             onUpload={handleUpload}
             uploading={uploadingCog}
-            onDelete={() => deleteCog(selectedCog)}
+            onDeleteAttachment={deleteAttachment}
           />
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Context Menu */}
       {contextMenu && (
@@ -662,7 +670,7 @@ function CogSidePanel({
   saving,
   onUpload,
   uploading,
-  onDelete,
+  onDeleteAttachment,
 }: {
   cog: Cogs
   onClose: () => void
@@ -674,7 +682,7 @@ function CogSidePanel({
   saving: boolean
   onUpload: (files: File[]) => Promise<void>
   uploading: boolean
-  onDelete: () => void
+  onDeleteAttachment: (cogId: string, index: number) => void
 }) {
   const [viewer, setViewer] = useState<{ url: string; filename: string } | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -708,14 +716,9 @@ function CogSidePanel({
   return (
     <>
       <div className="p-6">
-        <div className="absolute top-4 right-4 flex items-center gap-1">
-          <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition" title="Supprimer">
-            <Trash2 className="w-4 h-4" />
-          </button>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+        <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
+          <X className="w-5 h-5" />
+        </button>
 
         {/* Header */}
         <div className="pr-8 mb-5">
@@ -769,9 +772,9 @@ function CogSidePanel({
               </div>
             )}
             {cog.numeroCommande && (
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between items-center text-sm">
                 <span className="text-gray-500">N° commande</span>
-                <span className="font-mono text-gray-700">{cog.numeroCommande}</span>
+                <span className="font-mono font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">{cog.numeroCommande}</span>
               </div>
             )}
             <div className="flex justify-between text-sm">
@@ -799,16 +802,25 @@ function CogSidePanel({
             {cog.facture && cog.facture.length > 0 && (
               <div className="space-y-1 mb-2">
                 {cog.facture.map((f, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setViewer({ url: f.url, filename: f.filename })}
-                    className="w-full flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-200 transition group text-left"
-                  >
-                    <FileText className="w-4 h-4 text-gray-400 group-hover:text-indigo-500 shrink-0" />
-                    <span className="text-sm text-gray-700 group-hover:text-indigo-700 truncate flex-1">{f.filename}</span>
-                    <Upload className="w-3 h-3 text-gray-300 group-hover:text-indigo-400 shrink-0 rotate-180" />
-                  </button>
+                  <div key={i} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setViewer({ url: f.url, filename: f.filename })}
+                      className="flex-1 flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-200 transition group text-left"
+                    >
+                      <FileText className="w-4 h-4 text-gray-400 group-hover:text-indigo-500 shrink-0" />
+                      <span className="text-sm text-gray-700 group-hover:text-indigo-700 truncate flex-1">{f.filename}</span>
+                      <Upload className="w-3 h-3 text-gray-300 group-hover:text-indigo-400 shrink-0 rotate-180" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteAttachment(cog.id, i)}
+                      className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition shrink-0"
+                      title="Supprimer ce fichier"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}

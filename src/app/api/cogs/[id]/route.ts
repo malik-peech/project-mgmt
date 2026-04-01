@@ -18,6 +18,24 @@ export async function PATCH(
     if (body.numeroFacture !== undefined) fields['Numéro de facture'] = body.numeroFacture
     if (body.okPourPaiement !== undefined) fields['OK pour paiement'] = body.okPourPaiement
 
+    // Handle attachment deletion: remove one attachment by index
+    if (body.removeAttachmentIndex !== undefined) {
+      const apiKey = process.env.AIRTABLE_API_KEY
+      const baseId = process.env.AIRTABLE_BASE_ID || 'appYFl5MvR7VeL0uB'
+      const tableId = 'tblnrqX6xNx5EWFsC'
+      // Fetch current record to get attachment ids
+      const getRes = await fetch(
+        `https://api.airtable.com/v0/${baseId}/${tableId}/${id}`,
+        { headers: { Authorization: `Bearer ${apiKey}` } }
+      )
+      if (getRes.ok) {
+        const rec = await getRes.json()
+        const existing = (rec.fields?.['Facture'] as { id: string }[]) || []
+        const remaining = existing.filter((_: unknown, i: number) => i !== body.removeAttachmentIndex)
+        fields['Facture'] = remaining.map((a: { id: string }) => ({ id: a.id }))
+      }
+    }
+
     const record = await updateRecord(TABLES.COGS, id, fields as any)
 
     // Refresh store in background
