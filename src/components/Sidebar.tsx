@@ -49,15 +49,19 @@ export default function Sidebar() {
     if (!fbMessage.trim() || !session?.user?.name) return
     setFbSending(true)
     try {
-      await fetch('/api/feedback', {
+      const res = await fetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ author: session.user.name, category: fbCategory, message: fbMessage }),
       })
-      setFbSent(true)
-      setFbMessage('')
-      setTimeout(() => { setFbSent(false); setShowFeedback(false) }, 1500)
-    } catch {} finally { setFbSending(false) }
+      if (res.ok) {
+        setFbSent(true)
+        setFbMessage('')
+        setTimeout(() => { setFbSent(false); setShowFeedback(false) }, 1500)
+      } else {
+        console.error('Feedback POST failed:', res.status, await res.text())
+      }
+    } catch (err) { console.error('Feedback error:', err) } finally { setFbSending(false) }
   }
 
   const handleRefresh = async () => {
