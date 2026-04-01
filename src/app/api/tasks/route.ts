@@ -13,15 +13,27 @@ function str(val: unknown): string | undefined {
   return String(val)
 }
 
-function mapRecord(r: { id: string; fields: Record<string, unknown> }, refMap?: Map<string, string>): Task {
+function mapRecord(
+  r: { id: string; fields: Record<string, unknown> },
+  refMap?: Map<string, string>,
+  clientMap?: Map<string, string>,
+  projetsById?: Map<string, { id: string; fields: Record<string, unknown> }>
+): Task {
   const f = r.fields
   const assignee = f['Assignee'] as { id?: string; email?: string; name?: string } | undefined
   const projetId = (f['Projets'] as string[])?.[0]
+
+  // Resolve client name via the linked project's Client link field
+  const projetRecord = projetId && projetsById ? projetsById.get(projetId) : undefined
+  const clientIds = projetRecord?.fields['Client link'] as string[] | undefined
+  const clientId = clientIds?.[0]
+  const clientName = clientId && clientMap ? clientMap.get(clientId) : undefined
+
   return {
     id: r.id,
     name: str(f['Name']) || '',
     done: !!f['Done'],
-    clientName: str((f['Client'] as unknown[])?.[0]),
+    clientName,
     priority: str(f['Priority']) as Task['priority'],
     projetId,
     projetName: str((f['Projet'] as unknown[])?.[0]),
@@ -48,8 +60,9 @@ export async function GET(request: Request) {
 
     const wantDone = doneFilter === 'true'
 
-    // Build project ref lookup
+    // Build lookup maps
     const refMap = buildLookupMap(store.projets, 'Project réf')
+    const clientMap = buildLookupMap(store.clients, 'Client')
 
     const tasks: Task[] = []
 
@@ -80,7 +93,7 @@ export async function GET(request: Request) {
         if (!projets || !projets.includes(projetId)) continue
       }
 
-      tasks.push(mapRecord(r, refMap))
+      tasks.push(mapRecord(r, refMap, clientMap, store.projets.byId))
     }
 
     // Sort by due date (nulls last)
@@ -123,7 +136,7 @@ export async function POST(request: Request) {
     // Refresh store in background
     refreshTable(TABLES.TASKS).catch(() => {})
 
-    return NextResponse.json(sanitize(mapRecord({ id: record.id, fields: record.fields as Record<string, unknown> })), { status: 201 })
+    return NextResponse.json(sanitize(mapRecord({ id: record.id, fields: record.fields as Record<string, unknown> }, undefined, undefined, undefined)), { status: 201 })
   } catch (error) {
     console.error('Error creating task:', error)
     return NextResponse.json({ error: 'Failed to create task' }, { status: 500 })

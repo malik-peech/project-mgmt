@@ -26,12 +26,21 @@ function mapRecord(
   r: { id: string; fields: Record<string, unknown> },
   resMap: Map<string, string>,
   projetNameMap: Map<string, string>,
-  projetRefMap: Map<string, string>
+  projetRefMap: Map<string, string>,
+  clientMap?: Map<string, string>,
+  projetsById?: Map<string, { id: string; fields: Record<string, unknown> }>
 ): Cogs {
   const f = r.fields
   const ressourceIds = f['Ressource'] as string[] | undefined
   const ressourceId = ressourceIds?.[0]
   const projetId = (f['Projet'] as string[])?.[0]
+
+  // Resolve client name via the linked project's Client link field
+  const projetRecord = projetId && projetsById ? projetsById.get(projetId) : undefined
+  const clientIds = projetRecord?.fields['Client link'] as string[] | undefined
+  const clientId = clientIds?.[0]
+  const clientName = clientId && clientMap ? clientMap.get(clientId) : undefined
+
   return {
     id: r.id,
     numeroCommande: str(f['Numéro de commande']),
@@ -39,7 +48,7 @@ function mapRecord(
     projetId,
     projetName: projetId ? projetNameMap.get(projetId) || '' : '',
     projetRef: projetId ? projetRefMap.get(projetId) || '' : '',
-    clientName: str((f['Client'] as unknown[])?.[0]),
+    clientName,
     categorie: str((f['Catégorie'] as unknown[])?.[0]),
     ressourceId,
     ressourceName: ressourceId ? resMap.get(ressourceId) || '' : '',
@@ -74,6 +83,7 @@ export async function GET(request: Request) {
     const resMap = buildLookupMap(store.ressources, 'Name')
     const projetNameMap = buildLookupMap(store.projets, 'Projet')
     const projetRefMap = buildLookupMap(store.projets, 'Project réf')
+    const clientMap = buildLookupMap(store.clients, 'Client')
 
     const cogs: Cogs[] = []
 
@@ -98,7 +108,7 @@ export async function GET(request: Request) {
         if (!projets || !projets.includes(projetId)) continue
       }
 
-      cogs.push(mapRecord(r, resMap, projetNameMap, projetRefMap))
+      cogs.push(mapRecord(r, resMap, projetNameMap, projetRefMap, clientMap, store.projets.byId))
     }
 
     // Sort by creation date desc
