@@ -44,6 +44,7 @@ export default function CogsPage() {
   const [sortField, setSortField] = useState<'projetRef' | 'ressourceName' | 'categorie' | 'montantBudgeteSales' | 'montantEngageProd' | 'statut' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [ressourceFilter, setRessourceFilter] = useState('')
+  const [categorieFilter, setCategorieFilter] = useState('')
 
   // Modal state
   const [formProjetId, setFormProjetId] = useState('')
@@ -111,6 +112,25 @@ export default function CogsPage() {
     })),
     [cogsProjets]
   )
+
+  // Unique ressource names for filter
+  const cogsRessources = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of cogsList) if (c.ressourceName) set.add(c.ressourceName)
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [cogsList])
+
+  const cogsRessourceOptions = useMemo(() =>
+    cogsRessources.map((r) => ({ value: r, label: r })),
+    [cogsRessources]
+  )
+
+  // Unique categories for filter
+  const cogsCategories = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of cogsList) if (c.categorie) set.add(c.categorie)
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [cogsList])
 
   const projetComboOptions = useMemo(() =>
     projetList.map((p) => ({
@@ -207,6 +227,7 @@ export default function CogsPage() {
     if (activeTab !== 'Tous') list = list.filter((c) => c.statut === activeTab)
     if (projetFilter) list = list.filter((c) => c.projetId === projetFilter)
     if (ressourceFilter) list = list.filter((c) => c.ressourceName === ressourceFilter)
+    if (categorieFilter) list = list.filter((c) => c.categorie === categorieFilter)
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter((c) =>
@@ -232,7 +253,7 @@ export default function CogsPage() {
       })
     }
     return list
-  }, [cogsList, activeTab, projetFilter, ressourceFilter, search, sortField, sortDir])
+  }, [cogsList, activeTab, projetFilter, ressourceFilter, categorieFilter, search, sortField, sortDir])
 
   const filteredRessources = useMemo(() => {
     if (!ressourceSearch) return ressourceList
@@ -314,12 +335,24 @@ export default function CogsPage() {
               <h1 className="text-2xl font-bold text-gray-900">COGS</h1>
               <p className="text-sm text-gray-500 mt-0.5">{cogsList.length} dépense{cogsList.length !== 1 ? 's' : ''}</p>
             </div>
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
-            >
-              <Plus className="w-4 h-4" /> Nouvelle dépense
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  await fetch('/api/admin/refresh', { method: 'POST' })
+                  await revalidateCogs()
+                }}
+                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                title="Synchroniser avec Airtable"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
+              >
+                <Plus className="w-4 h-4" /> Nouvelle dépense
+              </button>
+            </div>
           </div>
 
           {/* Search + Filters */}
@@ -355,7 +388,7 @@ export default function CogsPage() {
               </div>
 
               {/* Project filter */}
-              <div className="w-52">
+              <div className="w-48">
                 <ComboSelect
                   options={cogsProjetOptions}
                   value={projetFilter}
@@ -366,16 +399,29 @@ export default function CogsPage() {
                 />
               </div>
 
-              {/* Ressource filter indicator */}
-              {ressourceFilter && (
-                <button
-                  onClick={() => setRessourceFilter('')}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium hover:bg-indigo-200 transition"
-                >
-                  {ressourceFilter}
-                  <X className="w-3 h-3" />
-                </button>
-              )}
+              {/* Ressource filter */}
+              <div className="w-44">
+                <ComboSelect
+                  options={cogsRessourceOptions}
+                  value={ressourceFilter}
+                  onChange={setRessourceFilter}
+                  placeholder="Ressource"
+                  clearable
+                  size="sm"
+                />
+              </div>
+
+              {/* Catégorie filter */}
+              <div className="w-44">
+                <ComboSelect
+                  options={cogsCategories.map((c) => ({ value: c, label: c }))}
+                  value={categorieFilter}
+                  onChange={setCategorieFilter}
+                  placeholder="Catégorie"
+                  clearable
+                  size="sm"
+                />
+              </div>
             </div>
           </div>
 
@@ -397,22 +443,24 @@ export default function CogsPage() {
                         { key: 'categorie', label: 'Catégorie', align: 'left' },
                         { key: 'montantBudgeteSales', label: 'HT sales', align: 'right' },
                         { key: 'montantEngageProd', label: 'HT engagé', align: 'right' },
+                        { key: null as unknown as string, label: 'BDC', align: 'center' },
                         { key: 'statut', label: 'Statut', align: 'center' },
-                      ].map(({ key, label, align }) => (
+                        { key: null as unknown as string, label: '', align: 'center' },
+                      ].map(({ key, label, align }, idx) => (
                         <th
-                          key={key}
-                          className={`px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 transition ${
+                          key={idx}
+                          className={`px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider ${key ? 'cursor-pointer select-none hover:text-gray-700' : ''} transition ${
                             align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
                           }`}
-                          onClick={() => toggleSort(key as typeof sortField)}
+                          onClick={() => key && toggleSort(key as typeof sortField)}
                         >
                           <span className="inline-flex items-center gap-1">
                             {label}
-                            {sortField === key ? (
+                            {key && sortField === key ? (
                               sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                            ) : (
+                            ) : key ? (
                               <ArrowUpDown className="w-3 h-3 opacity-30" />
-                            )}
+                            ) : null}
                           </span>
                         </th>
                       ))}
@@ -422,7 +470,7 @@ export default function CogsPage() {
                     {filtered.map((c) => (
                       <tr
                         key={c.id}
-                        className={`hover:bg-gray-50/50 transition cursor-pointer ${selectedCog?.id === c.id ? 'bg-indigo-50' : ''}`}
+                        className={`group hover:bg-gray-50/50 transition cursor-pointer ${selectedCog?.id === c.id ? 'bg-indigo-50' : ''}`}
                         onClick={() => openCogPanel(c)}
                         onContextMenu={(e) => {
                           e.preventDefault()
@@ -458,11 +506,31 @@ export default function CogsPage() {
                         <td className="px-4 py-3 text-right font-medium text-gray-500 tabular-nums">{fmt(c.montantBudgeteSales)}</td>
                         <td className="px-4 py-3 text-right font-medium text-gray-900 tabular-nums">{fmt(c.montantEngageProd)}</td>
                         <td className="px-4 py-3 text-center">
+                          {c.bdcEnvoye ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                              <Check className="w-3 h-3" /> Oui
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                              Non
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
                           {c.statut ? (
                             <span className={`inline-block text-[11px] font-medium px-2.5 py-0.5 rounded-full ${statutColors[c.statut] || 'bg-gray-100 text-gray-600'}`}>
                               {c.statut}
                             </span>
                           ) : '—'}
+                        </td>
+                        <td className="px-2 py-3 text-center">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteCog(c) }}
+                            className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition opacity-0 group-hover:opacity-100"
+                            title="Supprimer"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -474,20 +542,15 @@ export default function CogsPage() {
         </div>
       </div>
 
-      {/* Mobile backdrop */}
+      {/* Panel backdrop */}
       {selectedCog && (
-        <div className="fixed inset-0 bg-black/30 z-30 md:hidden" onClick={() => setSelectedCog(null)} />
+        <div className="fixed inset-0 bg-black/30 z-30" onClick={() => setSelectedCog(null)} />
       )}
 
-      {/* Side panel */}
-      <div
-        className={`fixed md:relative right-0 top-0 h-full z-40 md:z-0 bg-white border-l border-gray-200 shadow-xl md:shadow-none overflow-y-auto transition-all duration-300 ease-in-out ${
-          selectedCog
-            ? 'w-full md:w-[420px] translate-x-0 opacity-100'
-            : 'w-0 md:w-0 translate-x-full md:translate-x-full opacity-0'
-        }`}
-      >
-        {selectedCog && (
+      {/* Side panel — centered overlay */}
+      {selectedCog && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 pointer-events-none">
+          <div className="relative bg-white rounded-2xl shadow-2xl overflow-y-auto pointer-events-auto w-full max-w-2xl max-h-[90vh]">
           <CogSidePanel
             cog={selectedCog}
             onClose={() => setSelectedCog(null)}
@@ -499,9 +562,11 @@ export default function CogsPage() {
             saving={savingCog}
             onUpload={handleUpload}
             uploading={uploadingCog}
+            onDelete={() => deleteCog(selectedCog)}
           />
-        )}
-      </div>
+          </div>
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (
@@ -597,6 +662,7 @@ function CogSidePanel({
   saving,
   onUpload,
   uploading,
+  onDelete,
 }: {
   cog: Cogs
   onClose: () => void
@@ -608,6 +674,7 @@ function CogSidePanel({
   saving: boolean
   onUpload: (files: File[]) => Promise<void>
   uploading: boolean
+  onDelete: () => void
 }) {
   const [viewer, setViewer] = useState<{ url: string; filename: string } | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -640,10 +707,15 @@ function CogSidePanel({
 
   return (
     <>
-      <div className="p-6 min-w-[320px]">
-        <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
-          <X className="w-5 h-5" />
-        </button>
+      <div className="p-6">
+        <div className="absolute top-4 right-4 flex items-center gap-1">
+          <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition" title="Supprimer">
+            <Trash2 className="w-4 h-4" />
+          </button>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
         {/* Header */}
         <div className="pr-8 mb-5">

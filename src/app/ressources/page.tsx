@@ -47,7 +47,11 @@ export default function RessourcesPage() {
     { key: 'ressources-all', enabled: ready, staleTime: 60_000 }
   )
 
-  const list = ressources ?? []
+  // Filter only "Validé" resources
+  const list = useMemo(() =>
+    (ressources ?? []).filter((r) => r.statut === 'Validé'),
+    [ressources]
+  )
 
   // All unique categories
   const allCategories = useMemo(() => {
@@ -112,7 +116,9 @@ export default function RessourcesPage() {
                   key={cat}
                   onClick={() => setCategoryFilter(cat === categoryFilter ? '' : cat)}
                   className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
-                    categoryFilter === cat ? getCategoryColor(cat) : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    categoryFilter === cat
+                      ? `${getCategoryColor(cat)} ring-2 ring-offset-1 ring-indigo-400 shadow-sm`
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                   }`}
                 >
                   {cat}
