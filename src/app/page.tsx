@@ -466,7 +466,7 @@ function SidePanel({
   pmOptions: string[]
   daOptions: string[]
 }) {
-  const [showForceTask, setShowForceTask] = useState<{ projetId: string; projetName: string } | null>(null)
+  const [showForceTask, setShowForceTask] = useState<{ projetId: string; projetName: string; projetRef?: string; clientName?: string } | null>(null)
   const [inlineTaskName, setInlineTaskName] = useState('')
   const [inlineTaskDate, setInlineTaskDate] = useState('')
   const [viewer, setViewer] = useState<{ url: string; filename: string } | null>(null)
@@ -516,9 +516,12 @@ function SidePanel({
       revalidateProjectTasks()
       onTasksChanged()
 
-      // If marking as done, show force new task modal
+      // If marking as done, only show popup if no other open tasks remain for this project
       if (!task.done) {
-        setShowForceTask({ projetId: projet.id, projetName: projet.nom })
+        const remainingOpen = openTasks.filter((t) => t.id !== task.id)
+        if (remainingOpen.length === 0) {
+          setShowForceTask({ projetId: projet.id, projetName: projet.nom, projetRef: projet.ref, clientName: projet.clientName })
+        }
       }
     } catch {
       // silent
@@ -839,6 +842,8 @@ function SidePanel({
         <ForceNewTaskModal
           projetId={showForceTask.projetId}
           projetName={showForceTask.projetName}
+          projetRef={showForceTask.projetRef}
+          clientName={showForceTask.clientName}
           onClose={() => setShowForceTask(null)}
           onCreated={() => {
             setShowForceTask(null)

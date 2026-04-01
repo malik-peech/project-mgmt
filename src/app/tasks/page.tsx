@@ -99,7 +99,7 @@ export default function TasksPage() {
   const [editingAssignee, setEditingAssignee] = useState<string | null>(null)
   const [editingName, setEditingName] = useState<string | null>(null)
   const [editingNameValue, setEditingNameValue] = useState('')
-  const [showForceTask, setShowForceTask] = useState<{ projetId?: string; projetName?: string; clientName?: string } | null>(null)
+  const [showForceTask, setShowForceTask] = useState<{ projetId?: string; projetName?: string; clientName?: string; projetRef?: string } | null>(null)
 
   // Inline create
   const [inlineName, setInlineName] = useState('')
@@ -250,7 +250,13 @@ export default function TasksPage() {
         body: JSON.stringify({ done: newDone }),
       })
       if (newDone && task.projetId) {
-        setShowForceTask({ projetId: task.projetId, projetName: task.projetName, clientName: task.clientName })
+        // Only show popup if no other todo tasks remain for this project
+        const remainingTasks = (tasks ?? []).filter(
+          (t) => t.projetId === task.projetId && t.id !== task.id && !t.done
+        )
+        if (remainingTasks.length === 0) {
+          setShowForceTask({ projetId: task.projetId, projetName: task.projetName, clientName: task.clientName, projetRef: task.projetRef })
+        }
       }
     } catch { fetchTasks() }
   }
@@ -316,11 +322,11 @@ export default function TasksPage() {
   }
 
   const createInlineTask = async () => {
-    if (!inlineName.trim()) return
+    const projetId = inlineProjet || projetFilter
+    if (!inlineName.trim() || !projetId) return
     setInlineCreating(true)
     try {
       const body: Record<string, string> = { name: inlineName }
-      const projetId = inlineProjet || projetFilter
       if (projetId) body.projetId = projetId
       if (inlineDate) body.dueDate = inlineDate
       if (inlineType) body.type = inlineType
@@ -495,25 +501,27 @@ export default function TasksPage() {
               className="text-xs text-gray-400 border-none outline-none bg-transparent w-28"
             />
             {inlineName.trim() && (
-              <button onClick={createInlineTask} disabled={inlineCreating} className="text-indigo-600 hover:text-indigo-700 text-xs font-medium shrink-0">
+              <button
+                onClick={createInlineTask}
+                disabled={inlineCreating || !(inlineProjet || projetFilter)}
+                className="text-indigo-600 hover:text-indigo-700 text-xs font-medium shrink-0 disabled:text-gray-300 disabled:cursor-not-allowed"
+              >
                 {inlineCreating ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Ajouter'}
               </button>
             )}
           </div>
           {/* Extra fields row */}
           <div className="flex items-center gap-2 px-4 pb-2.5 border-t border-gray-50 pt-2">
-            {!projetFilter && (
-              <div className="w-44">
-                <ComboSelect
-                  options={projetComboOptions}
-                  value={inlineProjet}
-                  onChange={setInlineProjet}
-                  placeholder="Projet"
-                  clearable
-                  size="sm"
-                />
-              </div>
-            )}
+            <div className="w-44">
+              <ComboSelect
+                options={projetComboOptions}
+                value={projetFilter || inlineProjet}
+                onChange={setInlineProjet}
+                placeholder="Projet *"
+                clearable={!projetFilter}
+                size="sm"
+              />
+            </div>
             <div className="w-36">
               <ComboSelect
                 options={typeComboOptions}
@@ -747,6 +755,7 @@ export default function TasksPage() {
         <ForceNewTaskModal
           projetId={showForceTask.projetId}
           projetName={showForceTask.projetName}
+          projetRef={showForceTask.projetRef}
           clientName={showForceTask.clientName}
           projets={projetList}
           onClose={() => setShowForceTask(null)}

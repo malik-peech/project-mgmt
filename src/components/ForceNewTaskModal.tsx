@@ -19,6 +19,7 @@ type Props = {
   /** The project the completed task belonged to */
   projetId?: string
   projetName?: string
+  projetRef?: string
   clientName?: string
   /** All projets for dropdown if projetId is not set */
   projets?: Projet[]
@@ -26,7 +27,7 @@ type Props = {
   onCreated: () => void
 }
 
-export default function ForceNewTaskModal({ projetId, projetName, clientName, projets, onClose, onCreated }: Props) {
+export default function ForceNewTaskModal({ projetId, projetName, projetRef, clientName, projets, onClose, onCreated }: Props) {
   const [name, setName] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [type, setType] = useState('')
@@ -83,13 +84,16 @@ export default function ForceNewTaskModal({ projetId, projetName, clientName, pr
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-semibold text-gray-900">Planifier la prochaine task</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {clientName
-                ? clientName
-                : projetName
-                  ? `Créez une task future pour ${projetName}`
-                  : 'Chaque projet actif doit avoir une prochaine action planifiée'}
-            </p>
+            {(projetRef || projetName || clientName) ? (
+              <p className="text-sm text-gray-500 mt-0.5">
+                {projetRef && <span className="font-mono text-indigo-600">{projetRef}</span>}
+                {projetRef && projetName && ' · '}
+                {projetName && <span className="font-medium text-gray-700">{projetName}</span>}
+                {clientName && <span className="text-gray-400"> — {clientName}</span>}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500 mt-0.5">Chaque projet actif doit avoir une prochaine action planifiée</p>
+            )}
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
             <X className="w-5 h-5" />
