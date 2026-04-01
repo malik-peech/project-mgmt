@@ -89,6 +89,7 @@ export default function TasksPage() {
   const [activeTab, setActiveTab] = useState<'todo' | 'done'>('todo')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState('all')
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'myProjects' | 'myTasks'>('all')
 
   // Apply URL filter param on mount (e.g. /tasks?filter=overdue)
   useEffect(() => {
@@ -355,8 +356,23 @@ export default function TasksPage() {
 
   // Apply filters
   const displayedTasks = activeTab === 'todo' ? todoList : doneList
+  // Set of project IDs where the current user is PM or DA
+  const myProjetIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const p of projetList) {
+      if (p.pm === userName || p.daOfficial === userName) ids.add(p.id)
+    }
+    return ids
+  }, [projetList, userName])
+
   const filteredTasks = useMemo(() => {
     let list = displayedTasks
+    // Scope filter: mes projets / mes tasks
+    if (scopeFilter === 'myProjects') {
+      list = list.filter((t) => t.projetId && myProjetIds.has(t.projetId))
+    } else if (scopeFilter === 'myTasks') {
+      list = list.filter((t) => t.assigneManuel === userName)
+    }
     if (typeFilter !== 'all') list = list.filter((t) => t.type === typeFilter)
     if (projetFilter) list = list.filter((t) => t.projetId === projetFilter)
     if (search.trim()) {
@@ -384,7 +400,7 @@ export default function TasksPage() {
       })
     }
     return list
-  }, [displayedTasks, typeFilter, projetFilter, search, dateFilter])
+  }, [displayedTasks, typeFilter, projetFilter, search, dateFilter, scopeFilter, myProjetIds, userName])
 
   return (
     <div className="p-6 md:p-8 max-w-5xl mx-auto">
@@ -441,6 +457,34 @@ export default function TasksPage() {
               }`}
             >
               Terminées ({doneList.length})
+            </button>
+          </div>
+
+          {/* Scope filter: Mes projets / Mes tasks */}
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+            <button
+              onClick={() => setScopeFilter('all')}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                scopeFilter === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Tout
+            </button>
+            <button
+              onClick={() => setScopeFilter('myProjects')}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                scopeFilter === 'myProjects' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Mes projets
+            </button>
+            <button
+              onClick={() => setScopeFilter('myTasks')}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                scopeFilter === 'myTasks' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Mes tasks
             </button>
           </div>
 
