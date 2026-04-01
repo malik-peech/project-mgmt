@@ -2,9 +2,10 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, X, CheckCircle2, Circle, Loader2, Copy, Trash2, RefreshCw, AlertTriangle, Search } from 'lucide-react'
+import { Plus, X, CheckCircle2, Circle, Loader2, Copy, Trash2, RefreshCw, AlertTriangle, Search, List, CalendarDays } from 'lucide-react'
 import ContextMenu from '@/components/ContextMenu'
 import ForceNewTaskModal from '@/components/ForceNewTaskModal'
+import TaskCalendarView from '@/components/TaskCalendarView'
 import ComboSelect from '@/components/ComboSelect'
 import DatePicker from '@/components/DatePicker'
 import { useData } from '@/hooks/useData'
@@ -91,6 +92,8 @@ export default function TasksPage() {
   const [dateFilter, setDateFilter] = useState('all')
   const [scopeFilter, setScopeFilter] = useState<'myProjects' | 'myTasks'>('myProjects')
   const [specificDate, setSpecificDate] = useState('')
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
+  const [calendarMode, setCalendarMode] = useState<'week' | 'month'>('month')
 
   // Apply URL filter param on mount (e.g. /tasks?filter=overdue)
   useEffect(() => {
@@ -521,32 +524,34 @@ export default function TasksPage() {
             />
           </div>
 
-          {/* Date filter pills */}
-          <div className="flex gap-1 flex-wrap items-center">
-            {DATE_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                onClick={() => { setDateFilter(f.value); setSpecificDate('') }}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
-                  dateFilter === f.value && !specificDate
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-            {/* Specific date picker */}
-            <div className="w-36">
-              <DatePicker
-                value={specificDate}
-                onChange={(v) => { setSpecificDate(v); if (v) setDateFilter('all') }}
-                placeholder="Date..."
-                clearable
-                size="sm"
-              />
+          {/* Date filter pills (hidden in calendar mode) */}
+          {viewMode === 'list' && (
+            <div className="flex gap-1 flex-wrap items-center">
+              {DATE_FILTERS.map((f) => (
+                <button
+                  key={f.value}
+                  onClick={() => { setDateFilter(f.value); setSpecificDate('') }}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
+                    dateFilter === f.value && !specificDate
+                      ? 'bg-indigo-100 text-indigo-700'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+              {/* Specific date picker */}
+              <div className="w-36">
+                <DatePicker
+                  value={specificDate}
+                  onChange={(v) => { setSpecificDate(v); if (v) setDateFilter('all') }}
+                  placeholder="Date..."
+                  clearable
+                  size="sm"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Type filter */}
           <div className="w-40">
@@ -558,11 +563,33 @@ export default function TasksPage() {
               size="sm"
             />
           </div>
+
+          {/* View mode toggle */}
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5 ml-auto">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded-md transition-colors ${
+                viewMode === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+              }`}
+              title="Vue liste"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => { setViewMode('calendar'); setDateFilter('all'); setSpecificDate('') }}
+              className={`p-1.5 rounded-md transition-colors ${
+                viewMode === 'calendar' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+              }`}
+              title="Vue calendrier"
+            >
+              <CalendarDays className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Inline create */}
-      {activeTab === 'todo' && (
+      {activeTab === 'todo' && viewMode === 'list' && (
         <div className="mb-4 bg-white rounded-xl border border-dashed border-gray-200 overflow-visible">
           <div className="flex items-center gap-2 px-4 py-2.5">
             <Plus className="w-4 h-4 text-gray-300 shrink-0" />
@@ -629,7 +656,7 @@ export default function TasksPage() {
         </div>
       )}
 
-      {/* Task list */}
+      {/* Task list or Calendar */}
       {loading && !tasks && !doneTasks ? (
         <div className="flex items-center justify-center py-20 text-gray-400">
           <Loader2 className="w-6 h-6 animate-spin mr-2" />
@@ -643,6 +670,14 @@ export default function TasksPage() {
             <RefreshCw className="w-4 h-4" /> Réessayer
           </button>
         </div>
+      ) : viewMode === 'calendar' ? (
+        <TaskCalendarView
+          tasks={scopedTodo}
+          calendarMode={calendarMode}
+          onCalendarModeChange={setCalendarMode}
+          onTaskDateChange={updateTaskDate}
+          onToggleDone={toggleDone}
+        />
       ) : filteredTasks.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <p className="text-lg">Aucune task</p>
