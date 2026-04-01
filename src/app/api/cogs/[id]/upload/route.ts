@@ -31,20 +31,16 @@ export async function POST(
       const arrayBuffer = await file.arrayBuffer()
       const buffer = Buffer.from(arrayBuffer)
 
-      const fileFormData = new FormData()
-      const blob = new Blob([buffer], { type: file.type || 'application/octet-stream' })
-      fileFormData.append('file', blob, file.name)
-      fileFormData.append('filename', file.name)
-      fileFormData.append('contentType', file.type || 'application/octet-stream')
-
       const res = await fetch(
-        `https://content.airtable.com/v0/${BASE_ID}/${recordId}/${FIELD_ID}/uploadAttachment`,
+        `https://content.airtable.com/v0/${BASE_ID}/${recordId}/cells/${FIELD_ID}/uploadAttachment`,
         {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${apiKey}`,
+            'Content-Type': file.type || 'application/octet-stream',
+            'Content-Length': String(buffer.length),
           },
-          body: fileFormData,
+          body: buffer,
         }
       )
 
