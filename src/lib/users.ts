@@ -1,118 +1,179 @@
 /**
- * User management store backed by a JSON file.
- * Each user has: name, password, role (PM | DA | Admin).
+ * User management backed by Airtable table "App user" (tblGJI7r6LpcFbqZQ).
+ * Fields: Name, Type (PM/DA/Admin), Login, Password, Matching.
+ * Matching = name as it appears in Airtable PM (manual) / DA fields.
  */
-
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
-import { join } from 'path'
 
 export type UserRole = 'PM' | 'DA' | 'Admin'
 
 export interface AppUser {
-  name: string
-  password: string
+  id: string          // Airtable record ID
+  name: string        // Display name
+  login: string       // Login identifier
+  password: string    // Plain text password
   role: UserRole
+  matching: string    // Name as in Airtable PM (manual)
 }
 
-const DATA_DIR = join(process.cwd(), 'data')
-const USERS_FILE = join(DATA_DIR, 'users.json')
+const baseId = process.env.AIRTABLE_BASE_ID || 'appYFl5MvR7VeL0uB'
+const tableId = 'tblGJI7r6LpcFbqZQ'
+const apiKey = process.env.AIRTABLE_API_KEY || ''
 
-// Default seed data (migrated from hardcoded lists)
-const DEFAULT_USERS: AppUser[] = [
-  // Admins
-  { name: 'Malik Goulamhoussen', password: 'peech2024', role: 'Admin' },
-  { name: 'Vanessa Goulamhoussen', password: 'peech2024', role: 'Admin' },
-  // PMs
-  { name: 'Margaux Fluttaz', password: 'peech2024', role: 'PM' },
-  { name: 'Julien Munier', password: 'peech2024', role: 'PM' },
-  { name: 'Max Robé', password: 'peech2024', role: 'PM' },
-  { name: 'Alexis Mervant', password: 'peech2024', role: 'PM' },
-  { name: 'Amandine', password: 'peech2024', role: 'PM' },
-  { name: 'Athenaïs Ozanne-de Buchy', password: 'peech2024', role: 'PM' },
-  { name: 'Elsa Lopez', password: 'peech2024', role: 'PM' },
-  { name: 'Eugénie Perrin', password: 'peech2024', role: 'PM' },
-  { name: 'Fabien Dhondt', password: 'peech2024', role: 'PM' },
-  { name: 'LAURA ARNAUD', password: 'peech2024', role: 'PM' },
-  { name: 'Marie Adrait', password: 'peech2024', role: 'PM' },
-  { name: 'Marlène De Almeida', password: 'peech2024', role: 'PM' },
-  { name: 'Shana Briand', password: 'peech2024', role: 'PM' },
-  { name: 'Tiphaine Mounier', password: 'peech2024', role: 'PM' },
-  // DAs
-  { name: 'Agathe DA SILVA', password: 'peech2024', role: 'DA' },
-  { name: 'Camille Nestal', password: 'peech2024', role: 'DA' },
-  { name: 'Johanne Courcelle', password: 'peech2024', role: 'DA' },
-]
+const headers = {
+  Authorization: `Bearer ${apiKey}`,
+  'Content-Type': 'application/json',
+}
 
-function ensureDataDir() {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true })
+const atUrl = `https://api.airtable.com/v0/${baseId}/${tableId}`
+
+function mapRecord(rec: { id: string; fields: Record<string, unknown> }): AppUser {
+  const f = rec.fields
+  const typeVal = f['Type']
+  let role: UserRole = 'PM'
+  if (typeof typeVal === 'string') {
+    role = (['PM', 'DA', 'Admin'].includes(typeVal) ? typeVal : 'PM') as UserRole
+  } else if (typeVal && typeof typeVal === 'object' && 'name' in (typeVal as Record<string, unknown>)) {
+    const name = (typeVal as { name: string }).name
+    role = (['PM', 'DA', 'Admin'].includes(name) ? name : 'PM') as UserRole
+  }
+
+  return {
+    id: rec.id,
+    name: (f['Name'] as string) || '',
+    login: (f['Login'] as string) || (f['Name'] as string) || '',
+    password: (f['Password'] as string) || '',
+    role,
+    matching: (f['Matching'] as string) || (f['Name'] as string) || '',
   }
 }
 
-function loadUsers(): AppUser[] {
-  ensureDataDir()
-  if (!existsSync(USERS_FILE)) {
-    writeFileSync(USERS_FILE, JSON.stringify(DEFAULT_USERS, null, 2), 'utf-8')
-    return DEFAULT_USERS
-  }
+// ── In-memory cache (refreshed every 60s) ──
+
+let cachedUsers: AppUser[] | null = null
+let lastFetch = 0
+const CACHE_TTL = 60_000 // 1 minute
+
+async function fetchAllUsers(): Promise<AppUser[]> {
   try {
-    const raw = readFileSync(USERS_FILE, 'utf-8')
-    return JSON.parse(raw) as AppUser[]
-  } catch {
-    return DEFAULT_USERS
-  }
-}
-
-function saveUsers(users: AppUser[]) {
-  ensureDataDir()
-  writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf-8')
-}
-
-// ── Public API ──
-
-export function getUsers(): AppUser[] {
-  return loadUsers()
-}
-
-export function getUserByName(name: string): AppUser | undefined {
-  return loadUsers().find((u) => u.name.toLowerCase() === name.toLowerCase())
-}
-
-export function getUsersByRole(role: UserRole): AppUser[] {
-  return loadUsers().filter((u) => u.role === role)
-}
-
-export function createUser(user: AppUser): AppUser {
-  const users = loadUsers()
-  if (users.find((u) => u.name.toLowerCase() === user.name.toLowerCase())) {
-    throw new Error(`User "${user.name}" already exists`)
-  }
-  users.push(user)
-  saveUsers(users)
-  return user
-}
-
-export function updateUser(name: string, updates: Partial<Omit<AppUser, 'name'>> & { newName?: string }): AppUser {
-  const users = loadUsers()
-  const idx = users.findIndex((u) => u.name.toLowerCase() === name.toLowerCase())
-  if (idx === -1) throw new Error(`User "${name}" not found`)
-
-  if (updates.newName && updates.newName !== users[idx].name) {
-    if (users.find((u) => u.name.toLowerCase() === updates.newName!.toLowerCase() && u.name.toLowerCase() !== name.toLowerCase())) {
-      throw new Error(`User "${updates.newName}" already exists`)
+    const res = await fetch(`${atUrl}?pageSize=100`, {
+      headers,
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      console.error('Airtable users fetch error:', res.status)
+      return cachedUsers || []
     }
-    users[idx].name = updates.newName
+    const data = await res.json()
+    const users = (data.records || []).map(mapRecord)
+    cachedUsers = users
+    lastFetch = Date.now()
+    return users
+  } catch (err) {
+    console.error('Error fetching users from Airtable:', err)
+    return cachedUsers || []
   }
-  if (updates.password) users[idx].password = updates.password
-  if (updates.role) users[idx].role = updates.role
-
-  saveUsers(users)
-  return users[idx]
 }
 
-export function deleteUser(name: string): void {
-  const users = loadUsers()
-  const filtered = users.filter((u) => u.name.toLowerCase() !== name.toLowerCase())
-  if (filtered.length === users.length) throw new Error(`User "${name}" not found`)
-  saveUsers(filtered)
+async function getCachedUsers(): Promise<AppUser[]> {
+  if (!cachedUsers || Date.now() - lastFetch > CACHE_TTL) {
+    return fetchAllUsers()
+  }
+  return cachedUsers
+}
+
+// Force refresh (e.g. after create/update/delete)
+function invalidateCache() {
+  cachedUsers = null
+  lastFetch = 0
+}
+
+// ── Public API (all async now) ──
+
+export async function getUsers(): Promise<AppUser[]> {
+  return getCachedUsers()
+}
+
+export async function getUserByLogin(login: string): Promise<AppUser | undefined> {
+  const users = await getCachedUsers()
+  return users.find((u) => u.login.toLowerCase() === login.toLowerCase())
+}
+
+export async function getUserByName(name: string): Promise<AppUser | undefined> {
+  const users = await getCachedUsers()
+  return users.find((u) => u.name.toLowerCase() === name.toLowerCase())
+}
+
+export async function getUsersByRole(role: UserRole): Promise<AppUser[]> {
+  const users = await getCachedUsers()
+  return users.filter((u) => u.role === role)
+}
+
+export async function createUser(user: { name: string; login: string; password: string; role: UserRole; matching: string }): Promise<AppUser> {
+  const res = await fetch(atUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      records: [{
+        fields: {
+          Name: user.name,
+          Type: user.role,
+          Login: user.login,
+          Password: user.password,
+          Matching: user.matching,
+        },
+      }],
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to create user: ${err}`)
+  }
+
+  const data = await res.json()
+  invalidateCache()
+  return mapRecord(data.records[0])
+}
+
+export async function updateUser(
+  recordId: string,
+  updates: { name?: string; login?: string; password?: string; role?: UserRole; matching?: string }
+): Promise<AppUser> {
+  const fields: Record<string, unknown> = {}
+  if (updates.name !== undefined) fields['Name'] = updates.name
+  if (updates.login !== undefined) fields['Login'] = updates.login
+  if (updates.password) fields['Password'] = updates.password
+  if (updates.role) fields['Type'] = updates.role
+  if (updates.matching !== undefined) fields['Matching'] = updates.matching
+
+  const res = await fetch(atUrl, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({
+      records: [{ id: recordId, fields }],
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to update user: ${err}`)
+  }
+
+  const data = await res.json()
+  invalidateCache()
+  return mapRecord(data.records[0])
+}
+
+export async function deleteUser(recordId: string): Promise<void> {
+  const res = await fetch(`${atUrl}?records[]=${recordId}`, {
+    method: 'DELETE',
+    headers,
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to delete user: ${err}`)
+  }
+
+  invalidateCache()
 }

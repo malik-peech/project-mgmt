@@ -1,6 +1,6 @@
 import NextAuth from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
-import { getUserByName } from '@/lib/users'
+import { getUserByLogin } from '@/lib/users'
 
 const handler = NextAuth({
   providers: [
@@ -13,13 +13,13 @@ const handler = NextAuth({
       async authorize(credentials) {
         if (!credentials?.name || !credentials?.password) return null
 
-        const user = getUserByName(credentials.name.trim())
+        const user = await getUserByLogin(credentials.name.trim())
         if (!user) return null
         if (credentials.password !== user.password) return null
 
         return {
-          id: user.name,
-          name: user.name,
+          id: user.id,
+          name: user.matching || user.name,
           email: `${user.name.toLowerCase().replace(/\s+/g, '.')}@peech.studio`,
           role: user.role,
         }

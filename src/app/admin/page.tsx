@@ -20,8 +20,11 @@ import {
 
 type UserRole = 'PM' | 'DA' | 'Admin'
 interface User {
+  id: string
   name: string
   role: UserRole
+  login: string
+  matching: string
 }
 
 interface FeedbackItem {
@@ -57,9 +60,9 @@ export default function AdminPage() {
 
   // Edit / create state
   const [editingUser, setEditingUser] = useState<string | null>(null)
-  const [editForm, setEditForm] = useState({ name: '', password: '', role: 'PM' as UserRole })
+  const [editForm, setEditForm] = useState({ name: '', login: '', password: '', role: 'PM' as UserRole, matching: '' })
   const [showCreate, setShowCreate] = useState(false)
-  const [createForm, setCreateForm] = useState({ name: '', password: '', role: 'PM' as UserRole })
+  const [createForm, setCreateForm] = useState({ name: '', login: '', password: '', role: 'PM' as UserRole, matching: '' })
 
   // Redirect non-admins
   useEffect(() => {
@@ -133,7 +136,7 @@ export default function AdminPage() {
       })
       if (res.ok) {
         setShowCreate(false)
-        setCreateForm({ name: '', password: '', role: 'PM' })
+        setCreateForm({ name: '', login: '', password: '', role: 'PM', matching: '' })
         fetchUsers()
       } else {
         const data = await res.json()
@@ -150,6 +153,8 @@ export default function AdminPage() {
       const body: Record<string, string> = { name: originalName, role: editForm.role }
       if (editForm.name !== originalName) body.newName = editForm.name
       if (editForm.password) body.password = editForm.password
+      if (editForm.login) body.login = editForm.login
+      if (editForm.matching) body.matching = editForm.matching
 
       const res = await fetch('/api/users', {
         method: 'PATCH',
@@ -236,7 +241,7 @@ export default function AdminPage() {
           <button
             onClick={() => {
               setShowCreate(true)
-              setCreateForm({ name: '', password: '', role: 'PM' })
+              setCreateForm({ name: '', login: '', password: '', role: 'PM', matching: '' })
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
           >
@@ -252,16 +257,18 @@ export default function AdminPage() {
         ) : (
           <div>
             {/* Table header */}
-            <div className="grid grid-cols-[1fr_120px_200px_100px] gap-3 px-5 py-2.5 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+            <div className="grid grid-cols-[1fr_1fr_80px_1fr_150px_80px] gap-3 px-5 py-2.5 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
               <span>Nom</span>
+              <span>Login</span>
               <span>Rôle</span>
+              <span>Matching</span>
               <span>Mot de passe</span>
               <span>Actions</span>
             </div>
 
             {/* Create row */}
             {showCreate && (
-              <div className="grid grid-cols-[1fr_120px_200px_100px] gap-3 px-5 py-3 bg-indigo-50 border-b border-indigo-100 items-center">
+              <div className="grid grid-cols-[1fr_1fr_80px_1fr_150px_80px] gap-3 px-5 py-3 bg-indigo-50 border-b border-indigo-100 items-center">
                 <input
                   type="text"
                   placeholder="Nom complet"
@@ -269,6 +276,13 @@ export default function AdminPage() {
                   onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
                   className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   autoFocus
+                />
+                <input
+                  type="text"
+                  placeholder="Login"
+                  value={createForm.login}
+                  onChange={(e) => setCreateForm({ ...createForm, login: e.target.value })}
+                  className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 <select
                   value={createForm.role}
@@ -279,6 +293,13 @@ export default function AdminPage() {
                   <option value="DA">DA</option>
                   <option value="Admin">Admin</option>
                 </select>
+                <input
+                  type="text"
+                  placeholder="Nom AT (PM manual)"
+                  value={createForm.matching}
+                  onChange={(e) => setCreateForm({ ...createForm, matching: e.target.value })}
+                  className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
                 <input
                   type="text"
                   placeholder="Mot de passe"
@@ -311,11 +332,17 @@ export default function AdminPage() {
 
                 if (isEditing) {
                   return (
-                    <div key={user.name} className="grid grid-cols-[1fr_120px_200px_100px] gap-3 px-5 py-3 bg-yellow-50 items-center">
+                    <div key={user.id} className="grid grid-cols-[1fr_1fr_80px_1fr_150px_80px] gap-3 px-5 py-3 bg-yellow-50 items-center">
                       <input
                         type="text"
                         value={editForm.name}
                         onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                        className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <input
+                        type="text"
+                        value={editForm.login}
+                        onChange={(e) => setEditForm({ ...editForm, login: e.target.value })}
                         className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                       <select
@@ -329,7 +356,13 @@ export default function AdminPage() {
                       </select>
                       <input
                         type="text"
-                        placeholder="Nouveau mdp (laisser vide = inchangé)"
+                        value={editForm.matching}
+                        onChange={(e) => setEditForm({ ...editForm, matching: e.target.value })}
+                        className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Nouveau mdp (vide = inchangé)"
                         value={editForm.password}
                         onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
                         className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -354,17 +387,19 @@ export default function AdminPage() {
                 }
 
                 return (
-                  <div key={user.name} className="grid grid-cols-[1fr_120px_200px_100px] gap-3 px-5 py-3 items-center hover:bg-gray-50">
+                  <div key={user.id} className="grid grid-cols-[1fr_1fr_80px_1fr_150px_80px] gap-3 px-5 py-3 items-center hover:bg-gray-50">
                     <span className="text-sm text-gray-800 font-medium">{user.name}</span>
+                    <span className="text-sm text-gray-600">{user.login}</span>
                     <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full w-fit ${roleBadge[user.role]}`}>
                       {user.role}
                     </span>
+                    <span className="text-sm text-gray-500">{user.matching}</span>
                     <span className="text-sm text-gray-400">********</span>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => {
                           setEditingUser(user.name)
-                          setEditForm({ name: user.name, password: '', role: user.role })
+                          setEditForm({ name: user.name, login: user.login, password: '', role: user.role, matching: user.matching })
                         }}
                         className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition"
                         title="Modifier"
