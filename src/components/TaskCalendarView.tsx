@@ -3,26 +3,39 @@
 import { useState, useMemo, useCallback } from 'react'
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
-  addDays, addWeeks, addMonths, subWeeks, subMonths,
-  format, isSameDay, isSameMonth, isToday,
+  addWeeks, addMonths, subWeeks, subMonths,
+  format, isSameMonth, isToday, getDay,
   eachDayOfInterval,
 } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, Circle, CheckCircle2 } from 'lucide-react'
 import type { Task } from '@/types'
 
-const PRIORITY_COLORS: Record<string, string> = {
-  'Urgent': 'border-l-red-500 bg-red-50',
-  'Important': 'border-l-amber-500 bg-amber-50',
-  "Dans l'ideal": 'border-l-teal-400 bg-teal-50',
-  "Dans l\u2019id\u00e9al": 'border-l-teal-400 bg-teal-50',
-  'Optionnel': 'border-l-gray-300 bg-gray-50',
-  'Si retour client': 'border-l-emerald-400 bg-emerald-50',
+const TYPE_COLORS: Record<string, string> = {
+  'Brief': 'border-l-blue-500 bg-blue-50',
+  'Call client': 'border-l-blue-500 bg-blue-50',
+  'Email client': 'border-l-sky-500 bg-sky-50',
+  'Prez': 'border-l-indigo-500 bg-indigo-50',
+  'Delivery': 'border-l-violet-500 bg-violet-50',
+  'Envoi r\u00e9troplanning': 'border-l-purple-500 bg-purple-50',
+  'Contact presta': 'border-l-teal-500 bg-teal-50',
+  'Call presta': 'border-l-teal-500 bg-teal-50',
+  'Retour presta': 'border-l-teal-400 bg-teal-50',
+  'COGS': 'border-l-green-500 bg-green-50',
+  'Demande float': 'border-l-lime-500 bg-lime-50',
+  'Matos': 'border-l-yellow-500 bg-yellow-50',
+  'Shooting': 'border-l-orange-500 bg-orange-50',
+  'Prepa Tournage': 'border-l-orange-400 bg-orange-50',
+  'Casting VO': 'border-l-pink-500 bg-pink-50',
+  'Casting acteur': 'border-l-pink-400 bg-pink-50',
+  'Task interne': 'border-l-gray-400 bg-gray-50',
+  'Check': 'border-l-slate-400 bg-slate-50',
+  'Calendar': 'border-l-slate-400 bg-slate-50',
 }
 
-function getPillColor(priority?: string): string {
-  if (!priority) return 'border-l-gray-300 bg-gray-50'
-  return PRIORITY_COLORS[priority] ?? 'border-l-gray-300 bg-gray-50'
+function getTypeColor(type?: string): string {
+  if (!type) return 'border-l-gray-300 bg-gray-50'
+  return TYPE_COLORS[type] ?? 'border-l-indigo-400 bg-indigo-50'
 }
 
 interface Props {
@@ -31,6 +44,7 @@ interface Props {
   onCalendarModeChange: (mode: 'week' | 'month') => void
   onTaskDateChange: (taskId: string, newDate: string) => Promise<void>
   onToggleDone: (task: Task) => void
+  onTaskClick: (task: Task) => void
 }
 
 function toISO(d: Date): string {
@@ -40,9 +54,9 @@ function toISO(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-const DAYS_FR = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+const DAYS_FR = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven']
 
-export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeChange, onTaskDateChange, onToggleDone }: Props) {
+export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeChange, onTaskDateChange, onToggleDone, onTaskClick }: Props) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [dragOverDate, setDragOverDate] = useState<string | null>(null)
 
@@ -60,19 +74,24 @@ export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeCh
 
   const unscheduled = tasksByDate.get('__none__') || []
 
-  // Compute visible days
+  // Compute visible days (weekdays only: Mon-Fri)
   const days = useMemo(() => {
+    let start: Date, end: Date
     if (calendarMode === 'week') {
-      const start = startOfWeek(currentDate, { weekStartsOn: 1 })
-      const end = endOfWeek(currentDate, { weekStartsOn: 1 })
-      return eachDayOfInterval({ start, end })
+      start = startOfWeek(currentDate, { weekStartsOn: 1 })
+      end = endOfWeek(currentDate, { weekStartsOn: 1 })
     } else {
       const monthStart = startOfMonth(currentDate)
       const monthEnd = endOfMonth(currentDate)
-      const start = startOfWeek(monthStart, { weekStartsOn: 1 })
-      const end = endOfWeek(monthEnd, { weekStartsOn: 1 })
-      return eachDayOfInterval({ start, end })
+      start = startOfWeek(monthStart, { weekStartsOn: 1 })
+      end = endOfWeek(monthEnd, { weekStartsOn: 1 })
     }
+    const all = eachDayOfInterval({ start, end })
+    // Filter out Saturday (6) and Sunday (0)
+    return all.filter((d) => {
+      const dow = getDay(d)
+      return dow !== 0 && dow !== 6
+    })
   }, [currentDate, calendarMode])
 
   // Navigation
@@ -133,11 +152,12 @@ export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeCh
       <div
         draggable
         onDragStart={(e) => handleDragStart(e, task)}
-        className={`group flex items-start gap-1 px-1.5 py-1 rounded border-l-[3px] cursor-grab active:cursor-grabbing transition-colors text-[11px] leading-tight mb-0.5
-          ${getPillColor(task.priority)}
+        onClick={() => onTaskClick(task)}
+        className={`group flex items-start gap-1 px-1.5 py-1 rounded border-l-[3px] cursor-pointer active:cursor-grabbing transition-colors text-[11px] leading-tight mb-0.5
+          ${getTypeColor(task.type)}
           ${isOverdue ? 'ring-1 ring-red-300' : ''}
-          hover:shadow-sm`}
-        title={`${task.name}\n${task.projetName || ''}\n${task.priority || ''}`}
+          hover:shadow-md hover:brightness-95`}
+        title={`${task.name}${task.projetRef ? '\n' + task.projetRef : ''}${task.clientName ? ' - ' + task.clientName : ''}${task.type ? '\nType: ' + task.type : ''}`}
       >
         <button
           onClick={(e) => { e.stopPropagation(); onToggleDone(task) }}
@@ -147,8 +167,10 @@ export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeCh
         </button>
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium text-gray-800">{task.name}</div>
-          {task.projetRef && (
-            <div className="truncate text-[9px] text-gray-400">{task.projetRef}</div>
+          {(task.projetRef || task.clientName) && (
+            <div className="truncate text-[9px] text-gray-400">
+              {[task.projetRef, task.clientName].filter(Boolean).join(' - ')}
+            </div>
           )}
         </div>
         {task.assigneManuel && (
@@ -161,7 +183,7 @@ export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeCh
   }
 
   const isWeek = calendarMode === 'week'
-  const cellMinH = isWeek ? 'min-h-[350px]' : 'min-h-[110px]'
+  const cellMinH = isWeek ? 'min-h-[400px]' : 'min-h-[110px]'
   const maxVisible = isWeek ? 50 : 4
 
   return (
@@ -203,14 +225,14 @@ export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeCh
         </div>
 
         {/* Day headers */}
-        <div className="grid grid-cols-7 mb-1">
+        <div className="grid grid-cols-5 mb-1">
           {DAYS_FR.map((d) => (
             <div key={d} className="text-center text-[11px] font-semibold text-gray-400 py-1.5">{d}</div>
           ))}
         </div>
 
         {/* Calendar grid */}
-        <div className="grid grid-cols-7 border-t border-l border-gray-200">
+        <div className="grid grid-cols-5 border-t border-l border-gray-200">
           {days.map((day) => {
             const dateStr = toISO(day)
             const dayTasks = tasksByDate.get(dateStr) || []
@@ -243,7 +265,7 @@ export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeCh
                 </div>
 
                 {/* Tasks */}
-                <div className={`space-y-0 ${isWeek ? 'overflow-y-auto max-h-[300px]' : ''}`}>
+                <div className={`space-y-0 ${isWeek ? 'overflow-y-auto max-h-[360px]' : ''}`}>
                   {dayTasks.slice(0, maxVisible).map((task) => (
                     <TaskPill key={task.id} task={task} />
                   ))}

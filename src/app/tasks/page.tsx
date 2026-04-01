@@ -424,6 +424,23 @@ export default function TasksPage() {
     return list
   }, [displayedTasks, typeFilter, projetFilter, search, dateFilter, specificDate, scopeFilter, myProjetIds, userName])
 
+  // Calendar-specific filtered tasks (no date filter, applies type/project/search/scope)
+  const calendarFilteredTasks = useMemo(() => {
+    let list: Task[] = scopedTodo
+    if (typeFilter !== 'all') list = list.filter((t) => t.type === typeFilter)
+    if (projetFilter) list = list.filter((t) => t.projetId === projetFilter)
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter((t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.projetName?.toLowerCase().includes(q) ||
+        t.clientName?.toLowerCase().includes(q) ||
+        t.projetRef?.toLowerCase().includes(q)
+      )
+    }
+    return list
+  }, [scopedTodo, typeFilter, projetFilter, search])
+
   return (
     <div className="p-6 md:p-8 max-w-5xl mx-auto">
       {/* Header */}
@@ -672,11 +689,15 @@ export default function TasksPage() {
         </div>
       ) : viewMode === 'calendar' ? (
         <TaskCalendarView
-          tasks={scopedTodo}
+          tasks={calendarFilteredTasks}
           calendarMode={calendarMode}
           onCalendarModeChange={setCalendarMode}
           onTaskDateChange={updateTaskDate}
           onToggleDone={toggleDone}
+          onTaskClick={(task) => {
+            setViewMode('list')
+            setSearch(task.name)
+          }}
         />
       ) : filteredTasks.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
