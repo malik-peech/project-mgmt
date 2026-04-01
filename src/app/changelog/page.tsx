@@ -10,6 +10,41 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.11',
+    date: '01/04/2026',
+    changes: [
+      'Compteur tasks en retard corrige (compte les vraies tasks, pas les projets)',
+      'Fix filtre "projets sans task" qui ne fonctionnait pas au clic',
+      'Assignee visible sur les tasks dans le panneau projet',
+      'Date du jour par defaut a la creation rapide de task (projets + tasks)',
+      'Clic sur un COGS dans le projet ouvre la page COGS filtree',
+    ],
+  },
+  {
+    version: '1.10',
+    date: '01/04/2026',
+    changes: [
+      'Nouvel onglet "A completer" dans COGS (COGS A payer avec infos manquantes)',
+      'Qualite (note/comment), TVA, methode paiement visibles dans le panneau COGS',
+      'Vue calendrier respecte les filtres A faire / En retard / Terminees',
+      'Page Ressources redesignee : categories prioritaires, photos, grille visuelle',
+      'Categories secondaires dans un volet pliable "Autres categories"',
+    ],
+  },
+  {
+    version: '1.09',
+    date: '01/04/2026',
+    changes: [
+      'Correction noms clients (affichait des IDs Airtable au lieu des noms)',
+      'Calendrier pleine largeur, bloc "Sans date" en bandeau compact',
+      'Couleurs distinctes par type et priorite de task',
+      'Filtre "Demain" sur les tasks',
+      'Creation rapide de task enrichie (projet, type, priorite)',
+      'Nouvel onglet Ressources dans la sidebar',
+      'Colonnes COGS triables + Montant HT sales ajoute',
+    ],
+  },
+  {
     version: '1.08',
     date: '01/04/2026',
     changes: [
