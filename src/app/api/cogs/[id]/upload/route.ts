@@ -26,16 +26,22 @@ export async function POST(
     const { id: recordId } = await params
     const apiKey = process.env.AIRTABLE_API_KEY
 
+    console.log('[Upload] Starting upload for record:', recordId)
+
     if (!apiKey) {
+      console.error('[Upload] AIRTABLE_API_KEY not set')
       return NextResponse.json({ error: 'AIRTABLE_API_KEY not set' }, { status: 500 })
     }
 
     // Determine public base URL
     const url = new URL(request.url)
     const baseUrl = process.env.NEXTAUTH_URL || `${url.protocol}//${url.host}`
+    console.log('[Upload] Base URL:', baseUrl)
 
     const formData = await request.formData()
     const files = formData.getAll('files') as File[]
+
+    console.log('[Upload] Files received:', files.length, files.map(f => `${f.name} (${f.size} bytes)`))
 
     if (!files || files.length === 0) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 })
@@ -54,6 +60,9 @@ export async function POST(
     if (getRes.ok) {
       const record = await getRes.json()
       existingAttachments = (record.fields?.['Facture'] as any[]) || []
+      console.log('[Upload] Existing attachments:', existingAttachments.length)
+    } else {
+      console.error('[Upload] Failed to fetch record:', getRes.status, await getRes.text())
     }
 
     // Step 2: Save each file to /tmp and build Airtable attachment objects
@@ -72,6 +81,7 @@ export async function POST(
 
       const publicUrl = `${baseUrl}/api/tmp/${tmpFilename}`
       newAttachments.push({ url: publicUrl, filename: file.name })
+      console.log('[Upload] Saved tmp file:', tmpFilename, '→', publicUrl)
     }
 
     // Step 3: Wait a moment for the files to be ready to serve
