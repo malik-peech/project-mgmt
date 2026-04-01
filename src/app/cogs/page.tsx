@@ -802,15 +802,15 @@ function CogSidePanel({
             {cog.facture && cog.facture.length > 0 && (
               <div className="space-y-1 mb-2">
                 {cog.facture.map((f, i) => (
-                  <div key={i} className="flex items-center gap-1">
+                  <div key={i} className="flex items-center gap-1 min-w-0">
                     <button
                       type="button"
                       onClick={() => setViewer({ url: f.url, filename: f.filename })}
-                      className="flex-1 flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-200 transition group text-left"
+                      className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-200 transition group text-left"
                     >
                       <FileText className="w-4 h-4 text-gray-400 group-hover:text-indigo-500 shrink-0" />
-                      <span className="text-sm text-gray-700 group-hover:text-indigo-700 truncate flex-1">{f.filename}</span>
-                      <Upload className="w-3 h-3 text-gray-300 group-hover:text-indigo-400 shrink-0 rotate-180" />
+                      <span className="text-sm text-gray-700 group-hover:text-indigo-700 truncate">{f.filename}</span>
+                      <Upload className="w-3 h-3 text-gray-300 group-hover:text-indigo-400 shrink-0 rotate-180 ml-auto" />
                     </button>
                     <button
                       type="button"

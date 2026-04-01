@@ -97,6 +97,8 @@ export default function TasksPage() {
   const [editingDate, setEditingDate] = useState<string | null>(null)
   const [editingField, setEditingField] = useState<{ id: string; field: 'type' | 'priority' } | null>(null)
   const [editingAssignee, setEditingAssignee] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState<string | null>(null)
+  const [editingNameValue, setEditingNameValue] = useState('')
   const [showForceTask, setShowForceTask] = useState<{ projetId?: string; projetName?: string; clientName?: string } | null>(null)
 
   // Inline create
@@ -197,6 +199,7 @@ export default function TasksPage() {
       if (task.priority) body.priority = task.priority
       if (task.type) body.type = task.type
       if (task.description) body.description = task.description
+      if (task.assigneManuel) body.assigneManuel = task.assigneManuel
       const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -204,9 +207,31 @@ export default function TasksPage() {
       })
       if (res.ok) {
         const newTask = await res.json()
-        mutateTasks(prev => [newTask, ...(prev ?? [])])
+        // Carry over display fields that the API may not return immediately
+        const enriched = {
+          ...newTask,
+          projetName: newTask.projetName || task.projetName,
+          projetRef: newTask.projetRef || task.projetRef,
+          clientName: newTask.clientName || task.clientName,
+          assigneManuel: newTask.assigneManuel || task.assigneManuel,
+        }
+        mutateTasks(prev => [enriched, ...(prev ?? [])])
       }
     } catch {}
+  }
+
+  const updateTaskName = async (taskId: string, newName: string) => {
+    if (!newName.trim()) return
+    mutateTasks(prev => (prev ?? []).map(t => t.id === taskId ? { ...t, name: newName } : t))
+    mutateDone(prev => (prev ?? []).map(t => t.id === taskId ? { ...t, name: newName } : t))
+    setEditingName(null)
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName }),
+      })
+    } catch { fetchTasks() }
   }
 
   const toggleDone = async (task: Task) => {
@@ -452,7 +477,7 @@ export default function TasksPage() {
 
       {/* Inline create */}
       {activeTab === 'todo' && (
-        <div className="mb-4 bg-white rounded-xl border border-dashed border-gray-200 overflow-hidden">
+        <div className="mb-4 bg-white rounded-xl border border-dashed border-gray-200 overflow-visible">
           <div className="flex items-center gap-2 px-4 py-2.5">
             <Plus className="w-4 h-4 text-gray-300 shrink-0" />
             <input
@@ -552,9 +577,27 @@ export default function TasksPage() {
 
               {/* Name + Project */}
               <div className="flex-1 min-w-0">
-                <p className={`text-sm font-medium truncate ${task.done ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                  {stripRecIds(task.name)}
-                </p>
+                {editingName === task.id ? (
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editingNameValue}
+                    onChange={(e) => setEditingNameValue(e.target.value)}
+                    onBlur={() => updateTaskName(task.id, editingNameValue)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') updateTaskName(task.id, editingNameValue)
+                      if (e.key === 'Escape') setEditingName(null)
+                    }}
+                    className="w-full text-sm font-medium text-gray-900 border border-indigo-300 rounded px-1.5 py-0.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                ) : (
+                  <p
+                    className={`text-sm font-medium truncate cursor-text hover:bg-gray-50 rounded px-1 -mx-1 ${task.done ? 'line-through text-gray-400' : 'text-gray-900'}`}
+                    onClick={() => { setEditingName(task.id); setEditingNameValue(stripRecIds(task.name)) }}
+                  >
+                    {stripRecIds(task.name)}
+                  </p>
+                )}
                 {(task.projetName || task.projetRef) && (
                   <p className="text-xs text-gray-400 truncate mt-0.5">
                     {task.projetRef && <span className="font-mono">{task.projetRef}</span>}

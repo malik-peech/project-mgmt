@@ -116,6 +116,7 @@ export async function POST(request: Request) {
     if (body.priority) fields['Priority'] = body.priority
     if (body.type) fields['Type'] = body.type
     if (body.description) fields['Description'] = body.description
+    if (body.assigneManuel) fields['Assigné'] = body.assigneManuel
 
     const record = await createRecord(TABLES.TASKS, fields as any)
 
