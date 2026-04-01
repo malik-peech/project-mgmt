@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { useData } from '@/hooks/useData'
@@ -34,7 +34,15 @@ const fmt = (n?: number) =>
     ? new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
     : '—'
 
-export default function CogsPage() {
+export default function CogsPageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-6 md:p-8"><div className="animate-pulse space-y-4"><div className="h-8 bg-gray-200 rounded w-48" /><div className="h-96 bg-gray-100 rounded-xl" /></div></div>}>
+      <CogsPage />
+    </Suspense>
+  )
+}
+
+function CogsPage() {
   const { data: session } = useSession()
   const [activeTab, setActiveTab] = useState('Tous')
   const [search, setSearch] = useState('')
