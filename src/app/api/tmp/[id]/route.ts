@@ -1,4 +1,4 @@
-import { readFile, unlink, stat } from 'fs/promises'
+import { readFile, unlink } from 'fs/promises'
 import { join } from 'path'
 
 const TMP_DIR = '/tmp/pm-uploads'
@@ -33,17 +33,21 @@ export async function GET(
       xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     }
 
-    // Schedule cleanup after 5 minutes (let Airtable finish downloading)
+    const contentType = contentTypes[ext] || 'application/octet-stream'
+
+    // Schedule cleanup after 10 minutes (give Airtable plenty of time)
     setTimeout(() => {
       unlink(filePath).catch(() => {})
-    }, 5 * 60 * 1000)
+    }, 10 * 60 * 1000)
 
-    return new Response(data, {
+    // Return raw binary with explicit Uint8Array to avoid any Buffer encoding issues
+    return new Response(new Uint8Array(data), {
       status: 200,
       headers: {
-        'Content-Type': contentTypes[ext] || 'application/octet-stream',
+        'Content-Type': contentType,
         'Content-Length': String(data.length),
-        'Cache-Control': 'no-cache',
+        'Content-Disposition': `inline; filename="${id}"`,
+        'Cache-Control': 'no-cache, no-store',
       },
     })
   } catch {

@@ -175,16 +175,19 @@ export default function CogsPage() {
         console.error('Upload failed:', err)
         throw new Error(err)
       }
-      // Wait a bit for Airtable to process, then refresh
-      await new Promise((r) => setTimeout(r, 2000))
+      // Wait for Airtable to download and process the file, then force server-side store refresh
+      await new Promise((r) => setTimeout(r, 4000))
+      await fetch('/api/admin/refresh', { method: 'POST' })
       await revalidateCogs()
-      // Update selectedCog with fresh data from the revalidated list
+      // Update selectedCog with fresh data
       const cogId = selectedCog.id
-      mutateCogs((prev) => {
-        const fresh = prev?.find((c) => c.id === cogId)
-        if (fresh) setSelectedCog({ ...fresh })
-        return prev
-      })
+      setTimeout(() => {
+        mutateCogs((prev) => {
+          const fresh = prev?.find((c) => c.id === cogId)
+          if (fresh) setSelectedCog({ ...fresh })
+          return prev
+        })
+      }, 100)
     } finally {
       setUploadingCog(false)
     }
