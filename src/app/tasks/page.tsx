@@ -89,7 +89,8 @@ export default function TasksPage() {
   const [activeTab, setActiveTab] = useState<'todo' | 'done'>('todo')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState('all')
-  const [scopeFilter, setScopeFilter] = useState<'all' | 'myProjects' | 'myTasks'>('all')
+  const [scopeFilter, setScopeFilter] = useState<'myProjects' | 'myTasks'>('myProjects')
+  const [specificDate, setSpecificDate] = useState('')
 
   // Apply URL filter param on mount (e.g. /tasks?filter=overdue)
   useEffect(() => {
@@ -354,8 +355,6 @@ export default function TasksPage() {
     } catch {} finally { setInlineCreating(false) }
   }
 
-  // Apply filters
-  const displayedTasks = activeTab === 'todo' ? todoList : doneList
   // Set of project IDs where the current user is PM or DA
   const myProjetIds = useMemo(() => {
     const ids = new Set<string>()
@@ -365,14 +364,32 @@ export default function TasksPage() {
     return ids
   }, [projetList, userName])
 
+  // Apply scope filter to both todo and done lists for accurate counts
+  const scopedTodo = useMemo(() => {
+    if (scopeFilter === 'myTasks') return todoList.filter((t) => t.assigneManuel === userName)
+    return todoList.filter((t) => t.projetId && myProjetIds.has(t.projetId))
+  }, [todoList, scopeFilter, myProjetIds, userName])
+
+  const scopedDone = useMemo(() => {
+    if (scopeFilter === 'myTasks') return doneList.filter((t) => t.assigneManuel === userName)
+    return doneList.filter((t) => t.projetId && myProjetIds.has(t.projetId))
+  }, [doneList, scopeFilter, myProjetIds, userName])
+
+  // Count overdue tasks in scoped todo
+  const overdueCount = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    return scopedTodo.filter((t) => {
+      if (!t.dueDate) return false
+      const d = new Date(t.dueDate + 'T00:00:00'); d.setHours(0, 0, 0, 0)
+      return d < today
+    }).length
+  }, [scopedTodo])
+
+  // Apply filters
+  const displayedTasks = activeTab === 'todo' ? scopedTodo : scopedDone
+
   const filteredTasks = useMemo(() => {
     let list = displayedTasks
-    // Scope filter: mes projets / mes tasks
-    if (scopeFilter === 'myProjects') {
-      list = list.filter((t) => t.projetId && myProjetIds.has(t.projetId))
-    } else if (scopeFilter === 'myTasks') {
-      list = list.filter((t) => t.assigneManuel === userName)
-    }
     if (typeFilter !== 'all') list = list.filter((t) => t.type === typeFilter)
     if (projetFilter) list = list.filter((t) => t.projetId === projetFilter)
     if (search.trim()) {
@@ -384,14 +401,16 @@ export default function TasksPage() {
         t.projetRef?.toLowerCase().includes(q)
       )
     }
-    if (dateFilter !== 'all') {
+    if (specificDate) {
+      list = list.filter((t) => t.dueDate === specificDate)
+    } else if (dateFilter !== 'all') {
       const today = new Date(); today.setHours(0, 0, 0, 0)
       const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1)
       const endOfWeek = new Date(today); endOfWeek.setDate(today.getDate() + (7 - today.getDay()))
       list = list.filter((t) => {
         if (dateFilter === 'nodate') return !t.dueDate
         if (!t.dueDate) return false
-        const d = new Date(t.dueDate); d.setHours(0, 0, 0, 0)
+        const d = new Date(t.dueDate + 'T00:00:00'); d.setHours(0, 0, 0, 0)
         if (dateFilter === 'overdue') return d < today
         if (dateFilter === 'today') return d.getTime() === today.getTime()
         if (dateFilter === 'tomorrow') return d.getTime() === tomorrow.getTime()
@@ -400,7 +419,7 @@ export default function TasksPage() {
       })
     }
     return list
-  }, [displayedTasks, typeFilter, projetFilter, search, dateFilter, scopeFilter, myProjetIds, userName])
+  }, [displayedTasks, typeFilter, projetFilter, search, dateFilter, specificDate, scopeFilter, myProjetIds, userName])
 
   return (
     <div className="p-6 md:p-8 max-w-5xl mx-auto">
@@ -409,7 +428,7 @@ export default function TasksPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {todoList.length} tâche{todoList.length !== 1 ? 's' : ''} en cours
+            {scopedTodo.length} tâche{scopedTodo.length !== 1 ? 's' : ''} en cours
           </p>
         </div>
         <button
@@ -440,15 +459,25 @@ export default function TasksPage() {
 
         {/* Filter row */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Todo/Done toggle */}
+          {/* Todo/Done/Overdue toggle */}
           <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
             <button
-              onClick={() => setActiveTab('todo')}
+              onClick={() => { setActiveTab('todo'); setDateFilter('all') }}
               className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                activeTab === 'todo' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                activeTab === 'todo' && dateFilter !== 'overdue' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              A faire ({todoList.length})
+              A faire ({scopedTodo.length})
+            </button>
+            <button
+              onClick={() => { setActiveTab('todo'); setDateFilter('overdue') }}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'todo' && dateFilter === 'overdue'
+                  ? 'bg-white text-red-600 shadow-sm'
+                  : overdueCount > 0 ? 'text-red-500 hover:text-red-700' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              En retard ({overdueCount})
             </button>
             <button
               onClick={() => setActiveTab('done')}
@@ -456,20 +485,12 @@ export default function TasksPage() {
                 activeTab === 'done' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              Terminées ({doneList.length})
+              Terminées ({scopedDone.length})
             </button>
           </div>
 
           {/* Scope filter: Mes projets / Mes tasks */}
           <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
-            <button
-              onClick={() => setScopeFilter('all')}
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                scopeFilter === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Tout
-            </button>
             <button
               onClick={() => setScopeFilter('myProjects')}
               className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
@@ -501,13 +522,13 @@ export default function TasksPage() {
           </div>
 
           {/* Date filter pills */}
-          <div className="flex gap-1 flex-wrap">
+          <div className="flex gap-1 flex-wrap items-center">
             {DATE_FILTERS.map((f) => (
               <button
                 key={f.value}
-                onClick={() => setDateFilter(f.value)}
+                onClick={() => { setDateFilter(f.value); setSpecificDate('') }}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
-                  dateFilter === f.value
+                  dateFilter === f.value && !specificDate
                     ? 'bg-indigo-100 text-indigo-700'
                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 }`}
@@ -515,6 +536,16 @@ export default function TasksPage() {
                 {f.label}
               </button>
             ))}
+            {/* Specific date picker */}
+            <div className="w-36">
+              <DatePicker
+                value={specificDate}
+                onChange={(v) => { setSpecificDate(v); if (v) setDateFilter('all') }}
+                placeholder="Date..."
+                clearable
+                size="sm"
+              />
+            </div>
           </div>
 
           {/* Type filter */}
