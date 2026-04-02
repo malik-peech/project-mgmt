@@ -53,14 +53,23 @@ const fmt = (n?: number) =>
 
 const statutTabs: (StatutProjet | 'Tous')[] = ['Tous', 'En cours', 'Finalisation', 'Stand-by']
 
+/** Parse a YYYY-MM-DD date string as local time (avoids UTC timezone shift) */
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
 function isOverdue(dateStr?: string) {
   if (!dateStr) return false
-  return new Date(dateStr) < new Date(new Date().toDateString())
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  return parseLocalDate(dateStr) < today
 }
 
 function isToday(dateStr?: string) {
   if (!dateStr) return false
-  return new Date(dateStr).toDateString() === new Date().toDateString()
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const d = parseLocalDate(dateStr)
+  return d.getTime() === today.getTime()
 }
 
 function getInitials(name?: string) {
@@ -70,7 +79,7 @@ function getInitials(name?: string) {
 
 function formatDate(dateStr?: string) {
   if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  return parseLocalDate(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
 type SortField = 'ref' | 'clientName' | 'nom' | 'agence' | 'bu' | 'phase' | 'statut' | 'nextTask' | 'nextTaskDate'

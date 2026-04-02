@@ -60,6 +60,17 @@ const TYPE_OPTIONS: TaskType[] = [
 const priorityComboOptions = PRIORITY_OPTIONS.map((p) => ({ value: p, label: p }))
 const typeComboOptions = TYPE_OPTIONS.map((t) => ({ value: t, label: t }))
 
+/** Parse a YYYY-MM-DD date string as local time (avoids UTC timezone shift) */
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function formatTaskDate(dateStr?: string): string {
+  if (!dateStr) return 'Date'
+  return parseLocalDate(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+}
+
 function getPriorityColor(priority?: string): string {
   if (!priority) return 'bg-gray-100 text-gray-500'
   return PRIORITY_COLORS[priority] ?? 'bg-gray-100 text-gray-500'
@@ -846,7 +857,7 @@ export default function TasksPage() {
                   className={`hidden sm:inline-flex items-center gap-1 shrink-0 text-xs hover:bg-gray-100 px-1.5 py-0.5 rounded transition ${
                     !task.dueDate ? 'text-gray-400' : (() => {
                       const today = new Date(); today.setHours(0,0,0,0)
-                      const due = new Date(task.dueDate!); due.setHours(0,0,0,0)
+                      const due = parseLocalDate(task.dueDate!)
                       if (due < today) return 'text-amber-600 font-medium'
                       if (due.getTime() === today.getTime()) return 'text-orange-500 font-medium'
                       return 'text-gray-500'
@@ -854,9 +865,7 @@ export default function TasksPage() {
                   }`}
                   title="Cliquer pour modifier la date"
                 >
-                  {task.dueDate
-                    ? new Date(task.dueDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
-                    : 'Date'}
+                  {formatTaskDate(task.dueDate)}
                 </button>
               )}
 
