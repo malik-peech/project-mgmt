@@ -207,6 +207,12 @@ APP_PASSWORD=peech2024
 - Dynamic Tailwind classes must use **explicit full class strings** (not template interpolation like `bg-${color}-50` which gets purged)
 - Date formatting: always use local date components (getFullYear/getMonth/getDate), never `toISOString().split('T')[0]` (causes timezone J+1 bug)
 - Lookup fields from Airtable always return arrays — access with `[0]`
+- **BU field** on projects: reads `Bu lookup` (lookup field from linked BU table), fallback to `BU`
+- **Assigné** on tasks: auto-filled with logged-in user name on creation (inline + modal)
+- **Overdue count** (Projects page): filters by `assigneManuel === userName` only (not all project tasks)
+- **COGS "À compléter"** condition: `montantEngageProd` + `ressourceName` + `tva` + `qualiteNote` + `qualiteComment` + `facture` must all be filled
+- **COGS panel editable fields**: montantHT, TVA, qualiteNote (stars), qualiteComment, numeroFacture, commentaire
+- **Next task colors** in Projects table: green = today/future, red = overdue, yellow = no task
 - Changelog: add new release at top of `RELEASES` array in `src/app/changelog/page.tsx`, increment version by .01
 
 ## TypeScript Types (src/types/index.ts)
@@ -214,7 +220,7 @@ APP_PASSWORD=peech2024
 ### Key interfaces
 - **Projet**: id, ref, nom, clientName, pm, da, daOfficial, bu, phase, statut, typeProjet, budgets (cogs/time/travel/offre), devisSigne (attachments), taskIds, cogsIds
 - **Task**: id, name, done, projetId, projetRef, clientName, assigneManuel, dueDate, priority, type, pm, description
-- **Cogs**: id, statut, projetId, projetRef, ressourceName, montantEngageProd, facture (attachments), numeroFacture, commentaire
+- **Cogs**: id, statut, projetId, projetRef, ressourceName, montantEngageProd, tva, qualiteNote, qualiteComment, facture (attachments), numeroFacture, commentaire
 - **Ressource**: id, name, email, categorie[], telephone, iban
 - **UserRole**: 'Admin' | 'PM' | 'DA'
 

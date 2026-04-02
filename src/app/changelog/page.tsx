@@ -10,6 +10,22 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.12',
+    date: '03/04/2026',
+    changes: [
+      'Creation de task : assignation automatique a la personne connectee',
+      'Compteur tasks en retard (page Projets) : filtre uniquement par Assigne, plus juste',
+      'COGS volet : Montant HT engage et TVA editables directement',
+      'COGS volet : Qualite (note) sous forme d\'etoiles cliquables (1 a 5)',
+      'COGS volet : Qualite (commentaire) editable',
+      'COGS volet : suppression du champ BDC envoye',
+      'COGS "A completer" : condition basee sur Montant HT, Ressource, TVA, Qualite et Facture',
+      'Projets : next task en vert (aujourd\'hui/futur), rouge (en retard), jaune (aucune task)',
+      'Projets : colonne Date affiche la date de la prochaine task avec code couleur',
+      'Projets : champ BU lit desormais le champ lookup "Bu lookup" d\'Airtable',
+    ],
+  },
+  {
     version: '1.11',
     date: '01/04/2026',
     changes: [
