@@ -70,7 +70,7 @@ export async function GET(request: Request) {
         clientId,
         clientName: clientId ? clientMap.get(clientId) || '' : '',
         agence,
-        bu: str((f['BU'] as unknown[])?.[0]) || str(f['BU']),
+        bu: str((f['Bu lookup'] as unknown[])?.[0]) || str((f['BU'] as unknown[])?.[0]) || str(f['BU']),
         am: str(f['Account Manager (AM)']),
         pm,
         da: str(f['DA']),

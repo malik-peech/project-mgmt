@@ -444,15 +444,14 @@ export default function DashboardPage() {
                       {/* Next task */}
                       <div className="flex items-center min-w-0">
                         {hasNoTask ? (
-                          <div className="flex items-center gap-1 text-amber-600">
+                          <div className="flex items-center gap-1 text-yellow-500">
                             <AlertTriangle className="w-3 h-3 shrink-0" />
                             <span className="text-[11px] font-medium">Aucune task</span>
                           </div>
                         ) : projet.nextTask ? (
-                          <span className={`text-[12px] truncate ${
-                            isOverdue(projet.nextTaskDate) ? 'text-amber-600 font-medium'
-                              : isToday(projet.nextTaskDate) ? 'text-orange-600 font-medium'
-                                : 'text-gray-600'
+                          <span className={`text-[12px] truncate font-medium ${
+                            isOverdue(projet.nextTaskDate) ? 'text-red-600'
+                              : 'text-green-600'
                           }`}>
                             {projet.nextTask}
                           </span>
@@ -462,10 +461,9 @@ export default function DashboardPage() {
                       {/* Date */}
                       <div className="flex items-center">
                         {projet.nextTaskDate ? (
-                          <span className={`text-[11px] tabular-nums ${
-                            isOverdue(projet.nextTaskDate) ? 'text-amber-500 font-medium'
-                              : isToday(projet.nextTaskDate) ? 'text-orange-500 font-medium'
-                                : 'text-gray-400'
+                          <span className={`text-[11px] tabular-nums font-medium ${
+                            isOverdue(projet.nextTaskDate) ? 'text-red-500'
+                              : 'text-green-500'
                           }`}>
                             {formatDate(projet.nextTaskDate)}
                           </span>
