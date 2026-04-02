@@ -27,6 +27,7 @@ export async function GET(request: Request) {
     const store = await ensureStore()
     const { searchParams } = new URL(request.url)
     const pmFilter = searchParams.get('pm')
+    const daFilter = searchParams.get('da')
     const statutFilter = searchParams.get('statut')
 
     // Build client name lookup from store
@@ -45,10 +46,6 @@ export async function GET(request: Request) {
       if (!statut || !activeStatuts.includes(statut)) continue
 
       const pm = f['PM (manual)'] as string | undefined
-      if (pmFilter && pm !== pmFilter) continue
-
-      const clientIds = f['Client link'] as string[] | undefined
-      const clientId = clientIds?.[0]
 
       // Agence and DA (official) are singleSelect → may be {id, name} objects
       const agenceRaw = f['Agence']
@@ -59,6 +56,12 @@ export async function GET(request: Request) {
       const daOfficial = typeof daOfficialRaw === 'object' && daOfficialRaw && 'name' in (daOfficialRaw as Record<string, unknown>)
         ? String((daOfficialRaw as Record<string, unknown>).name)
         : str(daOfficialRaw)
+
+      if (pmFilter && pm !== pmFilter) continue
+      if (daFilter && daOfficial !== daFilter) continue
+
+      const clientIds = f['Client link'] as string[] | undefined
+      const clientId = clientIds?.[0]
 
       projets.push({
         id: r.id,

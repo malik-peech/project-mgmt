@@ -105,7 +105,13 @@ export default function DashboardPage() {
   }, [userRole])
 
   const effectivePm = userRole === 'Admin' && simulatedPm ? simulatedPm : ''
-  const pmParam = userRole !== 'Admin' && userName ? `pm=${encodeURIComponent(userName)}` : effectivePm ? `pm=${encodeURIComponent(effectivePm)}` : ''
+  const pmParam = userRole === 'PM' && userName
+    ? `pm=${encodeURIComponent(userName)}`
+    : userRole === 'DA' && userName
+    ? `da=${encodeURIComponent(userName)}`
+    : effectivePm
+    ? `pm=${encodeURIComponent(effectivePm)}`
+    : ''
 
   const { data: projets, loading, error, revalidate } = useData<Projet[]>(
     session?.user?.name ? `/api/projets?${pmParam}` : null,

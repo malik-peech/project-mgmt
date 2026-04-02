@@ -78,6 +78,7 @@ export async function GET(request: Request) {
     const store = await ensureStore()
     const { searchParams } = new URL(request.url)
     const pmFilter = searchParams.get('pm')
+    const daFilter = searchParams.get('da')
     const statutFilter = searchParams.get('statut')
     const projetId = searchParams.get('projetId')
 
@@ -87,15 +88,34 @@ export async function GET(request: Request) {
     const projetRefMap = buildLookupMap(store.projets, 'Project réf')
     const clientMap = buildLookupMap(store.clients, 'Client')
 
+    // If DA filter, pre-compute the set of project IDs where DA (official) matches
+    let daProjetIds: Set<string> | null = null
+    if (daFilter) {
+      daProjetIds = new Set<string>()
+      for (const p of store.projets.records) {
+        const daRaw = p.fields['DA (official)']
+        const daVal = typeof daRaw === 'object' && daRaw && 'name' in (daRaw as Record<string, unknown>)
+          ? String((daRaw as Record<string, unknown>).name)
+          : (typeof daRaw === 'string' ? daRaw : undefined)
+        if (daVal === daFilter) daProjetIds.add(p.id)
+      }
+    }
+
     const cogs: Cogs[] = []
 
     for (const r of store.cogs.records) {
       const f = r.fields
 
-      // Filter by PM
+      // Filter by PM (manual) — lookup field, returns array
       if (pmFilter) {
-        const pms = f['PM'] as string[] | undefined
+        const pms = f['PM (manual)'] as string[] | undefined
         if (!pms || !pms.some((p) => p === pmFilter)) continue
+      }
+
+      // Filter by DA — match via linked project's DA (official)
+      if (daFilter && daProjetIds) {
+        const projets = f['Projet'] as string[] | undefined
+        if (!projets || !projets.some((pid) => daProjetIds!.has(pid))) continue
       }
 
       // Filter by statut

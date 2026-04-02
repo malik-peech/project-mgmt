@@ -58,10 +58,10 @@ function CogsPage() {
 
   // Modal state
   const [formProjetId, setFormProjetId] = useState('')
+  const [formCategorie, setFormCategorie] = useState('')
   const [formRessourceId, setFormRessourceId] = useState('')
   const [formMontant, setFormMontant] = useState('')
   const [formCommentaire, setFormCommentaire] = useState('')
-  const [ressourceSearch, setRessourceSearch] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; cog: Cogs } | null>(null)
 
@@ -72,7 +72,11 @@ function CogsPage() {
 
   const userName = session?.user?.name || ''
   const userRole = (session?.user as { role?: string })?.role || 'PM'
-  const pmParam = userRole !== 'Admin' && userName ? `pm=${encodeURIComponent(userName)}` : ''
+  const pmParam = userRole === 'PM' && userName
+    ? `pm=${encodeURIComponent(userName)}`
+    : userRole === 'DA' && userName
+    ? `da=${encodeURIComponent(userName)}`
+    : ''
   const ready = !!session?.user?.name
 
   const { data: cogs, mutate: mutateCogs, revalidate: revalidateCogs, loading, error } = useData<Cogs[]>(
@@ -315,16 +319,35 @@ function CogsPage() {
     return list
   }, [cogsList, activeTab, projetFilter, ressourceFilter, categorieFilter, search, sortField, sortDir])
 
+  // All unique categories from resources (for the modal category picker)
+  const allRessourceCategories = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of ressourceList) {
+      if (r.categorie) r.categorie.forEach((c) => set.add(c))
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [ressourceList])
+
+  // Resources filtered by selected category in the modal
   const filteredRessources = useMemo(() => {
-    if (!ressourceSearch) return ressourceList
-    const q = ressourceSearch.toLowerCase()
+    if (!formCategorie) return ressourceList
     return ressourceList.filter(
-      (r) => r.name.toLowerCase().includes(q) || r.email?.toLowerCase().includes(q) || r.categorie?.some((c) => c.toLowerCase().includes(q))
+      (r) => r.categorie?.some((c) => c === formCategorie)
     )
-  }, [ressourceList, ressourceSearch])
+  }, [ressourceList, formCategorie])
+
+  // ComboSelect options for resources in the modal
+  const ressourceComboOptions = useMemo(() =>
+    filteredRessources.map((r) => ({
+      value: r.id,
+      label: r.name,
+      sub: r.categorie?.join(', ') || undefined,
+    })),
+    [filteredRessources]
+  )
 
   const handleSubmit = async () => {
-    if (!formProjetId || !formRessourceId || !formMontant) return
+    if (!formProjetId || !formCategorie || !formRessourceId || !formMontant) return
     setSubmitting(true)
     try {
       const res = await fetch('/api/cogs', {
@@ -347,10 +370,10 @@ function CogsPage() {
 
   const resetForm = () => {
     setFormProjetId('')
+    setFormCategorie('')
     setFormRessourceId('')
     setFormMontant('')
     setFormCommentaire('')
-    setRessourceSearch('')
   }
 
   const openCogPanel = (cog: Cogs) => {
@@ -660,18 +683,22 @@ function CogsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ressource <span className="text-red-500">*</span></label>
-                <div className="relative mb-2">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input type="text" placeholder="Rechercher une ressource..." value={ressourceSearch}
-                    onChange={(e) => setRessourceSearch(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
-                <select value={formRessourceId} onChange={(e) => setFormRessourceId(e.target.value)} size={5}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie <span className="text-red-500">*</span></label>
+                <select value={formCategorie} onChange={(e) => { setFormCategorie(e.target.value); setFormRessourceId('') }}
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="">Sélectionner une ressource</option>
-                  {filteredRessources.map((r) => <option key={r.id} value={r.id}>{r.name}{r.categorie?.length ? ` (${r.categorie.join(', ')})` : ''}</option>)}
+                  <option value="">Sélectionner une catégorie</option>
+                  {allRessourceCategories.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ressource <span className="text-red-500">*</span></label>
+                <ComboSelect
+                  options={ressourceComboOptions}
+                  value={formRessourceId}
+                  onChange={setFormRessourceId}
+                  placeholder={formCategorie ? `Rechercher dans ${formCategorie}...` : 'Sélectionner d\'abord une catégorie'}
+                  clearable
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Montant HT engagé <span className="text-red-500">*</span></label>
@@ -692,7 +719,7 @@ function CogsPage() {
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => { setShowModal(false); resetForm() }}
                 className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Annuler</button>
-              <button onClick={handleSubmit} disabled={!formProjetId || !formRessourceId || !formMontant || submitting}
+              <button onClick={handleSubmit} disabled={!formProjetId || !formCategorie || !formRessourceId || !formMontant || submitting}
                 className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
                 {submitting ? 'Création...' : 'Créer la dépense'}
               </button>
