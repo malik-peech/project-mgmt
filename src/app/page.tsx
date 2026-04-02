@@ -146,10 +146,12 @@ export default function DashboardPage() {
     const today = new Date(); today.setHours(0, 0, 0, 0)
     return allTasks.filter((t) => {
       if (!t.dueDate) return false
+      // Only count tasks assigned to the logged-in user (Admin sees all)
+      if (userRole !== 'Admin' && t.assigneManuel !== userName) return false
       const d = new Date(t.dueDate + 'T00:00:00'); d.setHours(0, 0, 0, 0)
       return d < today
     }).length
-  }, [allTasks])
+  }, [allTasks, userName, userRole])
 
   // Extract unique agences for filter
   const agences = useMemo(() => {

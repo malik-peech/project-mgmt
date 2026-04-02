@@ -318,6 +318,7 @@ export default function TasksPage() {
       if (form.priority) body.priority = form.priority
       if (form.type) body.type = form.type
       if (form.description) body.description = form.description
+      if (userName) body.assigneManuel = userName
       const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -347,6 +348,7 @@ export default function TasksPage() {
       }
       if (inlineType) body.type = inlineType
       if (inlinePriority) body.priority = inlinePriority
+      if (userName) body.assigneManuel = userName
       const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

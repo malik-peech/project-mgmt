@@ -68,6 +68,10 @@ function CogsPage() {
   // Side panel edit state
   const [editNumFacture, setEditNumFacture] = useState('')
   const [editCommentaire, setEditCommentaire] = useState('')
+  const [editMontantHT, setEditMontantHT] = useState('')
+  const [editTva, setEditTva] = useState('')
+  const [editQualiteNote, setEditQualiteNote] = useState<number | null>(null)
+  const [editQualiteComment, setEditQualiteComment] = useState('')
   const [savingCog, setSavingCog] = useState(false)
 
   const userName = session?.user?.name || ''
@@ -205,6 +209,12 @@ function CogsPage() {
       const body: Record<string, unknown> = {}
       if (editNumFacture !== (selectedCog.numeroFacture || '')) body.numeroFacture = editNumFacture
       if (editCommentaire !== (selectedCog.commentaire || '')) body.commentaire = editCommentaire
+      const montantHTNum = editMontantHT !== '' ? parseFloat(editMontantHT) : null
+      if (montantHTNum !== (selectedCog.montantEngageProd ?? null)) body.montantEngageProd = montantHTNum
+      const tvaNum = editTva !== '' ? parseFloat(editTva) : null
+      if (tvaNum !== (selectedCog.tva ?? null)) body.tva = tvaNum
+      if (editQualiteNote !== (selectedCog.qualiteNote ?? null)) body.qualiteNote = editQualiteNote
+      if (editQualiteComment !== (selectedCog.qualiteComment || '')) body.qualiteComment = editQualiteComment
       if (Object.keys(body).length > 0) {
         await fetch(`/api/cogs/${selectedCog.id}`, {
           method: 'PATCH',
@@ -283,7 +293,7 @@ function CogsPage() {
       // "A payer" COGS that are missing required fields
       list = list.filter((c) => {
         if (c.statut !== 'A payer') return false
-        const missing = !c.numeroFacture || c.qualiteNote == null || !c.qualiteComment || !c.methodePaiement || c.tva == null || !c.facture || c.facture.length === 0
+        const missing = !c.montantEngageProd || !c.ressourceName || c.tva == null || c.qualiteNote == null || !c.qualiteComment || !c.facture || c.facture.length === 0
         return missing
       })
     } else if (activeTab !== 'Tous') {
@@ -380,6 +390,10 @@ function CogsPage() {
     setSelectedCog(cog)
     setEditNumFacture(cog.numeroFacture || '')
     setEditCommentaire(cog.commentaire || '')
+    setEditMontantHT(cog.montantEngageProd != null ? String(cog.montantEngageProd) : '')
+    setEditTva(cog.tva != null ? String(cog.tva) : '')
+    setEditQualiteNote(cog.qualiteNote ?? null)
+    setEditQualiteComment(cog.qualiteComment || '')
   }
 
   if (loading && !cogs) {
@@ -637,6 +651,14 @@ function CogsPage() {
             setEditNumFacture={setEditNumFacture}
             editCommentaire={editCommentaire}
             setEditCommentaire={setEditCommentaire}
+            editMontantHT={editMontantHT}
+            setEditMontantHT={setEditMontantHT}
+            editTva={editTva}
+            setEditTva={setEditTva}
+            editQualiteNote={editQualiteNote}
+            setEditQualiteNote={setEditQualiteNote}
+            editQualiteComment={editQualiteComment}
+            setEditQualiteComment={setEditQualiteComment}
             onSave={saveCogEdits}
             saving={savingCog}
             onUpload={handleUpload}
@@ -740,6 +762,14 @@ function CogSidePanel({
   setEditNumFacture,
   editCommentaire,
   setEditCommentaire,
+  editMontantHT,
+  setEditMontantHT,
+  editTva,
+  setEditTva,
+  editQualiteNote,
+  setEditQualiteNote,
+  editQualiteComment,
+  setEditQualiteComment,
   onSave,
   saving,
   onUpload,
@@ -752,6 +782,14 @@ function CogSidePanel({
   setEditNumFacture: (v: string) => void
   editCommentaire: string
   setEditCommentaire: (v: string) => void
+  editMontantHT: string
+  setEditMontantHT: (v: string) => void
+  editTva: string
+  setEditTva: (v: string) => void
+  editQualiteNote: number | null
+  setEditQualiteNote: (v: number | null) => void
+  editQualiteComment: string
+  setEditQualiteComment: (v: string) => void
   onSave: () => void
   saving: boolean
   onUpload: (files: File[]) => Promise<void>
@@ -812,12 +850,18 @@ function CogSidePanel({
         {/* Details */}
         <div className="space-y-4">
           {/* Montants */}
-          <div className="bg-gray-50 rounded-xl p-4">
+          <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+            <div>
+              <label className="block text-[10px] text-gray-400 mb-1">Montant HT engagé</label>
+              <input
+                type="number"
+                value={editMontantHT}
+                onChange={(e) => setEditMontantHT(e.target.value)}
+                placeholder="0"
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              />
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-[10px] text-gray-400 mb-0.5">Montant HT engagé</p>
-                <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantEngageProd)}</p>
-              </div>
               <div>
                 <p className="text-[10px] text-gray-400 mb-0.5">Montant TTC</p>
                 <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantTTC)}</p>
@@ -846,28 +890,8 @@ function CogSidePanel({
               </div>
             )}
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">BDC envoyé</span>
-              <span>{cog.bdcEnvoye ? <Check className="w-4 h-4 text-green-600" /> : <span className="text-gray-300">Non</span>}</span>
-            </div>
-            <div className="flex justify-between text-sm">
               <span className="text-gray-500">Méthode paiement</span>
               <span className="text-gray-700">{cog.methodePaiement || <span className="text-amber-500 text-xs">Non renseigné</span>}</span>
-            </div>
-            {cog.qualiteNote != null && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Qualité (note)</span>
-                <span className="font-medium text-gray-700">{cog.qualiteNote}/5</span>
-              </div>
-            )}
-            {cog.qualiteComment && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Qualité</span>
-                <span className="text-gray-700 text-right max-w-[200px]">{cog.qualiteComment}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">TVA</span>
-              <span className="text-gray-700">{cog.tva != null ? `${cog.tva}%` : <span className="text-amber-500 text-xs">Non renseigné</span>}</span>
             </div>
             {cog.createdAt && (
               <div className="flex justify-between text-sm">
@@ -875,6 +899,50 @@ function CogSidePanel({
                 <span className="text-gray-700">{new Date(cog.createdAt).toLocaleDateString('fr-FR')}</span>
               </div>
             )}
+          </div>
+
+          {/* TVA */}
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">TVA (%)</label>
+            <input
+              type="number"
+              value={editTva}
+              onChange={(e) => setEditTva(e.target.value)}
+              placeholder="Ex: 20"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          {/* Qualité (note) — étoiles */}
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Qualité (note)</label>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setEditQualiteNote(editQualiteNote === star ? null : star)}
+                  className={`text-2xl transition ${editQualiteNote != null && star <= editQualiteNote ? 'text-amber-400' : 'text-gray-200 hover:text-amber-300'}`}
+                >
+                  ★
+                </button>
+              ))}
+              {editQualiteNote != null && (
+                <span className="ml-2 text-sm text-gray-500 self-center">{editQualiteNote}/5</span>
+              )}
+            </div>
+          </div>
+
+          {/* Qualité (commentaire) */}
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Qualité (commentaire)</label>
+            <textarea
+              value={editQualiteComment}
+              onChange={(e) => setEditQualiteComment(e.target.value)}
+              rows={2}
+              placeholder="Appréciation sur la prestation..."
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+            />
           </div>
 
           {/* Facture (attachment) */}
@@ -976,7 +1044,14 @@ function CogSidePanel({
           </div>
 
           {/* Save button */}
-          {(editNumFacture !== (cog.numeroFacture || '') || editCommentaire !== (cog.commentaire || '')) && (
+          {(
+            editNumFacture !== (cog.numeroFacture || '') ||
+            editCommentaire !== (cog.commentaire || '') ||
+            editMontantHT !== (cog.montantEngageProd != null ? String(cog.montantEngageProd) : '') ||
+            editTva !== (cog.tva != null ? String(cog.tva) : '') ||
+            editQualiteNote !== (cog.qualiteNote ?? null) ||
+            editQualiteComment !== (cog.qualiteComment || '')
+          ) && (
             <button
               onClick={onSave}
               disabled={saving}

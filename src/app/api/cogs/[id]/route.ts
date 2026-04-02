@@ -13,6 +13,9 @@ export async function PATCH(
     const fields: Record<string, unknown> = {}
     if (body.statut !== undefined) fields['Statut de la dépense'] = body.statut
     if (body.montantEngageProd !== undefined) fields['Montant HT engagé (prod)'] = body.montantEngageProd
+    if (body.tva !== undefined) fields['TVA'] = body.tva
+    if (body.qualiteNote !== undefined) fields['Qualité (note)'] = body.qualiteNote
+    if (body.qualiteComment !== undefined) fields['Qualité (comment)'] = body.qualiteComment
     if (body.bdcEnvoye !== undefined) fields['BDC envoyé'] = body.bdcEnvoye
     if (body.commentaire !== undefined) fields['Commentaire COGS'] = body.commentaire
     if (body.numeroFacture !== undefined) fields['Numéro de facture'] = body.numeroFacture
