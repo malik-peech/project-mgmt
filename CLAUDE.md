@@ -128,19 +128,23 @@ src/
 
 ### 1. Projects (`src/app/page.tsx`)
 - Compact list view with search bar and statut tabs
-- Columns: Code, Client, Projet, Phase, Statut, BU, Next Task, Date
+- Columns: Code, Client, Projet, Phase, Statut, BU, Next Task, Date (prochaine task)
+- Next task colors: **vert** = aujourd'hui ou futur, **rouge** = en retard, **jaune** = aucune task
+- BU column: reads `Bu lookup` field (lookup from linked BU table)
+- Overdue count badge: filters by `assigneManuel === userName` (not all project tasks)
 - Sliding side panel (480px) with: team, budget, devis signe (PJ), task list with inline creation, COGS list with status coloring
 - Marking a task done triggers ForceNewTaskModal
 
 ### 2. Tasks (`src/app/tasks/page.tsx`)
 - **Tabs**: A faire (count) / En retard (count, red) / Terminées (count)
-- **Scope toggle**: "Mes projets" / "Mes tasks"
+- **Scope toggle**: "Mes projets" (tasks des projets du user) / "Mes tasks" (tasks où Assigné = user)
 - **Filters**: type pills, date pills (overdue/today/week/no date/specific date), project dropdown
 - **Views**: List view (default) / Calendar view (week/month)
-- Inline task creation bar (auto-assigns project if filtered)
-- Inline date editing (click on date), inline name editing
+- Inline task creation bar: auto-assign `Assigné` = utilisateur connecté, auto-assign projet si filtré
+- Inline date editing (click on date via DatePicker), inline name editing
 - Right-click context menu: duplicate/delete
 - Marking done triggers ForceNewTaskModal (only if no remaining tasks on project)
+- Visibility logic: task remonte si PM du projet = user, OU DA du projet = user, OU `Assigné` = user
 
 ### 3. Tasks Calendar (`src/components/TaskCalendarView.tsx`)
 - **Week view**: 5-column grid (Mon-Fri), min-h-400px cells, scrollable, up to 50 tasks visible
@@ -155,7 +159,8 @@ src/
 ### 4. COGS (`src/app/cogs/page.tsx`)
 - Table with search bar, statut pill tabs, project/resource/category filters
 - Click on row opens side panel with full details
-- Side panel: montants, resource info, facture attachment, editable N° facture + commentaire
+- Side panel editable fields: Montant HT engagé, TVA, Qualité note (étoiles 1-5), Qualité commentaire, N° facture, Commentaire
+- "À compléter" tab: COGS avec statut "A payer" mais champs incomplets (montantHT + ressource + TVA + qualiteNote + qualiteComment + facture)
 - Right-click context menu: duplicate/delete
 - New expense modal with resource search
 
@@ -205,7 +210,7 @@ APP_PASSWORD=peech2024
 - Always use `sanitize()` wrapper on API JSON responses
 - Use `str()` and `num()` helpers when mapping Airtable fields to handle `{specialValue}` objects
 - Dynamic Tailwind classes must use **explicit full class strings** (not template interpolation like `bg-${color}-50` which gets purged)
-- Date formatting: always use local date components (getFullYear/getMonth/getDate), never `toISOString().split('T')[0]` (causes timezone J+1 bug)
+- **Date formatting**: ALWAYS use `parseLocalDate(dateStr)` helper — never `new Date("YYYY-MM-DD")` which parses as UTC and causes J-1 display bug in UTC+1/+2. `parseLocalDate` splits the string and calls `new Date(y, m-1, d)` (local time). Defined in `page.tsx` and `tasks/page.tsx`.
 - Lookup fields from Airtable always return arrays — access with `[0]`
 - **BU field** on projects: reads `Bu lookup` (lookup field from linked BU table), fallback to `BU`
 - **Assigné** on tasks: auto-filled with logged-in user name on creation (inline + modal)
