@@ -62,13 +62,17 @@ const typeComboOptions = TYPE_OPTIONS.map((t) => ({ value: t, label: t }))
 
 /** Parse a YYYY-MM-DD date string as local time (avoids UTC timezone shift) */
 function parseLocalDate(dateStr: string): Date {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  return new Date(y, m - 1, d)
+  // Take only the YYYY-MM-DD part (ignores time component if present)
+  const parts = dateStr.substring(0, 10).split('-').map(Number)
+  if (parts.length < 3 || parts.some(isNaN)) return new Date(NaN)
+  return new Date(parts[0], parts[1] - 1, parts[2])
 }
 
 function formatTaskDate(dateStr?: string): string {
   if (!dateStr) return 'Date'
-  return parseLocalDate(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  const d = parseLocalDate(dateStr)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
 function getPriorityColor(priority?: string): string {
