@@ -72,6 +72,7 @@ function CogsPage() {
   const [editTva, setEditTva] = useState('')
   const [editQualiteNote, setEditQualiteNote] = useState<number | null>(null)
   const [editQualiteComment, setEditQualiteComment] = useState('')
+  const [editRessourceId, setEditRessourceId] = useState('')
   const [savingCog, setSavingCog] = useState(false)
 
   const userName = session?.user?.name || ''
@@ -94,8 +95,8 @@ function CogsPage() {
   )
 
   const { data: ressources } = useData<Ressource[]>(
-    showModal ? '/api/ressources' : null,
-    { key: 'ressources-all', enabled: showModal, staleTime: 60_000 }
+    ready ? '/api/ressources' : null,
+    { key: 'ressources-all', enabled: ready, staleTime: 60_000 }
   )
 
   const cogsList = cogs ?? []
@@ -215,6 +216,7 @@ function CogsPage() {
       if (tvaNum !== (selectedCog.tva ?? null)) body.tva = tvaNum
       if (editQualiteNote !== (selectedCog.qualiteNote ?? null)) body.qualiteNote = editQualiteNote
       if (editQualiteComment !== (selectedCog.qualiteComment || '')) body.qualiteComment = editQualiteComment
+      if (editRessourceId !== (selectedCog.ressourceId || '')) body.ressourceId = editRessourceId || null
       if (Object.keys(body).length > 0) {
         await fetch(`/api/cogs/${selectedCog.id}`, {
           method: 'PATCH',
@@ -357,7 +359,7 @@ function CogsPage() {
   )
 
   const handleSubmit = async () => {
-    if (!formProjetId || !formCategorie || !formRessourceId || !formMontant) return
+    if (!formProjetId || !formCategorie || !formMontant) return
     setSubmitting(true)
     try {
       const res = await fetch('/api/cogs', {
@@ -365,7 +367,7 @@ function CogsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projetId: formProjetId,
-          ressourceId: formRessourceId,
+          ressourceId: formRessourceId || undefined,
           montantEngageProd: parseFloat(formMontant),
           commentaire: formCommentaire || undefined,
         }),
@@ -394,6 +396,7 @@ function CogsPage() {
     setEditTva(cog.tva != null ? String(cog.tva) : '')
     setEditQualiteNote(cog.qualiteNote ?? null)
     setEditQualiteComment(cog.qualiteComment || '')
+    setEditRessourceId(cog.ressourceId || '')
   }
 
   if (loading && !cogs) {
@@ -659,6 +662,9 @@ function CogsPage() {
             setEditQualiteNote={setEditQualiteNote}
             editQualiteComment={editQualiteComment}
             setEditQualiteComment={setEditQualiteComment}
+            editRessourceId={editRessourceId}
+            setEditRessourceId={setEditRessourceId}
+            ressourceList={ressourceList}
             onSave={saveCogEdits}
             saving={savingCog}
             onUpload={handleUpload}
@@ -713,7 +719,7 @@ function CogsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ressource <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ressource</label>
                 <ComboSelect
                   options={ressourceComboOptions}
                   value={formRessourceId}
@@ -741,7 +747,7 @@ function CogsPage() {
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => { setShowModal(false); resetForm() }}
                 className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Annuler</button>
-              <button onClick={handleSubmit} disabled={!formProjetId || !formCategorie || !formRessourceId || !formMontant || submitting}
+              <button onClick={handleSubmit} disabled={!formProjetId || !formCategorie || !formMontant || submitting}
                 className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
                 {submitting ? 'Création...' : 'Créer la dépense'}
               </button>
@@ -770,6 +776,9 @@ function CogSidePanel({
   setEditQualiteNote,
   editQualiteComment,
   setEditQualiteComment,
+  editRessourceId,
+  setEditRessourceId,
+  ressourceList,
   onSave,
   saving,
   onUpload,
@@ -790,6 +799,9 @@ function CogSidePanel({
   setEditQualiteNote: (v: number | null) => void
   editQualiteComment: string
   setEditQualiteComment: (v: string) => void
+  editRessourceId: string
+  setEditRessourceId: (v: string) => void
+  ressourceList: Ressource[]
   onSave: () => void
   saving: boolean
   onUpload: (files: File[]) => Promise<void>
@@ -800,6 +812,15 @@ function CogSidePanel({
   const [dragging, setDragging] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const panelRessourceOptions = useMemo(() =>
+    ressourceList.map((r) => ({
+      value: r.id,
+      label: r.name,
+      sub: r.categorie?.join(', ') || undefined,
+    })),
+    [ressourceList]
+  )
 
   const doUpload = async (files: File[]) => {
     setUploadError(null)
@@ -849,6 +870,18 @@ function CogSidePanel({
 
         {/* Details */}
         <div className="space-y-4">
+          {/* Ressource */}
+          <div>
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Ressource</label>
+            <ComboSelect
+              options={panelRessourceOptions}
+              value={editRessourceId}
+              onChange={setEditRessourceId}
+              placeholder="Sélectionner une ressource..."
+              clearable
+            />
+          </div>
+
           {/* Montants */}
           <div className="bg-gray-50 rounded-xl p-4 space-y-3">
             <div>

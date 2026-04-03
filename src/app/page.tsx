@@ -518,6 +518,7 @@ export default function DashboardPage() {
             onTasksChanged={revalidate}
             pmOptions={pmOptions}
             daOptions={daOptions}
+            userName={userName}
           />
         )}
       </div>
@@ -535,6 +536,7 @@ function SidePanel({
   onTasksChanged,
   pmOptions,
   daOptions,
+  userName,
 }: {
   projet: Projet
   onClose: () => void
@@ -543,6 +545,7 @@ function SidePanel({
   onTasksChanged: () => void
   pmOptions: string[]
   daOptions: string[]
+  userName: string
 }) {
   const [showForceTask, setShowForceTask] = useState<{ projetId: string; projetName: string; projetRef?: string; clientName?: string } | null>(null)
   const [inlineTaskName, setInlineTaskName] = useState('')
@@ -614,6 +617,8 @@ function SidePanel({
         name: inlineTaskName,
         projetId: projet.id,
       }
+      // Auto-assign to logged-in user
+      if (userName) body.assigneManuel = userName
       // Default to today if no date specified
       if (inlineTaskDate) {
         body.dueDate = inlineTaskDate

@@ -20,6 +20,7 @@ export async function PATCH(
     if (body.commentaire !== undefined) fields['Commentaire COGS'] = body.commentaire
     if (body.numeroFacture !== undefined) fields['Numéro de facture'] = body.numeroFacture
     if (body.okPourPaiement !== undefined) fields['OK pour paiement'] = body.okPourPaiement
+    if (body.ressourceId !== undefined) fields['Ressource'] = body.ressourceId ? [body.ressourceId] : null
 
     // Handle attachment deletion: remove one attachment by index
     if (body.removeAttachmentIndex !== undefined) {
