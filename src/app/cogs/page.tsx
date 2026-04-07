@@ -601,7 +601,6 @@ function CogsPage() {
           ) : activeTab === 'À autoriser' ? (
             <AutoriserTable
               rows={filtered}
-              allCogs={cogsList}
               expandedProjetId={expandedProjetId}
               setExpandedProjetId={setExpandedProjetId}
               onUpdateField={updateCogField}
@@ -827,101 +826,56 @@ function CogsPage() {
 
 /* ─── À autoriser Table (admin) ─── */
 
-const isToAuthorize = (c: Cogs): boolean => {
-  if (c.statut === 'Payée' || c.statut === 'Annulée') return false
-  const n = (c.numeroCommande || '').trim()
-  return n === '0' || n === ''
+type AutoriserGroup = {
+  key: string
+  projetId?: string
+  projetRef?: string
+  projetName?: string
+  clientName?: string
+  pm?: string
+  montantBudgeteSales?: number
+  totalEngage: number
+  cogs: Cogs[]
 }
 
 function AutoriserTable({
   rows,
-  allCogs,
   expandedProjetId,
   setExpandedProjetId,
   onUpdateField,
 }: {
   rows: Cogs[]
-  allCogs: Cogs[]
   expandedProjetId: string | null
   setExpandedProjetId: (id: string | null) => void
   onUpdateField: (cogId: string, body: Record<string, unknown>) => Promise<void>
 }) {
   const [viewer, setViewer] = useState<{ url: string; filename: string } | null>(null)
 
-  const renderRow = (c: Cogs, opts: { isChild?: boolean; hasSiblings?: boolean; isExpanded?: boolean; onToggle?: () => void }) => {
-    const { isChild = false, hasSiblings = false, isExpanded = false, onToggle } = opts
-    return (
-      <tr
-        key={c.id}
-        className={`group transition ${isChild ? 'bg-indigo-50/20 hover:bg-indigo-50/40' : 'hover:bg-gray-50/50 cursor-pointer'}`}
-        onClick={!isChild && onToggle ? onToggle : undefined}
-      >
-        <td className="w-7 px-2 py-1.5 text-gray-400 align-middle">
-          {!isChild && hasSiblings ? (
-            isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />
-          ) : isChild ? (
-            <span className="inline-block w-3.5 h-3.5 border-l-2 border-b-2 border-indigo-200 ml-1 rounded-bl" />
-          ) : null}
-        </td>
-        <td className={`px-2 py-1.5 ${isChild ? 'pl-6' : ''}`}>
-          <div className="flex items-center gap-1.5">
-            {c.projetRef && <span className="text-[11px] font-mono text-gray-500">{c.projetRef}</span>}
-            <span className="text-xs text-gray-900 truncate max-w-[160px]">{c.projetName || '—'}</span>
-          </div>
-        </td>
-        <td className="px-2 py-1.5 text-gray-700 text-xs truncate max-w-[120px]">{c.clientName || '—'}</td>
-        <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
-          <input
-            type="number"
-            step="0.01"
-            defaultValue={c.autorisationVanessa ?? ''}
-            onBlur={(e) => {
-              const raw = e.target.value.trim()
-              const parsed = raw === '' ? null : Number(raw)
-              const next = parsed === null || isNaN(parsed) ? null : parsed
-              const current = c.autorisationVanessa ?? null
-              if (next !== current) onUpdateField(c.id, { autorisationVanessa: next })
-            }}
-            placeholder="…"
-            className="w-20 text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-          />
-        </td>
-        <td className="px-2 py-1.5 text-gray-700 text-xs truncate max-w-[100px]">{c.pm || '—'}</td>
-        <td className="px-2 py-1.5 text-right text-xs text-gray-500 tabular-nums">{fmt(c.montantBudgeteSales)}</td>
-        <td className="px-2 py-1.5 text-right text-xs font-medium text-gray-900 tabular-nums">{fmt(c.montantEngageProd)}</td>
-        <td className="px-2 py-1.5 text-gray-700 text-xs truncate max-w-[120px]">{c.ressourceName || '—'}</td>
-        <td className="px-2 py-1.5">
-          {c.facture && c.facture.length > 0 ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                setViewer({ url: c.facture![0].url, filename: c.facture![0].filename })
-              }}
-              className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline"
-              title={c.facture[0].filename}
-            >
-              <FileText className="w-3 h-3" />
-              <span className="truncate max-w-[80px]">{c.facture[0].filename}</span>
-            </button>
-          ) : (
-            <span className="text-[11px] text-gray-300">—</span>
-          )}
-        </td>
-        <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
-          <select
-            value={c.statut || ''}
-            onChange={(e) => onUpdateField(c.id, { statut: e.target.value })}
-            className={`text-[10px] rounded-full px-1.5 py-0.5 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${statutColors[c.statut || ''] || 'bg-gray-50 text-gray-600'}`}
-          >
-            <option value="">—</option>
-            {statutOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </td>
-        <td className="px-2 py-1.5 text-gray-700 text-[11px] truncate max-w-[90px]">{c.methodePaiement || '—'}</td>
-      </tr>
-    )
-  }
+  // Group by project so each project shows a single row, with cogs as children.
+  const groups = useMemo<AutoriserGroup[]>(() => {
+    const map = new Map<string, AutoriserGroup>()
+    for (const c of rows) {
+      const key = c.projetId || `orphan-${c.id}`
+      let g = map.get(key)
+      if (!g) {
+        g = {
+          key,
+          projetId: c.projetId,
+          projetRef: c.projetRef,
+          projetName: c.projetName,
+          clientName: c.clientName,
+          pm: c.pm,
+          montantBudgeteSales: c.montantBudgeteSales,
+          totalEngage: 0,
+          cogs: [],
+        }
+        map.set(key, g)
+      }
+      g.cogs.push(c)
+      g.totalEngage += c.montantEngageProd || 0
+    }
+    return Array.from(map.values())
+  }, [rows])
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -932,10 +886,10 @@ function AutoriserTable({
               <th className="w-7 px-2 py-2" />
               <th className="px-2 py-2 text-left font-medium">Projet</th>
               <th className="px-2 py-2 text-left font-medium">Client</th>
-              <th className="px-2 py-2 text-left font-medium">Autor. Vanessa</th>
               <th className="px-2 py-2 text-left font-medium">PM</th>
               <th className="px-2 py-2 text-right font-medium">HT sales</th>
               <th className="px-2 py-2 text-right font-medium">HT engagé</th>
+              <th className="px-2 py-2 text-left font-medium">Autor. Vanessa</th>
               <th className="px-2 py-2 text-left font-medium">Ressource</th>
               <th className="px-2 py-2 text-left font-medium">Facture</th>
               <th className="px-2 py-2 text-left font-medium">Statut</th>
@@ -943,20 +897,94 @@ function AutoriserTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {rows.map((c) => {
-              const isExpanded = expandedProjetId === c.id
-              const siblingCogs = c.projetId
-                ? allCogs.filter((x) => x.projetId === c.projetId && x.id !== c.id && isToAuthorize(x))
-                : []
-              const hasSiblings = siblingCogs.length > 0
+            {groups.map((g) => {
+              const isExpanded = expandedProjetId === g.key
               return (
-                <Fragment key={c.id}>
-                  {renderRow(c, {
-                    hasSiblings,
-                    isExpanded,
-                    onToggle: () => setExpandedProjetId(isExpanded ? null : c.id),
-                  })}
-                  {isExpanded && siblingCogs.map((s) => renderRow(s, { isChild: true }))}
+                <Fragment key={g.key}>
+                  {/* Parent row: one per project */}
+                  <tr
+                    className="group hover:bg-gray-50/50 transition cursor-pointer"
+                    onClick={() => setExpandedProjetId(isExpanded ? null : g.key)}
+                  >
+                    <td className="w-7 px-2 py-1.5 text-gray-400 align-middle">
+                      {isExpanded
+                        ? <ChevronDown className="w-3.5 h-3.5" />
+                        : <ChevronRight className="w-3.5 h-3.5" />}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex items-center gap-1.5">
+                        {g.projetRef && <span className="text-[11px] font-mono text-gray-500">{g.projetRef}</span>}
+                        <span className="text-xs font-medium text-gray-900 truncate max-w-[200px]">{g.projetName || '—'}</span>
+                        <span className="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-full border border-indigo-100">
+                          {g.cogs.length}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5 text-gray-700 text-xs truncate max-w-[120px]">{g.clientName || '—'}</td>
+                    <td className="px-2 py-1.5 text-gray-700 text-xs truncate max-w-[100px]">{g.pm || '—'}</td>
+                    <td className="px-2 py-1.5 text-right text-xs text-gray-500 tabular-nums">{fmt(g.montantBudgeteSales)}</td>
+                    <td className="px-2 py-1.5 text-right text-xs font-medium text-gray-900 tabular-nums">{fmt(g.totalEngage)}</td>
+                    <td className="px-2 py-1.5" />
+                    <td className="px-2 py-1.5" />
+                    <td className="px-2 py-1.5" />
+                    <td className="px-2 py-1.5" />
+                    <td className="px-2 py-1.5" />
+                  </tr>
+
+                  {/* Child rows: one per cog of the project */}
+                  {isExpanded && g.cogs.map((c) => (
+                    <tr key={c.id} className="bg-indigo-50/20 hover:bg-indigo-50/40 transition">
+                      <td className="w-7 px-2 py-1.5 align-middle">
+                        <span className="inline-block w-3.5 h-3.5 border-l-2 border-b-2 border-indigo-200 ml-1 rounded-bl" />
+                      </td>
+                      <td className="px-2 py-1.5" colSpan={3} />
+                      <td className="px-2 py-1.5" />
+                      <td className="px-2 py-1.5 text-right text-xs text-gray-700 tabular-nums">{fmt(c.montantEngageProd)}</td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          step="0.01"
+                          defaultValue={c.autorisationVanessa ?? ''}
+                          onBlur={(e) => {
+                            const raw = e.target.value.trim()
+                            const parsed = raw === '' ? null : Number(raw)
+                            const next = parsed === null || isNaN(parsed) ? null : parsed
+                            const current = c.autorisationVanessa ?? null
+                            if (next !== current) onUpdateField(c.id, { autorisationVanessa: next })
+                          }}
+                          placeholder="…"
+                          className="w-20 text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5 text-gray-700 text-xs truncate max-w-[120px]">{c.ressourceName || '—'}</td>
+                      <td className="px-2 py-1.5">
+                        {c.facture && c.facture.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setViewer({ url: c.facture![0].url, filename: c.facture![0].filename })}
+                            className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline"
+                            title={c.facture[0].filename}
+                          >
+                            <FileText className="w-3 h-3" />
+                            <span className="truncate max-w-[80px]">{c.facture[0].filename}</span>
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-gray-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <select
+                          value={c.statut || ''}
+                          onChange={(e) => onUpdateField(c.id, { statut: e.target.value })}
+                          className={`text-[10px] rounded-full px-1.5 py-0.5 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${statutColors[c.statut || ''] || 'bg-gray-50 text-gray-600'}`}
+                        >
+                          <option value="">—</option>
+                          {statutOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-2 py-1.5 text-gray-700 text-[11px] truncate max-w-[90px]">{c.methodePaiement || '—'}</td>
+                    </tr>
+                  ))}
                 </Fragment>
               )
             })}
