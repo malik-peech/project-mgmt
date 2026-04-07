@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   ListTodo,
   Receipt,
+  Shield,
   Settings,
   Menu,
   X,
@@ -131,19 +132,30 @@ export default function Sidebar() {
         {allNavItems.map(({ href, label, icon: Icon }) => {
           const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href)
           return (
-            <Link
-              key={href}
-              href={href}
-              onClick={() => setMobileOpen(false)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
-                isActive
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-indigo-200 hover:bg-indigo-800 hover:text-white'
-              }`}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {label}
-            </Link>
+            <div key={href}>
+              <Link
+                href={href}
+                onClick={() => setMobileOpen(false)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                  isActive
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-indigo-200 hover:bg-indigo-800 hover:text-white'
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                {label}
+              </Link>
+              {href === '/cogs' && isAdmin && (
+                <Link
+                  href="/cogs?view=a-autoriser"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-2 ml-9 mt-1 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-300 hover:bg-indigo-800 hover:text-white transition"
+                >
+                  <Shield className="w-3.5 h-3.5 shrink-0" />
+                  À autoriser
+                </Link>
+              )}
+            </div>
           )
         })}
       </nav>

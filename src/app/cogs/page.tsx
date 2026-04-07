@@ -136,6 +136,13 @@ function CogsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cogs, searchParams])
 
+  // Activate "À autoriser" view when arriving via ?view=a-autoriser (admin sub-nav link)
+  useEffect(() => {
+    if (searchParams.get('view') === 'a-autoriser' && userRole === 'Admin') {
+      setActiveTab('À autoriser')
+    }
+  }, [searchParams, userRole])
+
   // Unique projects from COGS for filter
   const cogsProjets = useMemo(() => {
     const map = new Map<string, { id: string; ref?: string; name: string; client?: string }>()
@@ -820,6 +827,12 @@ function CogsPage() {
 
 /* ─── À autoriser Table (admin) ─── */
 
+const isToAuthorize = (c: Cogs): boolean => {
+  if (c.statut === 'Payée' || c.statut === 'Annulée') return false
+  const n = (c.numeroCommande || '').trim()
+  return n === '0' || n === ''
+}
+
 function AutoriserTable({
   rows,
   allCogs,
@@ -835,127 +848,115 @@ function AutoriserTable({
 }) {
   const [viewer, setViewer] = useState<{ url: string; filename: string } | null>(null)
 
+  const renderRow = (c: Cogs, opts: { isChild?: boolean; hasSiblings?: boolean; isExpanded?: boolean; onToggle?: () => void }) => {
+    const { isChild = false, hasSiblings = false, isExpanded = false, onToggle } = opts
+    return (
+      <tr
+        key={c.id}
+        className={`group transition ${isChild ? 'bg-indigo-50/20 hover:bg-indigo-50/40' : 'hover:bg-gray-50/50 cursor-pointer'}`}
+        onClick={!isChild && onToggle ? onToggle : undefined}
+      >
+        <td className="w-7 px-2 py-1.5 text-gray-400 align-middle">
+          {!isChild && hasSiblings ? (
+            isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />
+          ) : isChild ? (
+            <span className="inline-block w-3.5 h-3.5 border-l-2 border-b-2 border-indigo-200 ml-1 rounded-bl" />
+          ) : null}
+        </td>
+        <td className={`px-2 py-1.5 ${isChild ? 'pl-6' : ''}`}>
+          <div className="flex items-center gap-1.5">
+            {c.projetRef && <span className="text-[11px] font-mono text-gray-500">{c.projetRef}</span>}
+            <span className="text-xs text-gray-900 truncate max-w-[160px]">{c.projetName || '—'}</span>
+          </div>
+        </td>
+        <td className="px-2 py-1.5 text-gray-700 text-xs truncate max-w-[120px]">{c.clientName || '—'}</td>
+        <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="number"
+            step="0.01"
+            defaultValue={c.autorisationVanessa ?? ''}
+            onBlur={(e) => {
+              const raw = e.target.value.trim()
+              const parsed = raw === '' ? null : Number(raw)
+              const next = parsed === null || isNaN(parsed) ? null : parsed
+              const current = c.autorisationVanessa ?? null
+              if (next !== current) onUpdateField(c.id, { autorisationVanessa: next })
+            }}
+            placeholder="…"
+            className="w-20 text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+          />
+        </td>
+        <td className="px-2 py-1.5 text-gray-700 text-xs truncate max-w-[100px]">{c.pm || '—'}</td>
+        <td className="px-2 py-1.5 text-right text-xs text-gray-500 tabular-nums">{fmt(c.montantBudgeteSales)}</td>
+        <td className="px-2 py-1.5 text-right text-xs font-medium text-gray-900 tabular-nums">{fmt(c.montantEngageProd)}</td>
+        <td className="px-2 py-1.5 text-gray-700 text-xs truncate max-w-[120px]">{c.ressourceName || '—'}</td>
+        <td className="px-2 py-1.5">
+          {c.facture && c.facture.length > 0 ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setViewer({ url: c.facture![0].url, filename: c.facture![0].filename })
+              }}
+              className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline"
+              title={c.facture[0].filename}
+            >
+              <FileText className="w-3 h-3" />
+              <span className="truncate max-w-[80px]">{c.facture[0].filename}</span>
+            </button>
+          ) : (
+            <span className="text-[11px] text-gray-300">—</span>
+          )}
+        </td>
+        <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
+          <select
+            value={c.statut || ''}
+            onChange={(e) => onUpdateField(c.id, { statut: e.target.value })}
+            className={`text-[10px] rounded-full px-1.5 py-0.5 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${statutColors[c.statut || ''] || 'bg-gray-50 text-gray-600'}`}
+          >
+            <option value="">—</option>
+            {statutOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </td>
+        <td className="px-2 py-1.5 text-gray-700 text-[11px] truncate max-w-[90px]">{c.methodePaiement || '—'}</td>
+      </tr>
+    )
+  }
+
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 bg-gray-50/50 text-[11px] uppercase tracking-wider text-gray-500">
-              <th className="w-8 px-2 py-3" />
-              <th className="px-3 py-3 text-left font-medium">Projet</th>
-              <th className="px-3 py-3 text-left font-medium">Client</th>
-              <th className="px-3 py-3 text-left font-medium">PM</th>
-              <th className="px-3 py-3 text-right font-medium">HT sales</th>
-              <th className="px-3 py-3 text-right font-medium">HT engagé</th>
-              <th className="px-3 py-3 text-left font-medium">Ressource</th>
-              <th className="px-3 py-3 text-left font-medium">Facture</th>
-              <th className="px-3 py-3 text-left font-medium">Statut</th>
-              <th className="px-3 py-3 text-left font-medium">Paiement</th>
-              <th className="px-3 py-3 text-left font-medium">Autorisation Vanessa</th>
+            <tr className="border-b border-gray-100 bg-gray-50/50 text-[10px] uppercase tracking-wider text-gray-500">
+              <th className="w-7 px-2 py-2" />
+              <th className="px-2 py-2 text-left font-medium">Projet</th>
+              <th className="px-2 py-2 text-left font-medium">Client</th>
+              <th className="px-2 py-2 text-left font-medium">Autor. Vanessa</th>
+              <th className="px-2 py-2 text-left font-medium">PM</th>
+              <th className="px-2 py-2 text-right font-medium">HT sales</th>
+              <th className="px-2 py-2 text-right font-medium">HT engagé</th>
+              <th className="px-2 py-2 text-left font-medium">Ressource</th>
+              <th className="px-2 py-2 text-left font-medium">Facture</th>
+              <th className="px-2 py-2 text-left font-medium">Statut</th>
+              <th className="px-2 py-2 text-left font-medium">Paiement</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {rows.map((c) => {
-              const isExpanded = expandedProjetId === c.projetId
-              const siblingCogs = isExpanded && c.projetId
-                ? allCogs.filter((x) => x.projetId === c.projetId && x.id !== c.id)
+              const isExpanded = expandedProjetId === c.id
+              const siblingCogs = c.projetId
+                ? allCogs.filter((x) => x.projetId === c.projetId && x.id !== c.id && isToAuthorize(x))
                 : []
+              const hasSiblings = siblingCogs.length > 0
               return (
                 <Fragment key={c.id}>
-                  <tr
-                    className="group hover:bg-gray-50/50 transition cursor-pointer"
-                    onClick={() => setExpandedProjetId(isExpanded ? null : c.projetId || null)}
-                  >
-                    <td className="w-8 px-2 py-3 text-gray-400">
-                      {isExpanded
-                        ? <ChevronDown className="w-4 h-4" />
-                        : <ChevronRight className="w-4 h-4" />}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {c.projetRef && <span className="text-xs font-mono text-gray-500">{c.projetRef}</span>}
-                      </div>
-                      <div className="text-sm text-gray-900 truncate max-w-[200px]">{c.projetName || '—'}</div>
-                    </td>
-                    <td className="px-3 py-3 text-gray-700">{c.clientName || '—'}</td>
-                    <td className="px-3 py-3 text-gray-700">{c.pm || '—'}</td>
-                    <td className="px-3 py-3 text-right font-medium text-gray-500 tabular-nums">{fmt(c.montantBudgeteSales)}</td>
-                    <td className="px-3 py-3 text-right font-medium text-gray-900 tabular-nums">{fmt(c.montantEngageProd)}</td>
-                    <td className="px-3 py-3 text-gray-700 truncate max-w-[140px]">{c.ressourceName || '—'}</td>
-                    <td className="px-3 py-3">
-                      {c.facture && c.facture.length > 0 ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setViewer({ url: c.facture![0].url, filename: c.facture![0].filename })
-                          }}
-                          className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline"
-                          title={c.facture[0].filename}
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                          <span className="truncate max-w-[100px]">{c.facture[0].filename}</span>
-                        </button>
-                      ) : (
-                        <span className="text-xs text-gray-300">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={c.statut || ''}
-                        onChange={(e) => onUpdateField(c.id, { statut: e.target.value })}
-                        className={`text-[11px] rounded-full px-2 py-0.5 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${statutColors[c.statut || ''] || 'bg-gray-50 text-gray-600'}`}
-                      >
-                        <option value="">—</option>
-                        {statutOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-3 text-gray-700 text-xs">{c.methodePaiement || '—'}</td>
-                    <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="number"
-                        step="0.01"
-                        defaultValue={c.autorisationVanessa ?? ''}
-                        onBlur={(e) => {
-                          const raw = e.target.value.trim()
-                          const parsed = raw === '' ? null : Number(raw)
-                          const next = parsed === null || isNaN(parsed) ? null : parsed
-                          const current = c.autorisationVanessa ?? null
-                          if (next !== current) {
-                            onUpdateField(c.id, { autorisationVanessa: next })
-                          }
-                        }}
-                        placeholder="…"
-                        className="w-full text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </td>
-                  </tr>
-                  {isExpanded && siblingCogs.length > 0 && (
-                    <tr className="bg-indigo-50/30">
-                      <td colSpan={11} className="px-6 py-3">
-                        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                          Autres COGS du projet ({siblingCogs.length})
-                        </p>
-                        <div className="space-y-1">
-                          {siblingCogs.map((s) => (
-                            <div key={s.id} className="flex items-center gap-3 text-xs text-gray-700 px-2 py-1 rounded hover:bg-white">
-                              <span className="w-24 truncate text-gray-500">{s.ressourceName || '—'}</span>
-                              <span className="w-24 truncate">{s.categorie || '—'}</span>
-                              <span className="w-20 text-right tabular-nums">{fmt(s.montantEngageProd)}</span>
-                              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${statutColors[s.statut || ''] || 'bg-gray-100 text-gray-600'}`}>
-                                {s.statut || '—'}
-                              </span>
-                              {s.numeroCommande && (
-                                <span className="text-[10px] font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
-                                  {s.numeroCommande}
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
+                  {renderRow(c, {
+                    hasSiblings,
+                    isExpanded,
+                    onToggle: () => setExpandedProjetId(isExpanded ? null : c.id),
+                  })}
+                  {isExpanded && siblingCogs.map((s) => renderRow(s, { isChild: true }))}
                 </Fragment>
               )
             })}
