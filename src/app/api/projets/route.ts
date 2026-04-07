@@ -46,6 +46,11 @@ export async function GET(request: Request) {
       if (!statut || !activeStatuts.includes(statut)) continue
 
       const pm = f['PM (manual)'] as string | undefined
+      // PM2 (manual) is singleSelect → may be {id, name} or string
+      const pm2Raw = f['PM2 (manual)']
+      const pm2 = typeof pm2Raw === 'object' && pm2Raw && 'name' in (pm2Raw as Record<string, unknown>)
+        ? String((pm2Raw as Record<string, unknown>).name)
+        : str(pm2Raw)
 
       // Agence and DA (official) are singleSelect → may be {id, name} objects
       const agenceRaw = f['Agence']
@@ -57,7 +62,8 @@ export async function GET(request: Request) {
         ? String((daOfficialRaw as Record<string, unknown>).name)
         : str(daOfficialRaw)
 
-      if (pmFilter && pm !== pmFilter) continue
+      // PM filter matches either PM (manual) or PM2 (manual)
+      if (pmFilter && pm !== pmFilter && pm2 !== pmFilter) continue
       if (daFilter && daOfficial !== daFilter) continue
 
       const clientIds = f['Client link'] as string[] | undefined
@@ -73,6 +79,7 @@ export async function GET(request: Request) {
         bu: str((f['Bu lookup'] as unknown[])?.[0]) || str((f['BU'] as unknown[])?.[0]) || str(f['BU']),
         am: str(f['Account Manager (AM)']),
         pm,
+        pm2,
         da: str(f['DA']),
         daOfficial,
         pc: str(f['Project Coordinator (PC)']),
@@ -129,7 +136,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json()
-    const { id, pm, daOfficial, phase } = body as { id?: string; pm?: string; daOfficial?: string; phase?: string }
+    const { id, pm, pm2, daOfficial, phase } = body as { id?: string; pm?: string; pm2?: string; daOfficial?: string; phase?: string }
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
@@ -137,6 +144,7 @@ export async function PATCH(request: Request) {
 
     const fields: Record<string, string | null> = {}
     if (pm !== undefined) fields['PM (manual)'] = pm || null
+    if (pm2 !== undefined) fields['PM2 (manual)'] = pm2 || null
     if (daOfficial !== undefined) fields['DA (official)'] = daOfficial || null
     if (phase !== undefined) fields['Phase'] = phase || null
 

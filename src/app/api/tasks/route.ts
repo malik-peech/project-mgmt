@@ -73,18 +73,29 @@ export async function GET(request: Request) {
       // Filter done/not done
       if (wantDone !== isDone) continue
 
-      // Filter by PM (project PM) OR DA (official) on linked project OR assigné manuel
+      // Filter by PM (project PM or PM2) OR DA (official) on linked project OR assigné manuel
       if (pmFilter) {
         const pms = f['PM'] as string[] | undefined
         const assigneManuel = str(f['Assigné'])
         const projetIds = f['Projets'] as string[] | undefined
         const matchesPm = pms?.some((p) => p === pmFilter)
         const matchesAssignee = assigneManuel === pmFilter
-        const matchesDa = projetIds?.some((pid) => {
+        const matchesProjectRole = projetIds?.some((pid) => {
           const proj = store.projets.byId.get(pid)
-          return proj && str(proj.fields['DA (official)']) === pmFilter
+          if (!proj) return false
+          const pf = proj.fields
+          // Check DA (official), PM (manual), PM2 (manual) — all may be singleSelect {id,name}
+          const fieldMatches = (key: string) => {
+            const raw = pf[key]
+            if (typeof raw === 'string') return raw === pmFilter
+            if (typeof raw === 'object' && raw && 'name' in (raw as Record<string, unknown>)) {
+              return String((raw as Record<string, unknown>).name) === pmFilter
+            }
+            return false
+          }
+          return fieldMatches('DA (official)') || fieldMatches('PM (manual)') || fieldMatches('PM2 (manual)')
         })
-        if (!matchesPm && !matchesAssignee && !matchesDa) continue
+        if (!matchesPm && !matchesAssignee && !matchesProjectRole) continue
       }
 
       // Filter by project

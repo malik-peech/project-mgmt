@@ -20,6 +20,7 @@ export interface Projet {
   bu?: string
   am?: string
   pm?: string
+  pm2?: string
   da?: string
   daOfficial?: string
   pc?: string

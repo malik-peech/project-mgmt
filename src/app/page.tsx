@@ -553,23 +553,27 @@ function SidePanel({
   const [viewer, setViewer] = useState<{ url: string; filename: string } | null>(null)
   const [creatingTask, setCreatingTask] = useState(false)
 
-  // Editable PM/DA/Phase state
+  // Editable PM/PM2/DA/Phase state
   const [editingPm, setEditingPm] = useState(false)
+  const [editingPm2, setEditingPm2] = useState(false)
   const [editingDa, setEditingDa] = useState(false)
   const [editingPhase, setEditingPhase] = useState(false)
   const [localPm, setLocalPm] = useState(projet.pm || '')
+  const [localPm2, setLocalPm2] = useState(projet.pm2 || '')
   const [localDa, setLocalDa] = useState(projet.daOfficial || '')
   const [localPhase, setLocalPhase] = useState(projet.phase || '')
 
   // Reset when project changes
   useEffect(() => {
     setLocalPm(projet.pm || '')
+    setLocalPm2(projet.pm2 || '')
     setLocalDa(projet.daOfficial || '')
     setLocalPhase(projet.phase || '')
     setEditingPm(false)
+    setEditingPm2(false)
     setEditingDa(false)
     setEditingPhase(false)
-  }, [projet.id, projet.pm, projet.daOfficial, projet.phase])
+  }, [projet.id, projet.pm, projet.pm2, projet.daOfficial, projet.phase])
 
   // Fetch tasks for this project
   const { data: projectTasks, revalidate: revalidateProjectTasks } = useData<Task[]>(
@@ -642,7 +646,7 @@ function SidePanel({
     }
   }
 
-  const updateProjetField = async (field: 'pm' | 'daOfficial' | 'phase', value: string) => {
+  const updateProjetField = async (field: 'pm' | 'pm2' | 'daOfficial' | 'phase', value: string) => {
     try {
       await fetch('/api/projets', {
         method: 'PATCH',
@@ -658,6 +662,7 @@ function SidePanel({
   // Team members for display
   const teamMembers = [
     { label: 'PM', name: localPm, editing: editingPm, setEditing: setEditingPm, options: pmOptions, onChange: (v: string) => { setLocalPm(v); updateProjetField('pm', v); setEditingPm(false) } },
+    { label: 'PM2', name: localPm2, editing: editingPm2, setEditing: setEditingPm2, options: pmOptions, onChange: (v: string) => { setLocalPm2(v); updateProjetField('pm2', v); setEditingPm2(false) } },
     { label: 'DA', name: localDa, editing: editingDa, setEditing: setEditingDa, options: daOptions, onChange: (v: string) => { setLocalDa(v); updateProjetField('daOfficial', v); setEditingDa(false) } },
   ]
 

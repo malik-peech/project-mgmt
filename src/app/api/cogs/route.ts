@@ -88,16 +88,31 @@ export async function GET(request: Request) {
     const projetRefMap = buildLookupMap(store.projets, 'Project réf')
     const clientMap = buildLookupMap(store.clients, 'Client')
 
+    // Helper: extract singleSelect value (may be string or {id,name})
+    const extractSelect = (raw: unknown): string | undefined => {
+      if (typeof raw === 'string') return raw
+      if (typeof raw === 'object' && raw && 'name' in (raw as Record<string, unknown>)) {
+        return String((raw as Record<string, unknown>).name)
+      }
+      return undefined
+    }
+
     // If DA filter, pre-compute the set of project IDs where DA (official) matches
     let daProjetIds: Set<string> | null = null
     if (daFilter) {
       daProjetIds = new Set<string>()
       for (const p of store.projets.records) {
-        const daRaw = p.fields['DA (official)']
-        const daVal = typeof daRaw === 'object' && daRaw && 'name' in (daRaw as Record<string, unknown>)
-          ? String((daRaw as Record<string, unknown>).name)
-          : (typeof daRaw === 'string' ? daRaw : undefined)
-        if (daVal === daFilter) daProjetIds.add(p.id)
+        if (extractSelect(p.fields['DA (official)']) === daFilter) daProjetIds.add(p.id)
+      }
+    }
+
+    // If PM filter, pre-compute the set of project IDs where PM2 (manual) matches
+    // (the direct PM lookup field on COGS only reflects PM (manual), not PM2)
+    let pm2ProjetIds: Set<string> | null = null
+    if (pmFilter) {
+      pm2ProjetIds = new Set<string>()
+      for (const p of store.projets.records) {
+        if (extractSelect(p.fields['PM2 (manual)']) === pmFilter) pm2ProjetIds.add(p.id)
       }
     }
 
@@ -106,10 +121,13 @@ export async function GET(request: Request) {
     for (const r of store.cogs.records) {
       const f = r.fields
 
-      // Filter by PM (manual) — lookup field, returns array
+      // Filter by PM (manual) — lookup field, returns array — OR by PM2 via linked project
       if (pmFilter) {
         const pms = f['PM (manual)'] as string[] | undefined
-        if (!pms || !pms.some((p) => p === pmFilter)) continue
+        const matchesPm = pms?.some((p) => p === pmFilter)
+        const projets = f['Projet'] as string[] | undefined
+        const matchesPm2 = projets?.some((pid) => pm2ProjetIds!.has(pid))
+        if (!matchesPm && !matchesPm2) continue
       }
 
       // Filter by DA — match via linked project's DA (official)
