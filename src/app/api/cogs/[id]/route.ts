@@ -21,6 +21,10 @@ export async function PATCH(
     if (body.numeroFacture !== undefined) fields['Numéro de facture'] = body.numeroFacture
     if (body.okPourPaiement !== undefined) fields['OK pour paiement'] = body.okPourPaiement
     if (body.ressourceId !== undefined) fields['Ressource'] = body.ressourceId ? [body.ressourceId] : null
+    if (body.autorisationVanessa !== undefined) {
+      const v = body.autorisationVanessa
+      fields['Autorisation Vanessa'] = typeof v === 'number' && !isNaN(v) ? v : null
+    }
 
     // Handle attachment deletion: remove one attachment by index
     if (body.removeAttachmentIndex !== undefined) {

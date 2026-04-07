@@ -86,7 +86,7 @@ function formatDate(dateStr?: string) {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
-type SortField = 'ref' | 'clientName' | 'nom' | 'agence' | 'bu' | 'phase' | 'statut' | 'nextTask' | 'nextTaskDate'
+type SortField = 'ref' | 'clientName' | 'nom' | 'agence' | 'bu' | 'phase' | 'statut' | 'nextTask' | 'nextTaskDate' | 'pm' | 'daOfficial'
 type SortDir = 'asc' | 'desc'
 
 export default function DashboardPage() {
@@ -95,6 +95,8 @@ export default function DashboardPage() {
   const [selectedProjet, setSelectedProjet] = useState<Projet | null>(null)
   const [search, setSearch] = useState('')
   const [agenceFilter, setAgenceFilter] = useState<string>('')
+  const [pmFilter, setPmFilter] = useState<string>('')
+  const [daFilter, setDaFilter] = useState<string>('')
   const [noTaskFilter, setNoTaskFilter] = useState(false)
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -177,6 +179,8 @@ export default function DashboardPage() {
     let list = allProjets
     if (activeTab !== 'Tous') list = list.filter((p) => p.statut === activeTab)
     if (agenceFilter) list = list.filter((p) => p.agence === agenceFilter)
+    if (pmFilter) list = list.filter((p) => p.pm === pmFilter || p.pm2 === pmFilter)
+    if (daFilter) list = list.filter((p) => p.daOfficial === daFilter)
     if (noTaskFilter) list = list.filter((p) => p.statut === 'En cours' && !p.nextTask)
     if (search.trim()) {
       const q = search.toLowerCase()
@@ -202,6 +206,8 @@ export default function DashboardPage() {
           case 'statut': va = a.statut; vb = b.statut; break
           case 'nextTask': va = a.nextTask; vb = b.nextTask; break
           case 'nextTaskDate': va = a.nextTaskDate; vb = b.nextTaskDate; break
+          case 'pm': va = a.pm; vb = b.pm; break
+          case 'daOfficial': va = a.daOfficial; vb = b.daOfficial; break
         }
         const cmp = (va || '').localeCompare(vb || '')
         return sortDir === 'asc' ? cmp : -cmp
@@ -289,6 +295,31 @@ export default function DashboardPage() {
                   ))}
                 </select>
               )}
+              {/* Admin PM/DA filters */}
+              {userRole === 'Admin' && (
+                <>
+                  <select
+                    value={pmFilter}
+                    onChange={(e) => setPmFilter(e.target.value)}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value="">Tous PM</option>
+                    {pmOptions.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={daFilter}
+                    onChange={(e) => setDaFilter(e.target.value)}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value="">Tous DA</option>
+                    {daOptions.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </>
+              )}
               {/* Search */}
               <div className="relative w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -355,7 +386,7 @@ export default function DashboardPage() {
           ) : (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               {/* Header */}
-              <div className="hidden md:grid grid-cols-[0.5fr_0.4fr_0.4fr_0.9fr_1.1fr_0.5fr_0.5fr_1.2fr_0.5fr_28px] gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+              <div className={`hidden md:grid ${userRole === 'Admin' ? 'grid-cols-[0.5fr_0.4fr_0.4fr_0.9fr_1.1fr_0.5fr_0.5fr_0.6fr_0.6fr_1.2fr_0.5fr_28px]' : 'grid-cols-[0.5fr_0.4fr_0.4fr_0.9fr_1.1fr_0.5fr_0.5fr_1.2fr_0.5fr_28px]'} gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider`}>
                 <button onClick={() => handleSort('ref')} className="text-left hover:text-gray-700 transition">
                   Code<SortIcon field="ref" />
                 </button>
@@ -377,6 +408,16 @@ export default function DashboardPage() {
                 <button onClick={() => handleSort('statut')} className="text-left hover:text-gray-700 transition">
                   Statut<SortIcon field="statut" />
                 </button>
+                {userRole === 'Admin' && (
+                  <>
+                    <button onClick={() => handleSort('pm')} className="text-left hover:text-gray-700 transition">
+                      PM<SortIcon field="pm" />
+                    </button>
+                    <button onClick={() => handleSort('daOfficial')} className="text-left hover:text-gray-700 transition">
+                      DA<SortIcon field="daOfficial" />
+                    </button>
+                  </>
+                )}
                 <button onClick={() => handleSort('nextTask')} className="text-left hover:text-gray-700 transition">
                   Next Task<SortIcon field="nextTask" />
                 </button>
@@ -395,7 +436,7 @@ export default function DashboardPage() {
                     <button
                       key={projet.id}
                       onClick={() => setSelectedProjet(isActive ? null : projet)}
-                      className={`w-full text-left grid grid-cols-1 md:grid-cols-[0.5fr_0.4fr_0.4fr_0.9fr_1.1fr_0.5fr_0.5fr_1.2fr_0.5fr_28px] gap-x-3 gap-y-1 px-4 py-2.5 transition-colors duration-150 group cursor-pointer ${
+                      className={`w-full text-left grid grid-cols-1 ${userRole === 'Admin' ? 'md:grid-cols-[0.5fr_0.4fr_0.4fr_0.9fr_1.1fr_0.5fr_0.5fr_0.6fr_0.6fr_1.2fr_0.5fr_28px]' : 'md:grid-cols-[0.5fr_0.4fr_0.4fr_0.9fr_1.1fr_0.5fr_0.5fr_1.2fr_0.5fr_28px]'} gap-x-3 gap-y-1 px-4 py-2.5 transition-colors duration-150 group cursor-pointer ${
                         isActive
                           ? 'bg-indigo-50 border-l-2 border-l-indigo-500'
                           : 'hover:bg-gray-50 border-l-2 border-l-transparent'
@@ -453,6 +494,25 @@ export default function DashboardPage() {
                           </span>
                         ) : <span className="text-xs text-gray-300">—</span>}
                       </div>
+
+                      {/* PM / DA (admin only) */}
+                      {userRole === 'Admin' && (
+                        <>
+                          <div className="flex items-center min-w-0">
+                            {projet.pm || projet.pm2 ? (
+                              <span className="text-[11px] text-gray-600 truncate" title={[projet.pm, projet.pm2].filter(Boolean).join(' / ')}>
+                                {projet.pm || projet.pm2}
+                                {projet.pm && projet.pm2 && <span className="text-gray-400"> +1</span>}
+                              </span>
+                            ) : <span className="text-xs text-gray-300">—</span>}
+                          </div>
+                          <div className="flex items-center min-w-0">
+                            {projet.daOfficial ? (
+                              <span className="text-[11px] text-gray-600 truncate" title={projet.daOfficial}>{projet.daOfficial}</span>
+                            ) : <span className="text-xs text-gray-300">—</span>}
+                          </div>
+                        </>
+                      )}
 
                       {/* Next task */}
                       <div className="flex items-center min-w-0">
@@ -562,6 +622,8 @@ function SidePanel({
   const [localPm2, setLocalPm2] = useState(projet.pm2 || '')
   const [localDa, setLocalDa] = useState(projet.daOfficial || '')
   const [localPhase, setLocalPhase] = useState(projet.phase || '')
+  const [localDateFin, setLocalDateFin] = useState(projet.dateFinalisationPrevue || '')
+  const [localFacturable, setLocalFacturable] = useState(!!projet.facturable100)
 
   // Reset when project changes
   useEffect(() => {
@@ -569,11 +631,13 @@ function SidePanel({
     setLocalPm2(projet.pm2 || '')
     setLocalDa(projet.daOfficial || '')
     setLocalPhase(projet.phase || '')
+    setLocalDateFin(projet.dateFinalisationPrevue || '')
+    setLocalFacturable(!!projet.facturable100)
     setEditingPm(false)
     setEditingPm2(false)
     setEditingDa(false)
     setEditingPhase(false)
-  }, [projet.id, projet.pm, projet.pm2, projet.daOfficial, projet.phase])
+  }, [projet.id, projet.pm, projet.pm2, projet.daOfficial, projet.phase, projet.dateFinalisationPrevue, projet.facturable100])
 
   // Fetch tasks for this project
   const { data: projectTasks, revalidate: revalidateProjectTasks } = useData<Task[]>(
@@ -646,7 +710,10 @@ function SidePanel({
     }
   }
 
-  const updateProjetField = async (field: 'pm' | 'pm2' | 'daOfficial' | 'phase', value: string) => {
+  const updateProjetField = async (
+    field: 'pm' | 'pm2' | 'daOfficial' | 'phase' | 'dateFinalisationPrevue' | 'facturable100',
+    value: string | boolean,
+  ) => {
     try {
       await fetch('/api/projets', {
         method: 'PATCH',
@@ -814,6 +881,38 @@ function SidePanel({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Date finalisation + Facturable 100% */}
+      <div className="mb-6 space-y-3">
+        <div>
+          <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+            Date de finalisation prévue
+          </label>
+          <DatePicker
+            value={localDateFin}
+            onChange={(v) => {
+              setLocalDateFin(v)
+              updateProjetField('dateFinalisationPrevue', v)
+            }}
+            placeholder="Aucune date"
+            clearable
+            size="sm"
+          />
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={localFacturable}
+            onChange={(e) => {
+              const v = e.target.checked
+              setLocalFacturable(v)
+              updateProjetField('facturable100', v)
+            }}
+            className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+          />
+          <span className="text-sm text-gray-700">Facturable 100%</span>
+        </label>
       </div>
 
       {/* Devis signé */}

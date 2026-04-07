@@ -97,6 +97,7 @@ export async function GET(request: Request) {
         offreInitiale: num(f['Offre - Valeur initiale']),
         offreFinale: num(f['Offre - Valeur finale']),
         dateFinalisationPrevue: str(f['Date de finalisation prévue']),
+        facturable100: !!f['Facturable 100%'],
         nextTaskDate: str((f['#next_task_date'] as unknown[])?.[0]),
         nextTask: str((f['next task'] as unknown[])?.[0]),
         alerteHeures: str(f['Alerte Heures']),
@@ -136,17 +137,27 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json()
-    const { id, pm, pm2, daOfficial, phase } = body as { id?: string; pm?: string; pm2?: string; daOfficial?: string; phase?: string }
+    const { id, pm, pm2, daOfficial, phase, dateFinalisationPrevue, facturable100 } = body as {
+      id?: string
+      pm?: string
+      pm2?: string
+      daOfficial?: string
+      phase?: string
+      dateFinalisationPrevue?: string | null
+      facturable100?: boolean
+    }
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
     }
 
-    const fields: Record<string, string | null> = {}
+    const fields: Record<string, string | boolean | null> = {}
     if (pm !== undefined) fields['PM (manual)'] = pm || null
     if (pm2 !== undefined) fields['PM2 (manual)'] = pm2 || null
     if (daOfficial !== undefined) fields['DA (official)'] = daOfficial || null
     if (phase !== undefined) fields['Phase'] = phase || null
+    if (dateFinalisationPrevue !== undefined) fields['Date de finalisation prévue'] = dateFinalisationPrevue || null
+    if (facturable100 !== undefined) fields['Facturable 100%'] = !!facturable100
 
     await updateRecord(TABLES.PROJETS, id, fields as Record<string, string>)
     await refreshTable(TABLES.PROJETS)

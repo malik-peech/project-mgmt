@@ -69,6 +69,7 @@ function mapRecord(
     methodePaiement: str(f['Méthode de paiement']),
     qualiteNote: num(f['Qualité (note)']),
     qualiteComment: str(f['Qualité (comment)']),
+    autorisationVanessa: num(f['Autorisation Vanessa']),
     createdAt: str(f['Date de création']),
   }
 }

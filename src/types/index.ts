@@ -40,6 +40,8 @@ export interface Projet {
   offreFinale?: number
   // Dates
   dateFinalisationPrevue?: string
+  // Billing
+  facturable100?: boolean
   // Tasks
   nextTaskDate?: string
   nextTask?: string
@@ -107,6 +109,7 @@ export interface Cogs {
   methodePaiement?: string
   qualiteNote?: number
   qualiteComment?: string
+  autorisationVanessa?: number
 }
 
 // ── Ressources ──
