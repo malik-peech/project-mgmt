@@ -270,19 +270,14 @@ function CogsPage() {
         console.error('Upload failed:', err)
         throw new Error(err)
       }
-      // Wait for Airtable to download and process the file, then force server-side store refresh
-      await new Promise((r) => setTimeout(r, 4000))
-      await fetch('/api/admin/refresh', { method: 'POST' })
-      await revalidateCogs()
-      // Update selectedCog with fresh data
+      // Server already refreshed the COGS table before returning; just revalidate client cache.
       const cogId = selectedCog.id
-      setTimeout(() => {
-        mutateCogs((prev) => {
-          const fresh = prev?.find((c) => c.id === cogId)
-          if (fresh) setSelectedCog({ ...fresh })
-          return prev
-        })
-      }, 100)
+      await revalidateCogs()
+      mutateCogs((prev) => {
+        const fresh = prev?.find((c) => c.id === cogId)
+        if (fresh) setSelectedCog({ ...fresh })
+        return prev
+      })
     } finally {
       setUploadingCog(false)
     }
@@ -1322,7 +1317,8 @@ function CogSidePanel({
             editMontantHT !== (cog.montantEngageProd != null ? String(cog.montantEngageProd) : '') ||
             editTva !== (cog.tva != null ? String(cog.tva) : '') ||
             editQualiteNote !== (cog.qualiteNote ?? null) ||
-            editQualiteComment !== (cog.qualiteComment || '')
+            editQualiteComment !== (cog.qualiteComment || '') ||
+            editRessourceId !== (cog.ressourceId || '')
           ) && (
             <button
               onClick={onSave}
