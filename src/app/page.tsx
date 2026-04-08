@@ -214,7 +214,7 @@ export default function DashboardPage() {
       })
     }
     return list
-  }, [allProjets, activeTab, agenceFilter, noTaskFilter, search, sortField, sortDir])
+  }, [allProjets, activeTab, agenceFilter, pmFilter, daFilter, noTaskFilter, search, sortField, sortDir])
 
   useEffect(() => {
     if (selectedProjet && !filtered.find((p) => p.id === selectedProjet.id)) {
