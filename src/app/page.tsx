@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Search, Calendar, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, AlertTriangle, TrendingUp, Plus, FileText, Loader2, CheckCircle2, Circle, Clock } from 'lucide-react'
+import { Search, Calendar, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, AlertTriangle, TrendingUp, Plus, FileText, Loader2, CheckCircle2, Circle, Clock, MessageSquare, Send } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useData } from '@/hooks/useData'
 import ForceNewTaskModal from '@/components/ForceNewTaskModal'
@@ -1041,6 +1041,9 @@ function SidePanel({
         </div>
       )}
 
+      {/* Comments (Airtable record comments) */}
+      <ProjetComments projetId={projet.id} />
+
       {/* Force new task modal */}
       {showForceTask && (
         <ForceNewTaskModal
@@ -1065,6 +1068,134 @@ function SidePanel({
           onClose={() => setViewer(null)}
         />
       )}
+    </div>
+  )
+}
+
+/* ─── Projet comments (Airtable record comments) ─── */
+
+type ProjetComment = {
+  id: string
+  text: string
+  createdTime: string
+  author?: { name?: string; email?: string }
+}
+
+function ProjetComments({ projetId }: { projetId: string }) {
+  const [comments, setComments] = useState<ProjetComment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [posting, setPosting] = useState(false)
+  const [text, setText] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  const load = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/projets/${projetId}/comments`, { cache: 'no-store' })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      setComments(data.comments || [])
+    } catch (e) {
+      console.error('Load comments error:', e)
+      setError('Impossible de charger les commentaires')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projetId])
+
+  const submit = async () => {
+    const value = text.trim()
+    if (!value || posting) return
+    setPosting(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/projets/${projetId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: value }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      if (data.comment) {
+        setComments((prev) => [...prev, data.comment])
+      } else {
+        await load()
+      }
+      setText('')
+    } catch (e) {
+      console.error('Post comment error:', e)
+      setError("Impossible d'envoyer le commentaire")
+    } finally {
+      setPosting(false)
+    }
+  }
+
+  const formatWhen = (iso: string) => {
+    try {
+      const d = new Date(iso)
+      return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+    } catch {
+      return iso
+    }
+  }
+
+  return (
+    <div className="mb-6">
+      <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+        <MessageSquare className="w-3 h-3" />
+        Commentaires{comments.length > 0 && ` (${comments.length})`}
+      </h3>
+
+      <div className="space-y-2 mb-3">
+        {loading ? (
+          <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+            <Loader2 className="w-3 h-3 animate-spin" /> Chargement...
+          </div>
+        ) : comments.length === 0 ? (
+          <p className="text-xs text-gray-400 py-1">Aucun commentaire</p>
+        ) : (
+          comments.map((c) => (
+            <div key={c.id} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[11px] font-semibold text-gray-700">{c.author?.name || 'Anonyme'}</span>
+                <span className="text-[10px] text-gray-400">{formatWhen(c.createdTime)}</span>
+              </div>
+              <p className="text-xs text-gray-700 whitespace-pre-wrap break-words">{c.text}</p>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="flex items-start gap-2">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+              e.preventDefault()
+              submit()
+            }
+          }}
+          placeholder="Ajouter un commentaire..."
+          rows={2}
+          className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+        />
+        <button
+          onClick={submit}
+          disabled={posting || !text.trim()}
+          className="p-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition shrink-0"
+          title="Envoyer (Cmd/Ctrl+Enter)"
+        >
+          {posting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+      {error && <p className="mt-1 text-[11px] text-amber-600">{error}</p>}
     </div>
   )
 }
