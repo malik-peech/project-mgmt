@@ -248,14 +248,24 @@ function CogsPage() {
       if (editQualiteComment !== (selectedCog.qualiteComment || '')) body.qualiteComment = editQualiteComment
       if (editRessourceId !== (selectedCog.ressourceId || '')) body.ressourceId = editRessourceId || null
       if (Object.keys(body).length > 0) {
-        await fetch(`/api/cogs/${selectedCog.id}`, {
+        const res = await fetch(`/api/cogs/${selectedCog.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
-        revalidateCogs()
+        if (!res.ok) {
+          const err = await res.text()
+          console.error('[saveCogEdits] failed:', res.status, err)
+          alert(`Échec de la sauvegarde:\n${err}`)
+          return
+        }
+        await revalidateCogs()
       }
-    } catch {} finally { setSavingCog(false) }
+    } catch (e) {
+      console.error('[saveCogEdits] error:', e)
+    } finally {
+      setSavingCog(false)
+    }
   }
 
   const handleUpload = async (files: File[]) => {
