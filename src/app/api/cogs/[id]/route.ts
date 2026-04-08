@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { deleteRecord, TABLES } from '@/lib/airtable'
-import { refreshTable } from '@/lib/store'
+import { upsertRecord, removeRecord } from '@/lib/store'
 
 const BASE_ID = process.env.AIRTABLE_BASE_ID || 'appYFl5MvR7VeL0uB'
 const COGS_TABLE_ID = 'tblnrqX6xNx5EWFsC'
@@ -47,6 +47,8 @@ export async function PATCH(
       }
     }
 
+    console.log('[COGS PATCH]', id, 'payload fields:', JSON.stringify(fields))
+
     // Direct fetch to Airtable so we surface any 422/field errors to the client.
     const patchRes = await fetch(
       `https://api.airtable.com/v0/${BASE_ID}/${COGS_TABLE_ID}/${id}`,
@@ -59,14 +61,21 @@ export async function PATCH(
         body: JSON.stringify({ fields, typecast: true }),
       }
     )
+    const patchText = await patchRes.text()
     if (!patchRes.ok) {
-      const errText = await patchRes.text()
-      console.error('[COGS PATCH] Airtable error:', patchRes.status, errText, 'payload:', JSON.stringify(fields))
-      return NextResponse.json({ error: errText }, { status: patchRes.status })
+      console.error('[COGS PATCH] Airtable error:', patchRes.status, patchText)
+      return NextResponse.json({ error: patchText }, { status: patchRes.status })
     }
 
-    // Await store refresh so the next GET returns consistent data.
-    await refreshTable(TABLES.COGS).catch((e) => console.error('[COGS PATCH] refresh error:', e))
+    // Parse Airtable response and surgically update the in-memory store
+    // (much safer than re-fetching 5935 records; no rate-limit risk).
+    try {
+      const updated = JSON.parse(patchText) as { id: string; fields: Record<string, unknown> }
+      upsertRecord(TABLES.COGS, { id: updated.id, fields: updated.fields })
+      console.log('[COGS PATCH] store updated, new Ressource:', updated.fields?.['Ressource'])
+    } catch (e) {
+      console.error('[COGS PATCH] failed to parse Airtable response:', e)
+    }
 
     return NextResponse.json({ id })
   } catch (error) {
@@ -82,9 +91,7 @@ export async function DELETE(
   try {
     const { id } = await params
     await deleteRecord(TABLES.COGS, id)
-
-    // Refresh store in background
-    refreshTable(TABLES.COGS).catch(() => {})
+    removeRecord(TABLES.COGS, id)
 
     return NextResponse.json({ success: true })
   } catch (error) {

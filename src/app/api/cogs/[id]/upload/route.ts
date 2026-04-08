@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { refreshTable } from '@/lib/store'
+import { upsertRecord } from '@/lib/store'
 import { TABLES } from '@/lib/airtable'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
@@ -119,8 +119,11 @@ export async function POST(
       return NextResponse.json({ error: `Upload failed: ${err}` }, { status: updateRes.status })
     }
 
-    // Step 5: Refresh store to pick up new attachment data
-    await refreshTable(TABLES.COGS)
+    // Step 5: Update store directly with the Airtable response
+    try {
+      const updated = await updateRes.json()
+      upsertRecord(TABLES.COGS, { id: updated.id, fields: updated.fields })
+    } catch {}
 
     return NextResponse.json({ ok: true, count: newAttachments.length })
   } catch (error) {

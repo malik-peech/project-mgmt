@@ -137,6 +137,44 @@ export async function refreshTable(tableName: string) {
   }
 }
 
+/**
+ * Surgically update a single record in the in-memory store.
+ * Preferred over refreshTable() for single-record writes — no Airtable re-fetch,
+ * no rate-limit risk, guaranteed consistency with what we just wrote.
+ */
+export function upsertRecord(
+  tableName: string,
+  record: { id: string; fields: Record<string, unknown> },
+) {
+  if (!store) return
+  const key = tableNameToKey(tableName)
+  if (!key) return
+  const table = store[key]
+  const existing = table.byId.get(record.id)
+  if (existing) {
+    existing.fields = record.fields
+  } else {
+    const rec = { id: record.id, fields: record.fields }
+    table.byId.set(record.id, rec)
+    table.records.push(rec)
+  }
+  table.lastSync = Date.now()
+}
+
+/**
+ * Remove a single record from the in-memory store.
+ */
+export function removeRecord(tableName: string, id: string) {
+  if (!store) return
+  const key = tableNameToKey(tableName)
+  if (!key) return
+  const table = store[key]
+  if (!table.byId.has(id)) return
+  table.byId.delete(id)
+  table.records = table.records.filter((r) => r.id !== id)
+  table.lastSync = Date.now()
+}
+
 function tableNameToKey(tableName: string): keyof Store | null {
   switch (tableName) {
     case TABLES.PROJETS: return 'projets'
