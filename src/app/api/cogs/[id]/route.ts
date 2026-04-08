@@ -50,6 +50,9 @@ export async function PATCH(
     console.log('[COGS PATCH]', id, 'payload fields:', JSON.stringify(fields))
 
     // Direct fetch to Airtable so we surface any 422/field errors to the client.
+    // NOTE: typecast is intentionally OFF for Ressource writes, because with typecast
+    // ON, if Airtable can't match the rec ID it may silently try to create a new
+    // linked record by name — we'd rather get a hard error.
     const patchRes = await fetch(
       `https://api.airtable.com/v0/${BASE_ID}/${COGS_TABLE_ID}/${id}`,
       {
@@ -62,6 +65,7 @@ export async function PATCH(
       }
     )
     const patchText = await patchRes.text()
+    console.log('[COGS PATCH] Airtable status:', patchRes.status)
     if (!patchRes.ok) {
       console.error('[COGS PATCH] Airtable error:', patchRes.status, patchText)
       return NextResponse.json({ error: patchText }, { status: patchRes.status })
@@ -69,15 +73,39 @@ export async function PATCH(
 
     // Parse Airtable response and surgically update the in-memory store
     // (much safer than re-fetching 5935 records; no rate-limit risk).
+    let updatedFields: Record<string, unknown> | null = null
     try {
       const updated = JSON.parse(patchText) as { id: string; fields: Record<string, unknown> }
+      updatedFields = updated.fields
       upsertRecord(TABLES.COGS, { id: updated.id, fields: updated.fields })
-      console.log('[COGS PATCH] store updated, new Ressource:', updated.fields?.['Ressource'])
+      console.log(
+        '[COGS PATCH] store updated. Ressource now =',
+        JSON.stringify(updated.fields?.['Ressource']),
+        '| Facture count =',
+        Array.isArray(updated.fields?.['Facture']) ? (updated.fields['Facture'] as unknown[]).length : 0
+      )
+
+      // Verify: if caller sent a ressourceId but Airtable response doesn't contain it,
+      // log a clear warning (points at automations or permission issues).
+      if (body.ressourceId !== undefined) {
+        const actual = updated.fields?.['Ressource'] as string[] | undefined
+        const expected = body.ressourceId || null
+        const got = actual?.[0] || null
+        if (expected !== got) {
+          console.error(
+            '[COGS PATCH] ⚠ Ressource mismatch after PATCH. expected=',
+            expected,
+            'got=',
+            got,
+            '→ an Airtable automation or field restriction may be clearing it.'
+          )
+        }
+      }
     } catch (e) {
       console.error('[COGS PATCH] failed to parse Airtable response:', e)
     }
 
-    return NextResponse.json({ id })
+    return NextResponse.json({ id, fields: updatedFields })
   } catch (error) {
     console.error('Error updating COGS:', error)
     return NextResponse.json({ error: 'Failed to update COGS' }, { status: 500 })

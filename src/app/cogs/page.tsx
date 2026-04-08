@@ -259,6 +259,24 @@ function CogsPage() {
           alert(`Échec de la sauvegarde:\n${err}`)
           return
         }
+
+        // Verify the Airtable response actually contains the new ressource we asked for
+        try {
+          const payload = await res.json() as { id: string; fields?: Record<string, unknown> }
+          if (body.ressourceId !== undefined && payload.fields) {
+            const actualLinks = payload.fields['Ressource'] as string[] | undefined
+            const expected = body.ressourceId || null
+            const got = actualLinks?.[0] || null
+            if (expected !== got) {
+              alert(
+                `⚠ Airtable n'a pas persisté la ressource.\n` +
+                `Envoyé: ${expected}\nAirtable a retourné: ${got}\n\n` +
+                `Cela vient probablement d'une automatisation Airtable ou d'une restriction sur le champ Ressource (lecture seule ?).`
+              )
+            }
+          }
+        } catch {}
+
         await revalidateCogs()
       }
     } catch (e) {

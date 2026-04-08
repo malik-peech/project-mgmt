@@ -115,17 +115,26 @@ export async function POST(
 
     if (!updateRes.ok) {
       const err = await updateRes.text()
-      console.error('Airtable update error:', err)
+      console.error('[Upload] Airtable update error:', updateRes.status, err)
       return NextResponse.json({ error: `Upload failed: ${err}` }, { status: updateRes.status })
     }
 
-    // Step 5: Update store directly with the Airtable response
+    // Step 5: Update store directly with the Airtable response and return
+    // the updated fields so the client UI can reflect them immediately.
+    let updatedFields: Record<string, unknown> | null = null
     try {
       const updated = await updateRes.json()
+      updatedFields = updated.fields
       upsertRecord(TABLES.COGS, { id: updated.id, fields: updated.fields })
-    } catch {}
+      const factureCount = Array.isArray(updated.fields?.['Facture'])
+        ? (updated.fields['Facture'] as unknown[]).length
+        : 0
+      console.log('[Upload] PATCH ok. Facture count on record after PATCH:', factureCount)
+    } catch (e) {
+      console.error('[Upload] failed to parse Airtable response:', e)
+    }
 
-    return NextResponse.json({ ok: true, count: newAttachments.length })
+    return NextResponse.json({ ok: true, count: newAttachments.length, fields: updatedFields })
   } catch (error) {
     console.error('Error uploading attachment:', error)
     return NextResponse.json({ error: 'Failed to upload attachment' }, { status: 500 })
