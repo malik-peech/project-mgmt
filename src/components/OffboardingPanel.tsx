@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, CheckCircle2, Circle, Loader2, Plus, Trash2, ExternalLink, Video } from 'lucide-react'
+import { X, CheckCircle2, Circle, Loader2, Plus, Trash2, ExternalLink, Video, Star } from 'lucide-react'
 import ComboSelect from './ComboSelect'
 import DatePicker from './DatePicker'
 import type { Projet } from '@/types'
@@ -17,7 +17,7 @@ interface Props {
   mensuels: Mensuel[]
 }
 
-const DIFFUSABLE_OPTIONS = ['OK pour diffusion', 'Diffusion interdite', 'En attente']
+const DIFFUSABLE_OPTIONS = ['OK pour diffusion', 'Diffusion interdite']
 const POINT_EOP_OPTIONS = ['Prévu', 'Done', 'No need (vu avec sales)']
 
 type FormState = {
@@ -27,6 +27,8 @@ type FormState = {
   diffusable: string
   pointEop: string
   datePointEop: string
+  eopFeedback: string
+  eopRating: number
 }
 
 function initForm(p: Projet): FormState {
@@ -37,6 +39,8 @@ function initForm(p: Projet): FormState {
     diffusable: p.diffusable || '',
     pointEop: p.pointEop || '',
     datePointEop: p.datePointEop || '',
+    eopFeedback: p.eopFeedback || '',
+    eopRating: p.eopRating || 0,
   }
 }
 
@@ -98,13 +102,15 @@ export default function OffboardingPanel({ projet, onClose, onSaved, mensuels }:
     diffusable: form.diffusable as Projet['diffusable'],
     pointEop: form.pointEop as Projet['pointEop'],
     datePointEop: form.datePointEop,
+    eopFeedback: form.eopFeedback,
+    eopRating: form.eopRating,
   }
   const missing = missingOffboardingFields(previewProjet)
-  const total = 5
+  const pointEopPrevu = form.pointEop === 'Prévu'
+  const pointEopDone = form.pointEop === 'Done'
+  const total = pointEopDone ? 7 : 5
   const filled = total - missing.length
   const pct = Math.round((filled / total) * 100)
-
-  const pointEopPrevu = form.pointEop === 'Prévu'
 
   const sortedMensuels = [...mensuels].sort((a, b) => b.name.localeCompare(a.name))
   const selectedMoisNames = form.eopMonthIds
@@ -156,6 +162,9 @@ export default function OffboardingPanel({ projet, onClose, onSaved, mensuels }:
         pointEop: form.pointEop || null,
         // Clear datePointEop if pointEop is not "Prévu"
         datePointEop: pointEopPrevu ? (form.datePointEop || null) : null,
+        // Clear feedback/rating if the call wasn't held
+        eopFeedback: pointEopDone ? (form.eopFeedback.trim() || null) : null,
+        eopRating: pointEopDone ? (form.eopRating > 0 ? form.eopRating : null) : null,
       }
       const res = await fetch(`/api/offboarding/${projet.id}`, {
         method: 'PATCH',
@@ -320,6 +329,50 @@ export default function OffboardingPanel({ projet, onClose, onSaved, mensuels }:
                   clearable
                 />
               </Field>
+            )}
+
+            {pointEopDone && (
+              <>
+                <Field label="EOP rating" required missing={missing.includes('eopRating')}>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((n) => {
+                      const active = form.eopRating >= n
+                      return (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() =>
+                            update('eopRating', form.eopRating === n ? 0 : n)
+                          }
+                          className="p-1 rounded hover:bg-gray-100"
+                          title={`${n} étoile${n > 1 ? 's' : ''}`}
+                        >
+                          <Star
+                            className={`w-5 h-5 ${
+                              active ? 'fill-amber-400 text-amber-400' : 'text-gray-300'
+                            }`}
+                          />
+                        </button>
+                      )
+                    })}
+                    {form.eopRating > 0 && (
+                      <span className="ml-2 text-xs text-gray-500">
+                        {form.eopRating}/5
+                      </span>
+                    )}
+                  </div>
+                </Field>
+
+                <Field label="EOP feedback" required missing={missing.includes('eopFeedback')}>
+                  <textarea
+                    value={form.eopFeedback}
+                    onChange={(e) => update('eopFeedback', e.target.value)}
+                    placeholder="Notes, retours, points abordés…"
+                    rows={4}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+                  />
+                </Field>
+              </>
             )}
           </Section>
 

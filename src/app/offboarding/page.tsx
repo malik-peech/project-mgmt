@@ -332,6 +332,9 @@ function ProjetCard({ projet, onClick }: { projet: OffboardingProjet; onClick: (
         <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5 flex-wrap">
           {projet.clientName && <span className="truncate">{projet.clientName}</span>}
           {projet.pm && <span className="text-gray-400">· PM: {projet.pm}</span>}
+          {(projet.daOfficial || projet.da) && (
+            <span className="text-gray-400">· DA: {projet.daOfficial || projet.da}</span>
+          )}
           {projet.agence && (
             <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${agenceColors[projet.agence] || 'bg-gray-100 text-gray-600'}`}>
               {projet.agence}

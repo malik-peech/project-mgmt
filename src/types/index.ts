@@ -5,7 +5,7 @@ export type TypeProjet = 'Live' | '2D' | 'Film' | 'Film scénarisé (acting)' | 
 export type Currency = 'EUR' | 'USD' | 'CHF'
 export type Origine = 'Client existant' | 'Nouveau client'
 export type TypeDeContact = 'Compta' | 'Client'
-export type Diffusable = 'OK pour diffusion' | 'Diffusion interdite' | 'En attente'
+export type Diffusable = 'OK pour diffusion' | 'Diffusion interdite'
 export type PointEop = 'Prévu' | 'Done' | 'No need (vu avec sales)'
 
 export interface Attachment {
@@ -53,6 +53,8 @@ export interface Projet {
   diffusable?: Diffusable
   pointEop?: PointEop
   datePointEop?: string
+  eopFeedback?: string
+  eopRating?: number
   // Budgets
   cogsBudget?: number
   cogsReels?: number

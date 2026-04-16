@@ -60,7 +60,16 @@ export async function GET(request: Request) {
 
       const pm = sel(f['PM (manual)'])
       const pm2 = sel(f['PM2 (manual)'])
-      if (!all && pm !== pmName && pm2 !== pmName) continue
+      const daOfficial = sel(f['DA (official)'])
+      const da = str(f['DA'])
+      if (
+        !all &&
+        pm !== pmName &&
+        pm2 !== pmName &&
+        daOfficial !== pmName &&
+        da !== pmName
+      )
+        continue
 
       const clientIds = f['Client link'] as string[] | undefined
       const clientId = clientIds?.[0]
@@ -76,8 +85,8 @@ export async function GET(request: Request) {
         agence: sel(f['Agence']),
         pm,
         pm2,
-        da: str(f['DA']),
-        daOfficial: sel(f['DA (official)']),
+        da,
+        daOfficial,
         phase: str(f['Phase']) as Projet['phase'],
         statut: statut as Projet['statut'],
         typeProjet: str(f['Type de projet']) as Projet['typeProjet'],
@@ -89,6 +98,8 @@ export async function GET(request: Request) {
         diffusable: sel(f['Diffusable ?']) as Projet['diffusable'],
         pointEop: sel(f['Point EOP']) as Projet['pointEop'],
         datePointEop: str(f['Date point EOP']),
+        eopFeedback: str(f['EOP feedback']),
+        eopRating: num(f['EOP rating']),
         dateFinalisationPrevue: str(f['Date de finalisation prévue']),
         cogsBudget: num(f['COGS - budget (€)']),
         offreFinale: num(f['Offre - Valeur finale']),

@@ -10,6 +10,8 @@ export const OFFBOARDING_FIELDS = [
   'eopMonth',
   'diffusable',
   'pointEop',
+  'eopFeedback',
+  'eopRating',
 ] as const
 
 export type OffboardingField = typeof OFFBOARDING_FIELDS[number]
@@ -31,6 +33,11 @@ export function missingOffboardingFields(p: Projet, belleCount = 0): Offboarding
   if (p.pointEop !== 'Done' && p.pointEop !== 'No need (vu avec sales)') {
     missing.push('pointEop')
   }
+  // EOP feedback + rating only required once the EOP call was actually held
+  if (p.pointEop === 'Done') {
+    if (!p.eopFeedback || !p.eopFeedback.trim()) missing.push('eopFeedback')
+    if (!p.eopRating || p.eopRating <= 0) missing.push('eopRating')
+  }
   // Belle-base entries are not gated (a projet can legitimately have 0 if
   // "Diffusion interdite"), but we expose the count in the UI.
   void belleCount
@@ -47,4 +54,6 @@ export const OFFBOARDING_FIELD_LABELS: Record<OffboardingField, string> = {
   eopMonth: 'EOP month',
   diffusable: 'Diffusable ?',
   pointEop: 'Point EOP',
+  eopFeedback: 'EOP feedback',
+  eopRating: 'EOP rating',
 }

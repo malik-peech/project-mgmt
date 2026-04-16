@@ -10,9 +10,11 @@ import { upsertRecord } from '@/lib/store'
  *   - frameArchive: boolean
  *   - slackArchive: boolean
  *   - eopMonthIds: string[]     (linked → Mensuel)
- *   - diffusable: 'OK pour diffusion' | 'Diffusion interdite' | 'En attente'
+ *   - diffusable: 'OK pour diffusion' | 'Diffusion interdite'
  *   - pointEop: 'Prévu' | 'Done' | 'No need (vu avec sales)'
  *   - datePointEop: string (YYYY-MM-DD) | null
+ *   - eopFeedback: string | null
+ *   - eopRating: number | null     (1-5)
  */
 export async function PATCH(
   request: Request,
@@ -33,6 +35,8 @@ export async function PATCH(
     if (body.diffusable !== undefined) fields['Diffusable ?'] = body.diffusable || null
     if (body.pointEop !== undefined) fields['Point EOP'] = body.pointEop || null
     if (body.datePointEop !== undefined) fields['Date point EOP'] = body.datePointEop || null
+    if (body.eopFeedback !== undefined) fields['EOP feedback'] = body.eopFeedback || null
+    if (body.eopRating !== undefined) fields['EOP rating'] = body.eopRating ?? null
 
     if (Object.keys(fields).length === 0) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
