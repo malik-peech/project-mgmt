@@ -32,6 +32,11 @@ const navItems = [
   { href: '/ressources', label: 'Ressources', icon: Users },
 ]
 
+// Sales-only users (primary role = Sales, no PM/DA/Admin) see a reduced menu.
+const salesOnlyNavItems = [
+  { href: '/cogs', label: 'COGS', icon: Receipt },
+]
+
 export default function Sidebar() {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -122,8 +127,12 @@ export default function Sidebar() {
   }
 
   type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; badge?: number }
+  // Sales-only = primary role is Sales AND not also Admin. Users who have PM/DA as primary
+  // role and are ALSO sales keep their full PM/DA menu.
+  const isSalesOnly = userRole === 'Sales' && !isAdmin
+  const baseItems = isSalesOnly ? salesOnlyNavItems : navItems
   const allNavItems: NavItem[] = [
-    ...navItems,
+    ...baseItems,
     ...(showOnboarding ? [{ href: '/onboarding', label: 'Onboarding', icon: Rocket, badge: onboardingCount?.toOnboard || 0 }] : []),
     ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Settings }] : []),
   ]

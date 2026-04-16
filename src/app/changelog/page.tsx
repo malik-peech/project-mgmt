@@ -10,6 +10,15 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.15',
+    date: '16/04/2026',
+    changes: [
+      'Sales-only : menu restreint à COGS + Onboarding (plus de Projets / Tasks / Ressources)',
+      'Sales-only : redirection auto vers /onboarding si tentative d\'accès à une page bloquée',
+      'Les utilisateurs PM/Admin cumulant le rôle Sales gardent leur menu complet',
+    ],
+  },
+  {
     version: '1.14',
     date: '16/04/2026',
     changes: [

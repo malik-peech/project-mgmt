@@ -1,6 +1,10 @@
 import { getToken } from 'next-auth/jwt'
 import { NextRequest, NextResponse } from 'next/server'
 
+// Pages blocked for Sales-only users (primary role = 'Sales' and not Admin).
+// Sales users only have access to /cogs, /onboarding, /changelog.
+const SALES_BLOCKED_PREFIXES = ['/tasks', '/ressources', '/admin']
+
 export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
@@ -24,6 +28,15 @@ export default async function middleware(req: NextRequest) {
     const loginUrl = new URL('/login', req.url)
     loginUrl.searchParams.set('callbackUrl', pathname)
     return NextResponse.redirect(loginUrl)
+  }
+
+  // Sales-only users: redirect restricted pages and the home Projets page to /onboarding
+  const role = (token as { role?: string }).role
+  if (role === 'Sales') {
+    const isBlocked = pathname === '/' || SALES_BLOCKED_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'))
+    if (isBlocked) {
+      return NextResponse.redirect(new URL('/onboarding', req.url))
+    }
   }
 
   return NextResponse.next()
