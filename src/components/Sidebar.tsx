@@ -25,8 +25,10 @@ import {
   Rocket,
   PackageCheck,
   UserX,
+  ClipboardCheck,
 } from 'lucide-react'
 import UnassignedModal from './UnassignedModal'
+import PMWelcomeModal from './PMWelcomeModal'
 
 const navItems = [
   { href: '/', label: 'Projets', icon: LayoutDashboard },
@@ -63,17 +65,20 @@ export default function Sidebar() {
   const [onboardingCount, setOnboardingCount] = useState<{ toOnboard: number; total: number } | null>(null)
   const [offboardingCount, setOffboardingCount] = useState<{ toOffboard: number; total: number } | null>(null)
   const [unassignedCount, setUnassignedCount] = useState(0)
+  const [aBrieferCount, setABrieferCount] = useState(0)
   const [showUnassigned, setShowUnassigned] = useState(false)
+  const [showWelcome, setShowWelcome] = useState(false)
 
   useEffect(() => {
     if (!userName) return
     let cancelled = false
     const fetchCounts = async () => {
       try {
-        const [onRes, offRes, unRes] = await Promise.all([
+        const [onRes, offRes, unRes, abRes] = await Promise.all([
           fetch(`/api/onboarding?sales=${encodeURIComponent(userName)}`),
           fetch(`/api/offboarding?pm=${encodeURIComponent(userName)}`),
           fetch('/api/projets/unassigned'),
+          fetch(`/api/a-briefer?pm=${encodeURIComponent(userName)}`),
         ])
         if (onRes.ok) {
           const data = await onRes.json()
@@ -87,6 +92,10 @@ export default function Sidebar() {
           const data = await unRes.json()
           if (!cancelled) setUnassignedCount(data.counts?.total || 0)
         }
+        if (abRes.ok) {
+          const data = await abRes.json()
+          if (!cancelled) setABrieferCount((data.projets || []).length)
+        }
       } catch {}
     }
     fetchCounts()
@@ -99,6 +108,23 @@ export default function Sidebar() {
   const isSales = userRole === 'Sales' || hasSalesProjects
   const showOnboarding = isSales || isAdmin
   const showOffboarding = isAdmin || hasOffboardingProjects
+  const isPM = userRole === 'PM' || isAdmin
+  const showABriefer = isPM
+
+  // Show PM welcome modal once per session on first login for PMs only.
+  useEffect(() => {
+    if (!userName || !isPM) return
+    const key = `peechpm_welcome_shown_${userName}`
+    const alreadyShown = sessionStorage.getItem(key)
+    if (!alreadyShown) {
+      // Delay slightly to avoid flashing during auth redirect.
+      const t = setTimeout(() => {
+        setShowWelcome(true)
+        sessionStorage.setItem(key, '1')
+      }, 600)
+      return () => clearTimeout(t)
+    }
+  }, [userName, isPM])
 
   const submitFeedback = async () => {
     if (!fbMessage.trim() || !session?.user?.name) return
@@ -156,6 +182,7 @@ export default function Sidebar() {
   const baseItems = isSalesOnly ? salesOnlyNavItems : navItems
   const allNavItems: NavItem[] = [
     ...baseItems,
+    ...(showABriefer ? [{ href: '/a-briefer', label: 'À Briefer', icon: ClipboardCheck, badge: aBrieferCount }] : []),
     ...(showOnboarding ? [{ href: '/onboarding', label: 'Onboarding', icon: Rocket, badge: onboardingCount?.toOnboard || 0 }] : []),
     ...(showOffboarding ? [{ href: '/offboarding', label: 'Offboarding', icon: PackageCheck, badge: offboardingCount?.toOffboard || 0 }] : []),
     ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Settings }] : []),
@@ -322,6 +349,11 @@ export default function Sidebar() {
 
       {/* Unassigned projets modal */}
       {showUnassigned && <UnassignedModal onClose={() => setShowUnassigned(false)} />}
+
+      {/* PM welcome modal (once per session on first login for PMs) */}
+      {showWelcome && userName && (
+        <PMWelcomeModal userName={userName} onClose={() => setShowWelcome(false)} />
+      )}
 
       {/* Feedback modal */}
       {showFeedback && (

@@ -14,21 +14,21 @@ import { useColumnWidths } from '@/hooks/useColumnWidths'
 import type { Projet, StatutProjet, Cogs, Task } from '@/types'
 
 const phaseColors: Record<string, string> = {
-  'Démarrage': 'bg-yellow-100 text-yellow-800',
-  'Conception': 'bg-cyan-100 text-cyan-800',
-  'Production': 'bg-teal-100 text-teal-800',
-  'Last modifs': 'bg-green-100 text-green-800',
-  'Done': 'bg-purple-100 text-purple-800',
-  'Archivé': 'bg-gray-100 text-gray-800',
+  'Démarrage': 'bg-amber-300 text-amber-900',
+  'Conception': 'bg-sky-300 text-sky-900',
+  'Production': 'bg-indigo-300 text-indigo-900',
+  'Last modifs': 'bg-emerald-300 text-emerald-900',
+  'Done': 'bg-purple-300 text-purple-900',
+  'Archivé': 'bg-gray-300 text-gray-800',
 }
 
 const statutColors: Record<string, string> = {
-  'En cours': 'bg-yellow-100 text-yellow-800',
-  'Finalisation': 'bg-orange-100 text-orange-800',
-  'Stand-by': 'bg-pink-100 text-pink-800',
-  'Done': 'bg-green-100 text-green-800',
-  'Tentative': 'bg-cyan-100 text-cyan-800',
-  'Intention': 'bg-cyan-100 text-cyan-800',
+  'En cours': 'bg-yellow-300 text-yellow-900',
+  'Finalisation': 'bg-orange-300 text-orange-900',
+  'Stand-by': 'bg-pink-300 text-pink-900',
+  'Done': 'bg-green-400 text-green-900',
+  'Tentative': 'bg-cyan-300 text-cyan-900',
+  'Intention': 'bg-violet-300 text-violet-900',
 }
 
 const cogsStatutColors: Record<string, string> = {
@@ -566,7 +566,9 @@ export default function DashboardPage() {
                             ) : <span className="text-xs text-gray-300">—</span>}
                           </div>
                           <div className="flex items-center min-w-0">
-                            {projet.daOfficial ? (
+                            {projet.pasDeDa ? (
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 truncate" title="Pas de DA">Pas de DA</span>
+                            ) : projet.daOfficial ? (
                               <span className="text-[11px] text-gray-600 truncate" title={projet.daOfficial}>{projet.daOfficial}</span>
                             ) : <span className="text-xs text-gray-300">—</span>}
                           </div>
@@ -583,7 +585,8 @@ export default function DashboardPage() {
                         ) : projet.nextTask ? (
                           <span className={`text-[12px] truncate font-medium ${
                             isOverdue(projet.nextTaskDate) ? 'text-red-600'
-                              : 'text-green-600'
+                              : isToday(projet.nextTaskDate) ? 'text-green-600'
+                              : 'text-gray-900'
                           }`}>
                             {projet.nextTask}
                           </span>
@@ -594,8 +597,9 @@ export default function DashboardPage() {
                       <div className="flex items-center">
                         {projet.nextTaskDate ? (
                           <span className={`text-[11px] tabular-nums font-medium ${
-                            isOverdue(projet.nextTaskDate) ? 'text-red-500'
-                              : 'text-green-500'
+                            isOverdue(projet.nextTaskDate) ? 'text-red-600'
+                              : isToday(projet.nextTaskDate) ? 'text-green-600'
+                              : 'text-gray-900'
                           }`}>
                             {formatDate(projet.nextTaskDate)}
                           </span>
@@ -680,6 +684,7 @@ function SidePanel({
   const [localPm, setLocalPm] = useState(projet.pm || '')
   const [localPm2, setLocalPm2] = useState(projet.pm2 || '')
   const [localDa, setLocalDa] = useState(projet.daOfficial || '')
+  const [localPasDeDa, setLocalPasDeDa] = useState(!!projet.pasDeDa)
   const [localPhase, setLocalPhase] = useState(projet.phase || '')
   const [localDateFin, setLocalDateFin] = useState(projet.dateFinalisationPrevue || '')
   const [localFacturable, setLocalFacturable] = useState(!!projet.facturable100)
@@ -689,6 +694,7 @@ function SidePanel({
     setLocalPm(projet.pm || '')
     setLocalPm2(projet.pm2 || '')
     setLocalDa(projet.daOfficial || '')
+    setLocalPasDeDa(!!projet.pasDeDa)
     setLocalPhase(projet.phase || '')
     setLocalDateFin(projet.dateFinalisationPrevue || '')
     setLocalFacturable(!!projet.facturable100)
@@ -696,7 +702,7 @@ function SidePanel({
     setEditingPm2(false)
     setEditingDa(false)
     setEditingPhase(false)
-  }, [projet.id, projet.pm, projet.pm2, projet.daOfficial, projet.phase, projet.dateFinalisationPrevue, projet.facturable100])
+  }, [projet.id, projet.pm, projet.pm2, projet.daOfficial, projet.pasDeDa, projet.phase, projet.dateFinalisationPrevue, projet.facturable100])
 
   // Fetch tasks for this project (open + done, so we can show today's completed tasks)
   const { data: projectTasks, revalidate: revalidateProjectTasks } = useData<Task[]>(
@@ -776,7 +782,7 @@ function SidePanel({
   }
 
   const updateProjetField = async (
-    field: 'pm' | 'pm2' | 'daOfficial' | 'phase' | 'dateFinalisationPrevue' | 'facturable100',
+    field: 'pm' | 'pm2' | 'daOfficial' | 'pasDeDa' | 'phase' | 'dateFinalisationPrevue' | 'facturable100',
     value: string | boolean,
   ) => {
     try {
@@ -791,11 +797,48 @@ function SidePanel({
     }
   }
 
+  const updateProjetFields = async (patch: Record<string, string | boolean | null>) => {
+    try {
+      await fetch('/api/projets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: projet.id, ...patch }),
+      })
+      onTasksChanged()
+    } catch {
+      // silent
+    }
+  }
+
+  // Special sentinel for the "Pas de DA" option in the DA dropdown. When the
+  // user picks it, we clear DA (official) and flip the Pas de DA checkbox on.
+  const NO_DA = '__PAS_DE_DA__'
+
+  const handleDaChange = (v: string) => {
+    if (v === NO_DA) {
+      setLocalDa('')
+      setLocalPasDeDa(true)
+      updateProjetFields({ daOfficial: '', pasDeDa: true })
+    } else {
+      setLocalDa(v)
+      // Picking a real DA also clears the "Pas de DA" flag if it was on.
+      if (localPasDeDa) setLocalPasDeDa(false)
+      updateProjetFields({ daOfficial: v, ...(localPasDeDa ? { pasDeDa: false } : {}) })
+    }
+    setEditingDa(false)
+  }
+
+  const daDisplayValue = localPasDeDa ? NO_DA : localDa
+  const daOptionsWithNoDa = [
+    { value: NO_DA, label: 'Pas de DA' },
+    ...daOptions.map((o) => ({ value: o, label: o })),
+  ]
+
   // Team members for display
   const teamMembers = [
-    { label: 'PM', name: localPm, editing: editingPm, setEditing: setEditingPm, options: pmOptions, onChange: (v: string) => { setLocalPm(v); updateProjetField('pm', v); setEditingPm(false) } },
-    { label: 'PM2', name: localPm2, editing: editingPm2, setEditing: setEditingPm2, options: pmOptions, onChange: (v: string) => { setLocalPm2(v); updateProjetField('pm2', v); setEditingPm2(false) } },
-    { label: 'DA', name: localDa, editing: editingDa, setEditing: setEditingDa, options: daOptions, onChange: (v: string) => { setLocalDa(v); updateProjetField('daOfficial', v); setEditingDa(false) } },
+    { label: 'PM', name: localPm, editing: editingPm, setEditing: setEditingPm, options: pmOptions.map((o) => ({ value: o, label: o })), displayValue: localPm, onChange: (v: string) => { setLocalPm(v); updateProjetField('pm', v); setEditingPm(false) } },
+    { label: 'PM2', name: localPm2, editing: editingPm2, setEditing: setEditingPm2, options: pmOptions.map((o) => ({ value: o, label: o })), displayValue: localPm2, onChange: (v: string) => { setLocalPm2(v); updateProjetField('pm2', v); setEditingPm2(false) } },
+    { label: 'DA', name: localPasDeDa ? 'Pas de DA' : localDa, editing: editingDa, setEditing: setEditingDa, options: daOptionsWithNoDa, displayValue: daDisplayValue, onChange: handleDaChange },
   ]
 
   return (
@@ -879,8 +922,8 @@ function SidePanel({
                   <div className="min-w-0 w-full">
                     <p className="text-[10px] text-indigo-500 font-medium leading-none mb-1">{member.label}</p>
                     <ComboSelect
-                      options={[{ value: '', label: '— Aucun —' }, ...member.options.map((o) => ({ value: o, label: o }))]}
-                      value={member.name || ''}
+                      options={[{ value: '', label: '— Aucun —' }, ...member.options]}
+                      value={member.displayValue || ''}
                       onChange={member.onChange}
                       onClose={() => member.setEditing(false)}
                       placeholder="— Aucun —"

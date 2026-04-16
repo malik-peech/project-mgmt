@@ -92,6 +92,10 @@ export async function GET(request: Request) {
         pm2,
         da: str(f['DA']),
         daOfficial,
+        pasDeDa: !!f['Pas de DA'],
+        briefEffectue: !!f['Brief effectué'],
+        dateBrief: str(f['Date de brief (si non)']),
+        statutBrief: str(f['Statut du brief']),
         pc: str(f['Project Coordinator (PC)']),
         filmmaker: str(f['Filmmaker']),
         phase: str(f['Phase']) as Projet['phase'],
@@ -164,14 +168,17 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json()
-    const { id, pm, pm2, daOfficial, phase, dateFinalisationPrevue, facturable100 } = body as {
+    const { id, pm, pm2, daOfficial, pasDeDa, phase, dateFinalisationPrevue, facturable100, briefEffectue, dateBrief } = body as {
       id?: string
       pm?: string
       pm2?: string
       daOfficial?: string
+      pasDeDa?: boolean
       phase?: string
       dateFinalisationPrevue?: string | null
       facturable100?: boolean
+      briefEffectue?: boolean
+      dateBrief?: string | null
     }
 
     if (!id) {
@@ -182,9 +189,12 @@ export async function PATCH(request: Request) {
     if (pm !== undefined) fields['PM (manual)'] = pm || null
     if (pm2 !== undefined) fields['PM2 (manual)'] = pm2 || null
     if (daOfficial !== undefined) fields['DA (official)'] = daOfficial || null
+    if (pasDeDa !== undefined) fields['Pas de DA'] = !!pasDeDa
     if (phase !== undefined) fields['Phase'] = phase || null
     if (dateFinalisationPrevue !== undefined) fields['Date de finalisation prévue'] = dateFinalisationPrevue || null
     if (facturable100 !== undefined) fields['Facturable 100%'] = !!facturable100
+    if (briefEffectue !== undefined) fields['Brief effectué'] = !!briefEffectue
+    if (dateBrief !== undefined) fields['Date de brief (si non)'] = dateBrief || null
 
     const updated = await updateRecord(TABLES.PROJETS, id, fields as Record<string, string>)
     // Patch store directly with Airtable's response — no full re-fetch.

@@ -20,7 +20,7 @@ export default function ResizeHandle({
       className="absolute top-0 right-0 h-full w-2 -mr-1 cursor-col-resize select-none group/handle z-10"
       style={{ touchAction: 'none' }}
     >
-      <span className="block h-full w-[2px] mx-auto bg-transparent group-hover/handle:bg-indigo-300 transition-colors" />
+      <span className="block h-full w-[2px] mx-auto bg-gray-300 group-hover/handle:bg-indigo-500 transition-colors" />
     </span>
   )
 }

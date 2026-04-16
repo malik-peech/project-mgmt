@@ -29,6 +29,10 @@ export interface Projet {
   pm2?: string
   da?: string
   daOfficial?: string
+  pasDeDa?: boolean
+  briefEffectue?: boolean
+  dateBrief?: string
+  statutBrief?: string
   pc?: string
   filmmaker?: string
   phase?: Phase
