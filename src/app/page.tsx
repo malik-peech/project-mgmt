@@ -9,6 +9,8 @@ import ForceNewTaskModal from '@/components/ForceNewTaskModal'
 import FileViewer from '@/components/FileViewer'
 import ComboSelect from '@/components/ComboSelect'
 import DatePicker from '@/components/DatePicker'
+import ResizeHandle from '@/components/ResizeHandle'
+import { useColumnWidths } from '@/hooks/useColumnWidths'
 import type { Projet, StatutProjet, Cogs, Task } from '@/types'
 
 const phaseColors: Record<string, string> = {
@@ -103,6 +105,26 @@ export default function DashboardPage() {
 
   const userName = session?.user?.name || ''
   const userRole = (session?.user as { role?: string })?.role || 'PM'
+
+  // Resizable columns for the Projets list. Widths are stored in px and
+  // persisted in localStorage. A separate key per role because the Admin
+  // view has 2 extra columns (PM, DA).
+  const projetColDefaults = useMemo(
+    () => ({
+      ref: 70, agence: 70, bu: 70, client: 140, projet: 180,
+      phase: 90, statut: 90, pm: 90, da: 90, nextTask: 200, date: 80,
+    }),
+    []
+  )
+  const { widths: pCol, startResize: startProjetColResize } = useColumnWidths(
+    userRole === 'Admin' ? 'projets.list.widths.admin' : 'projets.list.widths.base',
+    projetColDefaults,
+    { min: 50 }
+  )
+  // Build grid-template-columns string from current widths. 28px is the chevron column.
+  const projetGridCols = userRole === 'Admin'
+    ? `${pCol.ref}px ${pCol.agence}px ${pCol.bu}px ${pCol.client}px ${pCol.projet}px ${pCol.phase}px ${pCol.statut}px ${pCol.pm}px ${pCol.da}px ${pCol.nextTask}px ${pCol.date}px 28px`
+    : `${pCol.ref}px ${pCol.agence}px ${pCol.bu}px ${pCol.client}px ${pCol.projet}px ${pCol.phase}px ${pCol.statut}px ${pCol.nextTask}px ${pCol.date}px 28px`
 
   // Simulation support: admin can simulate a PM's view
   const [simulatedPm, setSimulatedPm] = useState<string>('')
@@ -386,44 +408,80 @@ export default function DashboardPage() {
           ) : (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               {/* Header */}
-              <div className={`hidden md:grid ${userRole === 'Admin' ? 'grid-cols-[0.5fr_0.4fr_0.4fr_0.9fr_1.1fr_0.5fr_0.5fr_0.6fr_0.6fr_1.2fr_0.5fr_28px]' : 'grid-cols-[0.5fr_0.4fr_0.4fr_0.9fr_1.1fr_0.5fr_0.5fr_1.2fr_0.5fr_28px]'} gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider`}>
-                <button onClick={() => handleSort('ref')} className="text-left hover:text-gray-700 transition">
-                  Code<SortIcon field="ref" />
-                </button>
-                <button onClick={() => handleSort('agence')} className="text-left hover:text-gray-700 transition">
-                  Agence<SortIcon field="agence" />
-                </button>
-                <button onClick={() => handleSort('bu')} className="text-left hover:text-gray-700 transition">
-                  BU<SortIcon field="bu" />
-                </button>
-                <button onClick={() => handleSort('clientName')} className="text-left hover:text-gray-700 transition">
-                  Client<SortIcon field="clientName" />
-                </button>
-                <button onClick={() => handleSort('nom')} className="text-left hover:text-gray-700 transition">
-                  Projet<SortIcon field="nom" />
-                </button>
-                <button onClick={() => handleSort('phase')} className="text-left hover:text-gray-700 transition">
-                  Phase<SortIcon field="phase" />
-                </button>
-                <button onClick={() => handleSort('statut')} className="text-left hover:text-gray-700 transition">
-                  Statut<SortIcon field="statut" />
-                </button>
+              <div
+                className="hidden md:grid md:grid-cols-[var(--projet-grid)] gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
+                style={{ ['--projet-grid' as string]: projetGridCols } as Record<string, string>}
+              >
+                <div className="relative text-left overflow-hidden">
+                  <button onClick={() => handleSort('ref')} className="truncate hover:text-gray-700 transition">
+                    Code<SortIcon field="ref" />
+                  </button>
+                  <ResizeHandle onMouseDown={(e) => startProjetColResize('ref', e)} />
+                </div>
+                <div className="relative text-left overflow-hidden">
+                  <button onClick={() => handleSort('agence')} className="truncate hover:text-gray-700 transition">
+                    Agence<SortIcon field="agence" />
+                  </button>
+                  <ResizeHandle onMouseDown={(e) => startProjetColResize('agence', e)} />
+                </div>
+                <div className="relative text-left overflow-hidden">
+                  <button onClick={() => handleSort('bu')} className="truncate hover:text-gray-700 transition">
+                    BU<SortIcon field="bu" />
+                  </button>
+                  <ResizeHandle onMouseDown={(e) => startProjetColResize('bu', e)} />
+                </div>
+                <div className="relative text-left overflow-hidden">
+                  <button onClick={() => handleSort('clientName')} className="truncate hover:text-gray-700 transition">
+                    Client<SortIcon field="clientName" />
+                  </button>
+                  <ResizeHandle onMouseDown={(e) => startProjetColResize('client', e)} />
+                </div>
+                <div className="relative text-left overflow-hidden">
+                  <button onClick={() => handleSort('nom')} className="truncate hover:text-gray-700 transition">
+                    Projet<SortIcon field="nom" />
+                  </button>
+                  <ResizeHandle onMouseDown={(e) => startProjetColResize('projet', e)} />
+                </div>
+                <div className="relative text-left overflow-hidden">
+                  <button onClick={() => handleSort('phase')} className="truncate hover:text-gray-700 transition">
+                    Phase<SortIcon field="phase" />
+                  </button>
+                  <ResizeHandle onMouseDown={(e) => startProjetColResize('phase', e)} />
+                </div>
+                <div className="relative text-left overflow-hidden">
+                  <button onClick={() => handleSort('statut')} className="truncate hover:text-gray-700 transition">
+                    Statut<SortIcon field="statut" />
+                  </button>
+                  <ResizeHandle onMouseDown={(e) => startProjetColResize('statut', e)} />
+                </div>
                 {userRole === 'Admin' && (
                   <>
-                    <button onClick={() => handleSort('pm')} className="text-left hover:text-gray-700 transition">
-                      PM<SortIcon field="pm" />
-                    </button>
-                    <button onClick={() => handleSort('daOfficial')} className="text-left hover:text-gray-700 transition">
-                      DA<SortIcon field="daOfficial" />
-                    </button>
+                    <div className="relative text-left overflow-hidden">
+                      <button onClick={() => handleSort('pm')} className="truncate hover:text-gray-700 transition">
+                        PM<SortIcon field="pm" />
+                      </button>
+                      <ResizeHandle onMouseDown={(e) => startProjetColResize('pm', e)} />
+                    </div>
+                    <div className="relative text-left overflow-hidden">
+                      <button onClick={() => handleSort('daOfficial')} className="truncate hover:text-gray-700 transition">
+                        DA<SortIcon field="daOfficial" />
+                      </button>
+                      <ResizeHandle onMouseDown={(e) => startProjetColResize('da', e)} />
+                    </div>
                   </>
                 )}
-                <button onClick={() => handleSort('nextTask')} className="text-left hover:text-gray-700 transition">
-                  Next Task<SortIcon field="nextTask" />
-                </button>
-                <button onClick={() => handleSort('nextTaskDate')} className="text-left hover:text-gray-700 transition">
-                  Date<SortIcon field="nextTaskDate" />
-                </button>
+                <div className="relative text-left overflow-hidden">
+                  <button onClick={() => handleSort('nextTask')} className="truncate hover:text-gray-700 transition">
+                    Next Task<SortIcon field="nextTask" />
+                  </button>
+                  <ResizeHandle onMouseDown={(e) => startProjetColResize('nextTask', e)} />
+                </div>
+                <div className="relative text-left overflow-hidden">
+                  <button onClick={() => handleSort('nextTaskDate')} className="truncate hover:text-gray-700 transition">
+                    Date<SortIcon field="nextTaskDate" />
+                  </button>
+                  <ResizeHandle onMouseDown={(e) => startProjetColResize('date', e)} />
+                </div>
                 <span />
               </div>
 
@@ -436,11 +494,12 @@ export default function DashboardPage() {
                     <button
                       key={projet.id}
                       onClick={() => setSelectedProjet(isActive ? null : projet)}
-                      className={`w-full text-left grid grid-cols-1 ${userRole === 'Admin' ? 'md:grid-cols-[0.5fr_0.4fr_0.4fr_0.9fr_1.1fr_0.5fr_0.5fr_0.6fr_0.6fr_1.2fr_0.5fr_28px]' : 'md:grid-cols-[0.5fr_0.4fr_0.4fr_0.9fr_1.1fr_0.5fr_0.5fr_1.2fr_0.5fr_28px]'} gap-x-3 gap-y-1 px-4 py-2.5 transition-colors duration-150 group cursor-pointer ${
+                      className={`w-full text-left grid grid-cols-1 md:grid-cols-[var(--projet-grid)] gap-x-3 gap-y-1 px-4 py-2.5 transition-colors duration-150 group cursor-pointer ${
                         isActive
                           ? 'bg-indigo-50 border-l-2 border-l-indigo-500'
                           : 'hover:bg-gray-50 border-l-2 border-l-transparent'
                       }`}
+                      style={{ ['--projet-grid' as string]: projetGridCols } as Record<string, string>}
                     >
                       {/* Code */}
                       <div className="flex items-center min-w-0">

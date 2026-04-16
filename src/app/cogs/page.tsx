@@ -704,13 +704,13 @@ function CogsPage() {
                   <thead>
                     <tr className={`border-b border-gray-100 bg-gray-50/50 ${condensed ? '' : ''}`}>
                       {([
-                        { key: 'projetRef', label: 'Code / Projet', align: 'left' },
-                        { key: 'ressourceName', label: 'Ressource', align: 'left' },
-                        { key: 'categorie', label: 'Catégorie', align: 'left' },
-                        { key: 'montantBudgeteSales', label: 'HT sales', align: 'right' },
-                        { key: 'montantEngageProd', label: 'HT engagé', align: 'right' },
+                        { key: 'projetRef', label: 'Code / Projet', align: 'left', noSort: false },
+                        { key: 'ressourceName', label: 'Ressource', align: 'left', noSort: false },
+                        { key: 'categorie', label: 'Catégorie', align: 'left', noSort: false },
+                        { key: 'montantBudgeteSales', label: 'HT sales', align: 'right', noSort: false },
+                        { key: 'montantEngageProd', label: 'HT engagé', align: 'right', noSort: false },
                         { key: 'facture', label: 'Facture', align: 'left', noSort: true },
-                        { key: 'statut', label: 'Statut', align: 'center' },
+                        { key: 'statut', label: 'Statut', align: 'center', noSort: false },
                       ] as const).map(({ key, label, align, noSort }) => (
                         <th
                           key={key}
