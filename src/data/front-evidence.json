@@ -1,0 +1,14 @@
+{
+  "lastExtractedAt": "2026-04-17T00:00:00.000Z",
+  "scanMeta": {
+    "inboxName": "#Hello - Peech",
+    "inboxId": "inb_vsl",
+    "since": "2025-01-01T00:00:00Z",
+    "conversationsScanned": 0,
+    "messagesWithVimeo": 0,
+    "uniqueVimeoIds": 0,
+    "status": "aborted",
+    "abortReason": "Front MCP search API is non-functional in this environment. `mcp__frontapp__search_conversations` returns HTTP 404 for every query (tried: 'vimeo', 'vimeo.com', 'body:vimeo.com', 'subject:vimeo', 'status:archived', '\"vimeo.com\"'). `mcp__frontapp__list_conversations` accepts a `q` parameter but silently ignores it — returns identical reverse-chronological results regardless of query value. Without a working content-search filter, the only option is full enumeration of the #Hello - Peech inbox (~20k conversations since 2025-01-01), requiring ~20k `list_conversation_messages` calls. That exceeds the 1000-call budget by 20x. No partial results produced to avoid generating statistically biased data."
+  },
+  "entries": []
+}

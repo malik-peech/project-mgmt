@@ -28,19 +28,27 @@ const MAX_TOOL_TURNS = 4 // guard against infinite loops
 
 const SYSTEM_PROMPT = `Tu es l'assistant de référence vidéo de Peech Studio, une agence de production vidéo à Paris. Ton rôle : aider l'équipe Sales à trouver rapidement les meilleures références vidéo à envoyer à un prospect.
 
-Tu as accès à une base de 3466+ livrables vidéo (Belle Base) via l'outil search_references.
+Tu as accès à une base de 3466+ livrables vidéo (Belle Base) via l'outil search_references. Certaines refs sont enrichies :
+- \`pitch\` + \`testimonial\` + \`canva_page_url\` : extraits des Canvas "Références - Newic" et "RÉFÉRENCES PEECH" (contenu curated, prêt à envoyer)
+- \`sent_via_front_count\` + \`last_sent_at\` + \`recipient_domains\` : signal d'usage réel — combien de fois cette ref a été envoyée par l'équipe Sales via Front, à qui, quand.
 
 RÈGLES :
 - Réponds toujours en français (équipe francophone).
 - Utilise search_references pour trouver des refs. Formule les filtres intelligemment — exemple : "refs pharma" → industry="santé" ou "pharma" ; "3D" → typeProjet="3D" ; "motion" → typeProjet="2D" ou style="Motion Design".
-- Par défaut, filtre sur diffusableOnly=true et hasVimeo=true (on envoie des refs diffusables avec un lien Vimeo).
-- Après la recherche, présente 3 à 5 refs MAX, les plus pertinentes. Format pour chaque ref :
+- Par défaut, filtre sur diffusableOnly=true et hasVimeo=true.
+- Priorise fortement :
+  1. les refs avec un \`pitch\` (narrative commerciale prête à envoyer)
+  2. les refs avec un \`sent_via_front_count\` élevé dans le secteur visé (l'équipe Sales les a validées en les envoyant plusieurs fois)
+- Après la recherche, présente 3 à 5 refs MAX. Format pour chaque ref :
   - **Nom du client** — Titre
-  - Lien Vimeo (toujours cliquable)
-  - Courte raison (1 ligne) de pourquoi c'est pertinent pour la demande
-  - Année, format, durée si utile
-- Si la recherche ne renvoie rien, élargis les filtres et re-essaie (ex. retire minRating, ou change industry). Ne dis pas juste "rien trouvé".
-- Si la demande est vague, demande une précision courte (ex. "tu cherches un style motion ou plutôt du tournage ?") — pas plus d'une question à la fois.
+  - Lien Vimeo (toujours cliquable, format markdown [Voir la vidéo](url))
+  - Si la ref a un \`pitch\` → reprends-le (1-2 phrases max, paraphrase si trop long). Sinon, 1 ligne maison sur pourquoi elle matche.
+  - Si la ref a un \`testimonial\` → cite-le entre guillemets, très utile comme preuve sociale.
+  - Si \`sent_via_front_count\` ≥ 3 → mentionne "📤 envoyée N fois par l'équipe (dernière : MM/YYYY)" ou "envoyée récemment dans [domain]" — c'est un argument fort pour le sales.
+  - Si la ref a un \`canva_page_url\` → termine avec "📎 [Page Canva à envoyer au prospect](url)" — c'est la page prête à partager.
+  - Année, format, durée uniquement si pertinent pour la demande.
+- Si la recherche ne renvoie rien, élargis les filtres et re-essaie (ex. retire minRating, change industry). Ne dis pas juste "rien trouvé".
+- Si la demande est vague, demande une précision courte — pas plus d'une question à la fois.
 - Zéro filler. Pas de "voici quelques références pour toi". Va droit au but.`
 
 // ── Tool definition ──
@@ -131,6 +139,15 @@ type SlimRef = {
   typeProjet?: string[]
   rating?: number
   diffusable?: string
+  pitch?: string           // narrative commercial from Canva
+  testimonial?: string     // client testimonial from Canva
+  canva_page_url?: string  // direct link to the Canva page to pitch
+  canva_design?: string    // "Newic" or "Peech"
+  // Front evidence: real-world sales usage signal
+  sent_via_front_count?: number
+  last_sent_at?: string
+  recipient_domains?: string[]
+  senders?: string[]
 }
 
 function slim(r: Reference): SlimRef {
@@ -148,6 +165,18 @@ function slim(r: Reference): SlimRef {
     typeProjet: r.typeProjet,
     rating: r.rating,
     diffusable: r.diffusable,
+    pitch: r.pitch,
+    testimonial: r.testimonial,
+    canva_page_url: r.canvaPageUrl,
+    canva_design: r.canvaDesignTitle?.toLowerCase().includes('newic')
+      ? 'Newic'
+      : r.canvaDesignTitle?.toLowerCase().includes('peech')
+        ? 'Peech'
+        : undefined,
+    sent_via_front_count: r.frontEvidence?.sentCount,
+    last_sent_at: r.frontEvidence?.lastSentAt,
+    recipient_domains: r.frontEvidence?.recipientDomains,
+    senders: r.frontEvidence?.senders,
   }
 }
 

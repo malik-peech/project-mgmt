@@ -224,4 +224,21 @@ export interface Reference {
 
   // Metadata
   createdAt?: string
+
+  // Canva enrichment (joined by Vimeo ID from src/data/canva-enrichment.json)
+  pitch?: string             // narrative commercial — "Nous avons accompagné X dans…"
+  testimonial?: string       // client testimonial (Trustfolio)
+  canvaCategory?: string     // e.g. "Motion Design", "Tournage" (Newic only)
+  canvaPageUrl?: string      // direct link to the Canva page to pitch
+  canvaDesignTitle?: string  // "Références - Newic" or "RÉFÉRENCES PEECH"
+
+  // Front evidence (joined by Vimeo ID from src/data/front-evidence.json)
+  // — signals real-world sales usage: who sent it, how often, to whom.
+  frontEvidence?: {
+    sentCount: number
+    firstSentAt?: string
+    lastSentAt?: string
+    recipientDomains?: string[]
+    senders?: string[]
+  }
 }

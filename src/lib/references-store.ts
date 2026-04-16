@@ -14,6 +14,8 @@
  */
 
 import type { Reference } from '@/types'
+import { getCanvaEnrichment, normalizeVimeoId } from './canva-enrichment'
+import { getFrontEvidence } from './front-evidence'
 
 // ── Config ──
 
@@ -139,7 +141,12 @@ function mapProjets(records: RawRecord[]): Map<string, ProjetMeta> {
 
 // ── Mapping: Belle-base "Base" record → Reference ──
 
-function mapLivrable(r: RawRecord, projetsMap: Map<string, ProjetMeta>): Reference | null {
+function mapLivrable(
+  r: RawRecord,
+  projetsMap: Map<string, ProjetMeta>,
+  canvaMap: Map<string, import('./canva-enrichment').CanvaEnrichmentEntry>,
+  frontMap: Map<string, import('./front-evidence').FrontEvidenceEntry>,
+): Reference | null {
   const f = r.fields
   const titre = str(f['Titre'])
   if (!titre) return null // skip nameless entries
@@ -165,11 +172,18 @@ function mapLivrable(r: RawRecord, projetsMap: Map<string, ProjetMeta>): Referen
     useCase ? [useCase] : undefined,
   )
 
+  const vimeoUrl = str(f['Vimeo link'])
+
+  // Canva + Front enrichment — match by normalized Vimeo ID
+  const vimeoId = normalizeVimeoId(vimeoUrl)
+  const canva = vimeoId ? canvaMap.get(vimeoId) : undefined
+  const front = vimeoId ? frontMap.get(vimeoId) : undefined
+
   return {
     id: r.id,
     titre,
-    vimeoUrl: str(f['Vimeo link']),
-    clientName: str(f['Client lookup']) || projet?.clientName,
+    vimeoUrl,
+    clientName: str(f['Client lookup']) || projet?.clientName || canva?.client,
     projetRef: projet?.projetRef,
     year: num(f['Year']),
     industry,
@@ -190,6 +204,22 @@ function mapLivrable(r: RawRecord, projetsMap: Map<string, ProjetMeta>): Referen
     creativeQuality: num(f['Creative quality']),
     diffusable: str(f['Diffusable ?']),
     createdAt: str(f['create']),
+    // Canva-sourced fields (undefined if no match)
+    pitch: canva?.pitch || undefined,
+    testimonial: canva?.testimonial || undefined,
+    canvaCategory: canva?.category || undefined,
+    canvaPageUrl: canva?.canvaPageUrl,
+    canvaDesignTitle: canva?.canvaDesignTitle,
+    // Front-sourced fields (undefined if never sent via Front)
+    frontEvidence: front
+      ? {
+          sentCount: front.sentCount,
+          firstSentAt: front.firstSentAt,
+          lastSentAt: front.lastSentAt,
+          recipientDomains: front.recipientDomains,
+          senders: front.senders,
+        }
+      : undefined,
   }
 }
 
@@ -206,12 +236,18 @@ async function syncAll() {
     ])
 
     const projetsMap = mapProjets(projets)
+    const canvaMap = getCanvaEnrichment() // loaded once, cached
+    const frontMap = getFrontEvidence()   // loaded once, cached
 
     const references: Reference[] = []
     const byId = new Map<string, Reference>()
+    let canvaEnriched = 0
+    let frontEnriched = 0
     for (const r of livrables) {
-      const ref = mapLivrable(r, projetsMap)
+      const ref = mapLivrable(r, projetsMap, canvaMap, frontMap)
       if (!ref) continue
+      if (ref.pitch) canvaEnriched += 1
+      if (ref.frontEvidence) frontEnriched += 1
       references.push(ref)
       byId.set(ref.id, ref)
     }
@@ -223,7 +259,7 @@ async function syncAll() {
     }
 
     console.log(
-      `[ReferencesStore] Synced: ${references.length} references (from ${livrables.length} livrables, ${projets.length} projets)`,
+      `[ReferencesStore] Synced: ${references.length} references (${canvaEnriched} Canva-enriched, ${frontEnriched} Front-tracked, from ${livrables.length} livrables, ${projets.length} projets)`,
     )
   } catch (err) {
     console.error('[ReferencesStore] Sync error:', err)
@@ -308,6 +344,14 @@ function score(r: Reference): number {
   s += (r.rating || 0) * 5
   s += (r.creativeQuality || 0) * 3
   if (r.year) s += Math.min(r.year - 2020, 5) // recent = better (cap at +5)
+  // Bonus: refs with a Canva pitch are curated/validated sales content
+  if (r.pitch) s += 15
+  if (r.testimonial) s += 10
+  // Front evidence: real-world sales usage is a strong signal of pertinence.
+  // Log-scale to avoid one super-sent ref dominating everything.
+  if (r.frontEvidence?.sentCount) {
+    s += Math.min(Math.log2(r.frontEvidence.sentCount + 1) * 4, 20)
+  }
   return s
 }
 
@@ -320,6 +364,8 @@ export function filterReferences(all: Reference[], filters: ReferenceFilters): R
       if (
         !matchStr(r.titre, q) &&
         !matchStr(r.clientName, q) &&
+        !matchStr(r.pitch, q) &&
+        !matchStr(r.testimonial, q) &&
         !matchArr(r.moodTone, q) &&
         !matchArr(r.industries, q) &&
         !matchArr(r.useCases, q) &&
