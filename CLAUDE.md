@@ -67,7 +67,9 @@ src/
 │       ├── feedback/route.ts            # POST feedback (Airtable)
 │       ├── admin/refresh/route.ts       # POST force store re-sync
 │       ├── health/route.ts              # GET health check
-│       └── tmp/[id]/route.ts            # GET temp file proxy
+│       ├── tmp/[id]/route.ts            # GET temp file proxy
+│       ├── references/search/route.ts   # GET filtered Belle Base refs (Sales AI assistant backend)
+│       └── assistant/chat/route.ts      # POST chat with Claude Haiku 4.5 + search_references tool
 ├── components/
 │   ├── OnboardingPanel.tsx         # Sales onboarding form (side panel with 6 sections + file upload + live progress)
 │   ├── OffboardingPanel.tsx        # PM offboarding form (Archivage / Fin de projet / Diffusion / Belle Base)
@@ -88,7 +90,13 @@ src/
 │   ├── sanitize.ts                 # Airtable {specialValue} sanitizer
 │   ├── onboarding.ts               # Onboarding required-fields list + missingOnboardingFields()
 │   ├── offboarding.ts              # Offboarding required-fields list + missingOffboardingFields()
-│   └── users.ts                    # User management (Airtable-backed)
+│   ├── users.ts                    # User management (Airtable-backed)
+│   ├── references-store.ts         # RAM cache of Belle Base livrables + Canva/Front join (AI assistant)
+│   ├── canva-enrichment.ts         # Loads src/data/canva-enrichment.json, indexes by Vimeo ID
+│   └── front-evidence.ts           # Loads src/data/front-evidence.json, indexes by Vimeo ID
+├── data/
+│   ├── canva-enrichment.json       # Pre-extracted pitch/testimonial/canvaPageUrl per Vimeo ID (committed, gitignored dir forced via -f)
+│   └── front-evidence.json         # Pre-aggregated sales send-count per Vimeo ID (currently empty — Front MCP blocked)
 ├── types/
 │   └── index.ts                    # All TypeScript interfaces
 └── middleware.ts                    # Auth middleware
@@ -218,6 +226,64 @@ src/
 - `RELEASES` array: add new entry at top, increment version by .01
 - Timeline UI with dots and version badges
 
+### 10. Assistant Sales IA (`src/app/assistant/page.tsx`)
+- AI chat to help Sales find the right video references in natural French
+- Accessible to: **Sales** (primary role=Sales OR `hasSalesProjects`), **Admin**, **PM+Sales** (same rule as Onboarding: `showAssistant = isSales || isAdmin`)
+- Model: **Claude Haiku 4.5** (`claude-haiku-4-5-20251001`) via `@anthropic-ai/sdk`
+- UI: minimal chat bubbles + suggestions ("Refs 3D pharma", "Motion design banque"…), Enter to send, markdown-ish rendering (linkify URLs, **bold**)
+- Conversation state is client-side only (no persistence across sessions — each reload = new chat)
+- Requires `ANTHROPIC_API_KEY` env var in Coolify
+
+#### How it works (tool-use loop)
+1. User message → `POST /api/assistant/chat` with `{ messages }`
+2. Route calls Claude with system prompt (cached via ephemeral cache_control) + tool `search_references`
+3. Claude decides to call the tool with filters (industry, style, format, typeProjet, etc.)
+4. Server executes `filterReferences(store, filters)` against the in-memory store — **Claude never sees the 3466+ refs**, only the 20 matched ones
+5. Tool result returns to Claude; it formulates the final response citing Vimeo links, pitch, testimonial, Canva page URL
+6. Loop max 4 tool turns (guard against infinite calls)
+
+#### Cost (prod today)
+- ~$0.003–0.008 per user query (input ~2k tok + output ~500 tok, Haiku 4.5 pricing $1/$5 per MTok)
+- 500 queries/month ≈ **$2–4/month**
+
+## References enrichment pipeline (data layer for the Assistant)
+
+Each Reference (= a Belle Base livrable) is built by joining **3 data sources** by normalized Vimeo ID (numeric part of the URL, see `normalizeVimeoId()` in `canva-enrichment.ts`):
+
+| Source | Path | What it brings | Loaded how |
+|---|---|---|---|
+| **Belle Base** (Airtable `appEVRkaM6cM2EeDs`, table `Base`) | `src/lib/references-store.ts` | title, client, industry, style, format, durée, narration, rating, diffusable, year, BU, productType, typeProjet | Direct REST fetch, 10-min sync (like the main store) |
+| **Canva** (Peech + Newic decks) | `src/data/canva-enrichment.json` → `canva-enrichment.ts` | `pitch` (narrative commercial), `testimonial` (Trustfolio), `canvaPageUrl`, `canvaCategory`, `canvaDesignTitle` | Static JSON loaded once on first `ensureReferencesStore()` |
+| **Front emails** | `src/data/front-evidence.json` → `front-evidence.ts` | `frontEvidence.sentCount`, `firstSentAt`, `lastSentAt`, `recipientDomains`, `senders` | Static JSON, currently empty (see Known issues) |
+
+### Ranking score (`score(r)` in references-store.ts)
+- `+50` diffusable ("OK pour diffusion" prefix)
+- `+20` has Vimeo URL
+- `+5 × rating` (1–5)
+- `+3 × creativeQuality` (1–5)
+- `+min(year-2020, 5)` recency bonus
+- `+15` has Canva pitch (curated sales content)
+- `+10` has client testimonial
+- `+min(log2(sentCount+1)×4, 20)` Front send-count (log-scaled to avoid domination)
+
+### API endpoint for raw search
+`GET /api/references/search?q=&industry=&style=&format=&useCase=&client=&typeProjet=&bu=&minRating=&minCreativeQuality=&diffusableOnly=1&yearFrom=&yearTo=&hasVimeo=1&limit=50`
+Returns `{ count, total, lastSync, references: Reference[] }`. Sales-auth gated (like all other API routes).
+
+### Regenerating the Canva JSON
+1. The extraction was run **once** via a Claude Code agent in-chat — the agent called MCP `get-design-content` per page, parsed the text for Vimeo URLs + client + pitch + testimonial, and wrote the JSON.
+2. To re-sync when the canvases are updated: in a new Claude Code session, spawn a subagent with the same prompt pattern (see git history of commit `5879d0d`). Budget: ~400 MCP calls, ~10 min.
+3. Current state: 88 entries from Peech canvas (`DAGzJTSskTg`, pages 7–103 of 111), 0 from Newic canvas (`DAGyGTsyRTc`, 279 pages — not yet extracted, many have no Vimeo anyway).
+4. `canva-enrichment.ts` has an `isPlaceholder()` filter that drops entries with `client="Nom du client"` or `pitch="xxxxxxx"` or lorem ipsum.
+5. **Known quirk:** Canva text export strips accents (`"Nous avons accompagn"` instead of `"accompagné"`). Claude paraphrases so it's mostly invisible to users.
+6. `src/data/` is gitignored but the JSON is committed via `git add -f`.
+
+### Generating the Front evidence JSON (NOT YET WORKING)
+- Target: scan outbound emails in inbox `#Hello - Peech` (inbox ID `inb_vsl`) since 2025-01-01, extract Vimeo URLs, aggregate per Vimeo ID.
+- **Blocked:** the Front MCP `search_conversations` endpoint returns 404; `list_conversations` ignores the `q` parameter. Full enumeration of 20k conversations exceeds agent budget.
+- Front JSON ships empty with `scanMeta.status = "aborted"` and abortReason documented.
+- **Follow-up plan:** add `FRONT_API_TOKEN` env var in Coolify → build an admin route that uses Front's REST API directly (`GET /conversations/search/vimeo.com`, paginated, rate-limited). Trigger-able from Admin page, plus a daily cron. Ranking score + chat prompt already wired to consume the data once populated.
+
 ## Key Components
 - `ForceNewTaskModal.tsx` — Popup when marking task done, forces planning a future task (only if no remaining tasks)
 - `ContextMenu.tsx` — Reusable right-click menu (discriminated union type)
@@ -233,6 +299,8 @@ AIRTABLE_BASE_ID=appYFl5MvR7VeL0uB
 NEXTAUTH_SECRET=<random-string>
 NEXTAUTH_URL=https://pm.peech-newic.com
 APP_PASSWORD=peech2024
+ANTHROPIC_API_KEY=sk-ant-api03-...   # for /api/assistant/chat (Claude Haiku 4.5)
+# FRONT_API_TOKEN=...                # TODO: needed once the Front production sync route lands
 ```
 
 ## Deployment (Coolify)
@@ -267,7 +335,30 @@ APP_PASSWORD=peech2024
 - **Task**: id, name, done, projetId, projetRef, clientName, assigneManuel, dueDate, priority, type, pm, description
 - **Cogs**: id, statut, projetId, projetRef, ressourceName, montantEngageProd, tva, qualiteNote, qualiteComment, facture (attachments), numeroFacture, commentaire
 - **Ressource**: id, name, email, categorie[], telephone, iban
-- **UserRole**: 'Admin' | 'PM' | 'DA'
+- **UserRole**: 'Admin' | 'PM' | 'DA' | 'Sales'
+- **Reference** (AI assistant): id, titre, vimeoUrl, clientName, projetRef, year, industry/industries, useCase/useCases, style/mainStyle, format, duree, narration, moodTone, langue, bu, product, typeProjet, rating, creativeQuality, diffusable + Canva fields (pitch, testimonial, canvaCategory, canvaPageUrl, canvaDesignTitle) + frontEvidence sub-object (sentCount, lastSentAt, recipientDomains, senders)
 
 ### Task types (for calendar coloring)
 Brief, Call client, Email client, Demande float, Shooting, Delivery, Envoi retroplanning, Task interne, Contact presta, Check, Prez, COGS, Matos, Retour presta, Casting VO, Casting acteur, Prepa Tournage, Call presta, Calendar
+
+## Pending work on the Assistant Sales IA
+
+Ordered by value / effort:
+
+1. **Debug the chat response quality** — first user test (query "qu'est-ce qu'on a fait pour SNCF ?") returned a terse answer with NO pitch and NO Canva page URL even though the data exists in the JSON for the matched Vimeo ID `1084252537`. First diagnostic: hit `GET /api/references/search?client=SNCF&limit=5` on prod and inspect whether the returned Reference objects contain `pitch` + `canvaPageUrl`. If yes → tighten system prompt in `src/app/api/assistant/chat/route.ts` to force inclusion. If no → check that `src/data/canva-enrichment.json` is bundled into the Docker image (Dockerfile `COPY . .` should work, but worth verifying `src/data/` is not excluded by `.dockerignore`).
+2. **Front production sync** — add `FRONT_API_TOKEN` in Coolify, build `POST /api/admin/sync-front` using Front REST API directly (`GET https://api2.frontapp.com/conversations/search/vimeo.com` with Bearer auth), aggregate per Vimeo ID, write to `src/data/front-evidence.json` OR to a new Airtable table `FrontEvidence` in Belle Base. Daily cron.
+3. **Newic canvas extraction** — spawn a subagent to cover pages 1–279 of `DAGyGTsyRTc` with the same logic as Peech. Many pages have no Vimeo (infographics) so net gain likely smaller.
+4. **Push Front-only refs into Belle Base** — for Vimeo IDs found in Front but not in Belle Base, auto-create a livrable with status "à tagger" so the team can see what's missing from their official catalog.
+5. **Auto-tag Haiku for untagged refs** — batch Claude Haiku 4.5 on Belle Base livrables with empty `industry`/`style`, infer from titre + client + projet context, write back to Airtable. One-shot cost ~$0.50 for 1000 refs.
+6. **Admin button to refresh Canva/Front JSON** — manual trigger in `/admin` that spawns the extraction, writes the JSON, and restarts the references store. Only useful once the extraction scripts are production-runnable (today they require a Claude Code session).
+
+### Git history of the feature
+- `a965132` — PR1: references store + `/api/references/search` (3466 refs in RAM)
+- `41b1b48` — PR3: chat IA `/assistant` + `/api/assistant/chat` (Haiku 4.5 + tool calling + prompt caching) + Sidebar link for Sales/Admin
+- `5879d0d` — PR2 + PR4: Canva enrichment (82 Peech entries joined by Vimeo ID) + Front evidence skeleton (empty, MCP blocked)
+
+### Files to touch for future iterations
+- Ranking tweaks → `src/lib/references-store.ts` `score()` function
+- Chat tone/format → `src/app/api/assistant/chat/route.ts` `SYSTEM_PROMPT`
+- Tool filters exposed to Claude → `TOOL_SEARCH_REFERENCES` in same file + corresponding handler in `runSearchReferences()`
+- Adding new enrichment source → create `src/lib/<source>-evidence.ts`, add field to `Reference` type, join in `mapLivrable()`, expose in `slim()` + system prompt
