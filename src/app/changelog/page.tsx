@@ -10,6 +10,15 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.17',
+    date: '16/04/2026',
+    changes: [
+      'Sidebar : nouveau bouton "Non assignés" avec badge ambre du nombre de projets actifs sans PM et/ou sans DA',
+      'Modale Non assignés : accessible à tous (sauf Sales-only), filtres Tous / Sans PM / Sans DA, recherche, assignation inline via dropdown',
+      'Assignation sauvegardée automatiquement sur Airtable, feedback visuel (spinner + coche verte), la ligne disparaît quand PM et DA sont remplis',
+    ],
+  },
+  {
     version: '1.16',
     date: '16/04/2026',
     changes: [

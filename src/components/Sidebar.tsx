@@ -24,7 +24,9 @@ import {
   FileText,
   Rocket,
   PackageCheck,
+  UserX,
 } from 'lucide-react'
+import UnassignedModal from './UnassignedModal'
 
 const navItems = [
   { href: '/', label: 'Projets', icon: LayoutDashboard },
@@ -60,15 +62,18 @@ export default function Sidebar() {
   // Both counts are fetched once on login + every 2 min.
   const [onboardingCount, setOnboardingCount] = useState<{ toOnboard: number; total: number } | null>(null)
   const [offboardingCount, setOffboardingCount] = useState<{ toOffboard: number; total: number } | null>(null)
+  const [unassignedCount, setUnassignedCount] = useState(0)
+  const [showUnassigned, setShowUnassigned] = useState(false)
 
   useEffect(() => {
     if (!userName) return
     let cancelled = false
     const fetchCounts = async () => {
       try {
-        const [onRes, offRes] = await Promise.all([
+        const [onRes, offRes, unRes] = await Promise.all([
           fetch(`/api/onboarding?sales=${encodeURIComponent(userName)}`),
           fetch(`/api/offboarding?pm=${encodeURIComponent(userName)}`),
+          fetch('/api/projets/unassigned'),
         ])
         if (onRes.ok) {
           const data = await onRes.json()
@@ -77,6 +82,10 @@ export default function Sidebar() {
         if (offRes.ok) {
           const data = await offRes.json()
           if (!cancelled) setOffboardingCount({ toOffboard: data.counts?.toOffboard ?? 0, total: data.counts?.total ?? 0 })
+        }
+        if (unRes.ok) {
+          const data = await unRes.json()
+          if (!cancelled) setUnassignedCount(data.counts?.total || 0)
         }
       } catch {}
     }
@@ -217,6 +226,25 @@ export default function Sidebar() {
         })}
       </nav>
 
+      {/* Quick-access: unassigned projets. Hidden for sales-only users. */}
+      {!isSalesOnly && session?.user && (
+        <div className="px-3 pb-3">
+          <button
+            onClick={() => setShowUnassigned(true)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-indigo-200 hover:text-white hover:bg-indigo-800 text-sm rounded-lg transition"
+            title="Projets actifs sans PM et/ou sans DA"
+          >
+            <UserX className="w-4 h-4 shrink-0" />
+            <span className="flex-1 text-left">Non assignés</span>
+            {unassignedCount > 0 && (
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-400 text-amber-900">
+                {unassignedCount}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
       {session?.user && (
         <div className="px-3 py-4 border-t border-indigo-800">
           <div className="px-3 mb-2">
@@ -291,6 +319,9 @@ export default function Sidebar() {
       <aside className="hidden md:flex w-[250px] shrink-0 flex-col bg-[var(--color-sidebar)] min-h-screen">
         <NavContent />
       </aside>
+
+      {/* Unassigned projets modal */}
+      {showUnassigned && <UnassignedModal onClose={() => setShowUnassigned(false)} />}
 
       {/* Feedback modal */}
       {showFeedback && (
