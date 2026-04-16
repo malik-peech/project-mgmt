@@ -10,6 +10,16 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.14',
+    date: '16/04/2026',
+    changes: [
+      'Fix du lag après modification : les changements (PM, tasks, COGS, onboarding…) apparaissent désormais instantanément sans attendre 5s ni rafraîchir la page',
+      'Routes API : remplacement du re-fetch complet Airtable (2-5s) par un patch ciblé du cache en mémoire avec la réponse Airtable',
+      'Suppression des headers Cache-Control max-age=5 qui forçaient le navigateur à servir la version périmée',
+      'Onboarding : mise à jour optimiste immédiate de la liste et des stats dès le clic Enregistrer',
+    ],
+  },
+  {
     version: '1.13',
     date: '16/04/2026',
     changes: [

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createRecord, TABLES } from '@/lib/airtable'
-import { ensureStore, refreshTable, buildLookupMap } from '@/lib/store'
+import { ensureStore, upsertRecord, buildLookupMap } from '@/lib/store'
 import { sanitize } from '@/lib/sanitize'
 import type { Task } from '@/types'
 
@@ -116,7 +116,7 @@ export async function GET(request: Request) {
     })
 
     return NextResponse.json(sanitize(tasks), {
-      headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=10' },
+      headers: { 'Cache-Control': 'no-store' },
     })
   } catch (error) {
     console.error('Error fetching tasks:', error)
@@ -144,8 +144,8 @@ export async function POST(request: Request) {
 
     const record = await createRecord(TABLES.TASKS, fields as any)
 
-    // Refresh store in background
-    refreshTable(TABLES.TASKS).catch(() => {})
+    // Patch store directly with Airtable's response — no full re-fetch.
+    upsertRecord(TABLES.TASKS, { id: record.id, fields: record.fields as Record<string, unknown> })
 
     return NextResponse.json(sanitize(mapRecord({ id: record.id, fields: record.fields as Record<string, unknown> }, undefined, undefined, undefined)), { status: 201 })
   } catch (error) {

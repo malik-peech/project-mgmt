@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createRecord, TABLES } from '@/lib/airtable'
-import { ensureStore, buildLookupMap, refreshTable } from '@/lib/store'
+import { ensureStore, buildLookupMap, upsertRecord } from '@/lib/store'
 import { sanitize } from '@/lib/sanitize'
 import type { Cogs } from '@/types'
 
@@ -161,7 +161,7 @@ export async function GET(request: Request) {
     })
 
     return NextResponse.json(sanitize(cogs), {
-      headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=10' },
+      headers: { 'Cache-Control': 'no-store' },
     })
   } catch (error) {
     console.error('Error fetching COGS:', error)
@@ -184,8 +184,8 @@ export async function POST(request: Request) {
 
     const record = await createRecord(TABLES.COGS, fields as any)
 
-    // Refresh store in background
-    refreshTable(TABLES.COGS).catch(() => {})
+    // Patch store directly with Airtable's response — no full re-fetch.
+    upsertRecord(TABLES.COGS, { id: record.id, fields: record.fields as Record<string, unknown> })
 
     return NextResponse.json({ id: record.id })
   } catch (error) {

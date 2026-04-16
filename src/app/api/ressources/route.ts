@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createRecord, TABLES } from '@/lib/airtable'
-import { ensureStore, refreshTable } from '@/lib/store'
+import { ensureStore, upsertRecord } from '@/lib/store'
 import { sanitize } from '@/lib/sanitize'
 import type { Ressource } from '@/types'
 
@@ -53,8 +53,8 @@ export async function POST(request: Request) {
 
     const record = await createRecord(TABLES.RESSOURCES, fields as any)
 
-    // Refresh store in background
-    refreshTable(TABLES.RESSOURCES).catch(() => {})
+    // Patch store directly with Airtable's response — no full re-fetch.
+    upsertRecord(TABLES.RESSOURCES, { id: record.id, fields: record.fields as Record<string, unknown> })
 
     return NextResponse.json({ id: record.id, name: body.name })
   } catch (error) {

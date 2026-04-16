@@ -130,7 +130,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(
       sanitize({ projets, counts, salesName }),
-      { headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=30' } }
+      { headers: { 'Cache-Control': 'no-store' } }
     )
   } catch (error) {
     console.error('Error fetching onboarding projets:', error)

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { TABLES, updateRecord } from '@/lib/airtable'
-import { refreshTable } from '@/lib/store'
+import { upsertRecord } from '@/lib/store'
 
 /**
  * PATCH /api/onboarding/[id]
@@ -94,8 +94,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
     }
 
-    await updateRecord(TABLES.PROJETS, id, fields as Record<string, string>)
-    await refreshTable(TABLES.PROJETS)
+    const updated = await updateRecord(TABLES.PROJETS, id, fields as Record<string, string>)
+    // Patch the in-memory store directly with Airtable's response — no full re-fetch.
+    upsertRecord(TABLES.PROJETS, { id: updated.id, fields: updated.fields as Record<string, unknown> })
 
     return NextResponse.json({ ok: true })
   } catch (error) {

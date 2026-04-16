@@ -73,7 +73,7 @@ export function useData<T>(
     let lastErr: Error | null = null
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await fetch(url, { signal: controller.signal })
+        const res = await fetch(url, { signal: controller.signal, cache: 'no-store' })
         if (res.status === 429 || res.status >= 500) {
           throw new Error(`HTTP ${res.status}`)
         }

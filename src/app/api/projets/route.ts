@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { ensureStore, buildLookupMap, refreshTable } from '@/lib/store'
+import { ensureStore, buildLookupMap, upsertRecord } from '@/lib/store'
 import { sanitize } from '@/lib/sanitize'
 import { updateRecord, TABLES } from '@/lib/airtable'
 import type { Projet } from '@/types'
@@ -145,7 +145,7 @@ export async function GET(request: Request) {
     })
 
     return NextResponse.json(sanitize(projets), {
-      headers: { 'Cache-Control': 'private, max-age=5, stale-while-revalidate=10' },
+      headers: { 'Cache-Control': 'no-store' },
     })
   } catch (error) {
     console.error('Error fetching projets:', error)
@@ -178,8 +178,9 @@ export async function PATCH(request: Request) {
     if (dateFinalisationPrevue !== undefined) fields['Date de finalisation prévue'] = dateFinalisationPrevue || null
     if (facturable100 !== undefined) fields['Facturable 100%'] = !!facturable100
 
-    await updateRecord(TABLES.PROJETS, id, fields as Record<string, string>)
-    await refreshTable(TABLES.PROJETS)
+    const updated = await updateRecord(TABLES.PROJETS, id, fields as Record<string, string>)
+    // Patch store directly with Airtable's response — no full re-fetch.
+    upsertRecord(TABLES.PROJETS, { id: updated.id, fields: updated.fields as Record<string, unknown> })
 
     return NextResponse.json({ ok: true })
   } catch (error) {

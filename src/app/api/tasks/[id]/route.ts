@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { updateRecord, deleteRecord, TABLES } from '@/lib/airtable'
-import { refreshTable } from '@/lib/store'
+import { upsertRecord, removeRecord } from '@/lib/store'
 
 export async function PATCH(
   request: Request,
@@ -22,8 +22,8 @@ export async function PATCH(
 
     const record = await updateRecord(TABLES.TASKS, id, fields as any)
 
-    // Refresh store in background
-    refreshTable(TABLES.TASKS).catch(() => {})
+    // Patch store directly with Airtable's response — no full re-fetch.
+    upsertRecord(TABLES.TASKS, { id: record.id, fields: record.fields as Record<string, unknown> })
 
     return NextResponse.json({ id: record.id, ...body })
   } catch (error) {
@@ -40,8 +40,8 @@ export async function DELETE(
     const { id } = await params
     await deleteRecord(TABLES.TASKS, id)
 
-    // Refresh store in background
-    refreshTable(TABLES.TASKS).catch(() => {})
+    // Remove from store immediately — no re-fetch needed.
+    removeRecord(TABLES.TASKS, id)
 
     return NextResponse.json({ success: true })
   } catch (error) {

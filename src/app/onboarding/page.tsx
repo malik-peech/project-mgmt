@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import OnboardingPanel from '@/components/OnboardingPanel'
 import type { Projet } from '@/types'
+import { missingOnboardingFields } from '@/lib/onboarding'
 
 type OnboardingProjet = Projet & { isOnboarded: boolean; missingCount: number }
 
@@ -69,7 +70,7 @@ export default function OnboardingPage() {
     setLoading(true)
     try {
       const [projRes, clientsRes, mensuelsRes, usersRes] = await Promise.all([
-        fetch(`/api/onboarding?sales=${encodeURIComponent(effectiveSales)}`),
+        fetch(`/api/onboarding?sales=${encodeURIComponent(effectiveSales)}`, { cache: 'no-store' }),
         fetch('/api/clients'),
         fetch('/api/mensuel'),
         fetch('/api/users'),
@@ -270,8 +271,33 @@ export default function OnboardingPage() {
         <OnboardingPanel
           projet={selected}
           onClose={() => setSelected(null)}
-          onSaved={() => {
+          onSaved={(updated) => {
+            // Optimistic update: splice the updated projet into the list so
+            // the UI reflects changes instantly (stat cards, progress bar, tab).
+            setProjets((prev) => {
+              const missing = missingOnboardingFields(updated)
+              const newP = {
+                ...updated,
+                isOnboarded: missing.length === 0,
+                missingCount: missing.length,
+              }
+              return prev.map((p) => (p.id === updated.id ? newP : p))
+            })
+            setCounts((c) => {
+              const other = projets.filter((p) => p.id !== updated.id)
+              const wasDone = projets.find((p) => p.id === updated.id)?.isOnboarded
+              const missing = missingOnboardingFields(updated)
+              const isDone = missing.length === 0
+              const toOnboardDelta = (wasDone ? 0 : -1) + (isDone ? 0 : 1)
+              const onboardedDelta = (wasDone ? -1 : 0) + (isDone ? 1 : 0)
+              return {
+                total: other.length + 1,
+                toOnboard: c.toOnboard + toOnboardDelta,
+                onboarded: c.onboarded + onboardedDelta,
+              }
+            })
             setSelected(null)
+            // Re-fetch in the background to reconcile with server truth (no loader flash).
             fetchData()
           }}
           clients={clients}

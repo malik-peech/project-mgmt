@@ -13,7 +13,7 @@ interface Mensuel { id: string; name: string }
 interface Props {
   projet: Projet
   onClose: () => void
-  onSaved: () => void
+  onSaved: (updated: Projet) => void
   clients: Client[]
   mensuels: Mensuel[]
   pmOptions: string[]
@@ -194,7 +194,9 @@ export default function OnboardingPanel({
         body: JSON.stringify(body),
       })
       if (res.ok) {
-        onSaved()
+        // Build the optimistic updated projet from current form state so the
+        // list reflects changes instantly (no 3-5s wait on Airtable round-trip).
+        onSaved(previewProjet)
       } else {
         const err = await res.text()
         alert(`Erreur: ${err}`)
