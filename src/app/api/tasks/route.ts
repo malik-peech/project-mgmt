@@ -58,7 +58,13 @@ export async function GET(request: Request) {
     const doneFilter = searchParams.get('done')
     const projetId = searchParams.get('projetId')
 
-    const wantDone = doneFilter === 'true'
+    // done filter:
+    //   - undefined / 'false' → only open tasks (legacy default)
+    //   - 'true'               → only done tasks
+    //   - 'all'                → both
+    const doneMode: 'open' | 'done' | 'all' =
+      doneFilter === 'true' ? 'done' : doneFilter === 'all' ? 'all' : 'open'
+    const wantDone = doneMode === 'done'
 
     // Build lookup maps
     const refMap = buildLookupMap(store.projets, 'Project réf')
@@ -70,8 +76,8 @@ export async function GET(request: Request) {
       const f = r.fields
       const isDone = !!f['Done']
 
-      // Filter done/not done
-      if (wantDone !== isDone) continue
+      // Filter done/not done unless mode === 'all'
+      if (doneMode !== 'all' && wantDone !== isDone) continue
 
       // Filter by PM (project PM or PM2) OR DA (official) on linked project OR assigné manuel
       if (pmFilter) {

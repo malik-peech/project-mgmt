@@ -10,6 +10,17 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.19',
+    date: '16/04/2026',
+    changes: [
+      'Projets – panneau latéral : les tasks du jour cochées restent visibles (cochée + barrée), un second clic permet de décocher si erreur',
+      'COGS : bouton vue condensée / vue aérée (persisté en localStorage) pour densifier le tableau sur une seule ligne',
+      'COGS : nouvelle colonne Facture dans le tableau avec glisser-déposer de la PJ directement sur la ligne (toute la ligne devient une zone de drop)',
+      'COGS : méthode de paiement éditable dans le panneau latéral (Virement / Paypal / CB / Malt / Déjà payé / Process spécifique / Upwork)',
+      'COGS : bloc Montants réorganisé HT → TVA → TTC, TVA en € (plus de signe %)',
+    ],
+  },
+  {
     version: '1.18',
     date: '16/04/2026',
     changes: [

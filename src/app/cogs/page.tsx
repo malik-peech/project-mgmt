@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react'
 import { useData } from '@/hooks/useData'
 import {
   Plus, X, Search, Check, FileText, Copy, Trash2, RefreshCw, AlertTriangle, Loader2, Upload, CloudUpload,
-  ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronDown,
+  ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Rows3, Rows2,
 } from 'lucide-react'
 import ContextMenu from '@/components/ContextMenu'
 import ComboSelect from '@/components/ComboSelect'
@@ -59,6 +59,16 @@ function CogsPage() {
   const [ressourceFilter, setRessourceFilter] = useState('')
   const [categorieFilter, setCategorieFilter] = useState('')
   const [expandedProjetId, setExpandedProjetId] = useState<string | null>(null)
+  const [condensed, setCondensed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('cogs_condensed') === '1'
+  })
+  const [rowUploadingId, setRowUploadingId] = useState<string | null>(null)
+  const [rowDragOverId, setRowDragOverId] = useState<string | null>(null)
+
+  useEffect(() => {
+    try { localStorage.setItem('cogs_condensed', condensed ? '1' : '0') } catch {}
+  }, [condensed])
   const searchParams = useSearchParams()
 
   // Modal state
@@ -78,6 +88,7 @@ function CogsPage() {
   const [editQualiteNote, setEditQualiteNote] = useState<number | null>(null)
   const [editQualiteComment, setEditQualiteComment] = useState('')
   const [editRessourceId, setEditRessourceId] = useState('')
+  const [editMethodePaiement, setEditMethodePaiement] = useState('')
   const [savingCog, setSavingCog] = useState(false)
 
   const userName = session?.user?.name || ''
@@ -247,6 +258,7 @@ function CogsPage() {
       if (editQualiteNote !== (selectedCog.qualiteNote ?? null)) body.qualiteNote = editQualiteNote
       if (editQualiteComment !== (selectedCog.qualiteComment || '')) body.qualiteComment = editQualiteComment
       if (editRessourceId !== (selectedCog.ressourceId || '')) body.ressourceId = editRessourceId || null
+      if (editMethodePaiement !== (selectedCog.methodePaiement || '')) body.methodePaiement = editMethodePaiement || null
       if (Object.keys(body).length > 0) {
         const res = await fetch(`/api/cogs/${selectedCog.id}`, {
           method: 'PATCH',
@@ -308,6 +320,25 @@ function CogsPage() {
       })
     } finally {
       setUploadingCog(false)
+    }
+  }
+
+  /** Upload a file directly to a COGS row from the table (drag & drop). */
+  const uploadToRow = async (cogId: string, files: File[]) => {
+    if (files.length === 0) return
+    setRowUploadingId(cogId)
+    try {
+      const fd = new FormData()
+      for (const f of files) fd.append('files', f, f.name)
+      const res = await fetch(`/api/cogs/${cogId}/upload`, { method: 'POST', body: fd })
+      if (!res.ok) {
+        console.error('Row upload failed:', await res.text())
+        return
+      }
+      await revalidateCogs()
+    } finally {
+      setRowUploadingId(null)
+      setRowDragOverId(null)
     }
   }
 
@@ -458,6 +489,7 @@ function CogsPage() {
     setEditQualiteNote(cog.qualiteNote ?? null)
     setEditQualiteComment(cog.qualiteComment || '')
     setEditRessourceId(cog.ressourceId || '')
+    setEditMethodePaiement(cog.methodePaiement || '')
   }
 
   if (loading && !cogs) {
@@ -497,6 +529,17 @@ function CogsPage() {
               <p className="text-sm text-gray-500 mt-0.5">{cogsList.length} dépense{cogsList.length !== 1 ? 's' : ''}</p>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCondensed((v) => !v)}
+                className={`p-2 rounded-lg transition border ${
+                  condensed
+                    ? 'text-indigo-600 bg-indigo-50 border-indigo-200'
+                    : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 border-transparent'
+                }`}
+                title={condensed ? 'Vue aérée' : 'Vue condensée'}
+              >
+                {condensed ? <Rows3 className="w-4 h-4" /> : <Rows2 className="w-4 h-4" />}
+              </button>
               <button
                 onClick={async () => {
                   await fetch('/api/admin/refresh', { method: 'POST' })
@@ -631,61 +674,107 @@ function CogsPage() {
           ) : (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className={`w-full ${condensed ? 'text-[13px]' : 'text-sm'}`}>
                   <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/50">
+                    <tr className={`border-b border-gray-100 bg-gray-50/50 ${condensed ? '' : ''}`}>
                       {[
                         { key: 'projetRef', label: 'Code / Projet', align: 'left' },
                         { key: 'ressourceName', label: 'Ressource', align: 'left' },
                         { key: 'categorie', label: 'Catégorie', align: 'left' },
                         { key: 'montantBudgeteSales', label: 'HT sales', align: 'right' },
                         { key: 'montantEngageProd', label: 'HT engagé', align: 'right' },
+                        { key: 'facture', label: 'Facture', align: 'left', noSort: true },
                         { key: 'statut', label: 'Statut', align: 'center' },
-                      ].map(({ key, label, align }) => (
+                      ].map(({ key, label, align, noSort }) => (
                         <th
                           key={key}
-                          className={`px-4 py-3 font-medium text-gray-500 text-xs uppercase tracking-wider cursor-pointer select-none hover:text-gray-700 transition ${
+                          className={`${condensed ? 'px-3 py-1.5' : 'px-4 py-3'} font-medium text-gray-500 text-xs uppercase tracking-wider select-none transition ${
+                            noSort ? '' : 'cursor-pointer hover:text-gray-700'
+                          } ${
                             align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
                           }`}
-                          onClick={() => toggleSort(key as typeof sortField)}
+                          onClick={() => !noSort && toggleSort(key as typeof sortField)}
                         >
                           <span className="inline-flex items-center gap-1">
                             {label}
-                            {sortField === key ? (
+                            {!noSort && (sortField === key ? (
                               sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                             ) : (
                               <ArrowUpDown className="w-3 h-3 opacity-30" />
-                            )}
+                            ))}
                           </span>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {filtered.map((c) => (
+                    {filtered.map((c) => {
+                      const facture = c.facture?.[0]
+                      const rowPad = condensed ? 'px-3 py-1.5' : 'px-4 py-3'
+                      const isDragOver = rowDragOverId === c.id
+                      const isUploadingRow = rowUploadingId === c.id
+                      return (
                       <tr
                         key={c.id}
-                        className={`group hover:bg-gray-50/50 transition cursor-pointer ${selectedCog?.id === c.id ? 'bg-indigo-50' : ''}`}
+                        className={`group transition cursor-pointer ${selectedCog?.id === c.id ? 'bg-indigo-50' : 'hover:bg-gray-50/50'} ${isDragOver ? '!bg-indigo-100 ring-2 ring-indigo-300' : ''}`}
                         onClick={() => openCogPanel(c)}
                         onContextMenu={(e) => {
                           e.preventDefault()
                           setContextMenu({ x: e.clientX, y: e.clientY, cog: c })
                         }}
+                        onDragEnter={(e) => {
+                          if (!e.dataTransfer.types.includes('Files')) return
+                          e.preventDefault()
+                          setRowDragOverId(c.id)
+                        }}
+                        onDragOver={(e) => {
+                          if (!e.dataTransfer.types.includes('Files')) return
+                          e.preventDefault()
+                          e.dataTransfer.dropEffect = 'copy'
+                        }}
+                        onDragLeave={(e) => {
+                          // only reset when we actually leave the row, not its children
+                          if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+                            setRowDragOverId((curr) => (curr === c.id ? null : curr))
+                          }
+                        }}
+                        onDrop={(e) => {
+                          if (!e.dataTransfer.types.includes('Files')) return
+                          e.preventDefault()
+                          e.stopPropagation()
+                          const files = Array.from(e.dataTransfer.files)
+                          if (files.length > 0) uploadToRow(c.id, files)
+                        }}
                       >
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                            {c.projetRef && <span className="text-xs font-mono text-gray-500">{c.projetRef}</span>}
-                            {c.numeroCommande && (
-                              <span className="text-xs font-mono font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
-                                {c.numeroCommande}
-                              </span>
-                            )}
-                            {!c.projetRef && !c.numeroCommande && <span className="text-xs text-gray-400">—</span>}
-                          </div>
-                          <div className="text-sm text-gray-900 truncate max-w-[200px]">{c.projetName || '—'}</div>
-                          {c.clientName && <div className="text-xs text-indigo-600">{c.clientName}</div>}
+                        <td className={rowPad}>
+                          {condensed ? (
+                            <div className="flex items-center gap-2 min-w-0">
+                              {c.projetRef && <span className="text-[11px] font-mono text-gray-500 shrink-0">{c.projetRef}</span>}
+                              {c.numeroCommande && (
+                                <span className="text-[10px] font-mono font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">
+                                  {c.numeroCommande}
+                                </span>
+                              )}
+                              <span className="truncate text-gray-900">{c.projetName || '—'}</span>
+                              {c.clientName && <span className="text-xs text-indigo-600 shrink-0">· {c.clientName}</span>}
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                                {c.projetRef && <span className="text-xs font-mono text-gray-500">{c.projetRef}</span>}
+                                {c.numeroCommande && (
+                                  <span className="text-xs font-mono font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                    {c.numeroCommande}
+                                  </span>
+                                )}
+                                {!c.projetRef && !c.numeroCommande && <span className="text-xs text-gray-400">—</span>}
+                              </div>
+                              <div className="text-sm text-gray-900 truncate max-w-[200px]">{c.projetName || '—'}</div>
+                              {c.clientName && <div className="text-xs text-indigo-600">{c.clientName}</div>}
+                            </>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-gray-700">
+                        <td className={`${rowPad} text-gray-700`}>
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
@@ -697,14 +786,43 @@ function CogsPage() {
                             {c.ressourceName || '—'}
                           </button>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className={rowPad}>
                           {c.categorie ? (
                             <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{c.categorie}</span>
                           ) : '—'}
                         </td>
-                        <td className="px-4 py-3 text-right font-medium text-gray-500 tabular-nums">{fmt(c.montantBudgeteSales)}</td>
-                        <td className="px-4 py-3 text-right font-medium text-gray-900 tabular-nums">{fmt(c.montantEngageProd)}</td>
-                        <td className="px-4 py-3 text-center">
+                        <td className={`${rowPad} text-right font-medium text-gray-500 tabular-nums`}>{fmt(c.montantBudgeteSales)}</td>
+                        <td className={`${rowPad} text-right font-medium text-gray-900 tabular-nums`}>{fmt(c.montantEngageProd)}</td>
+                        <td className={rowPad}>
+                          <div className="flex items-center gap-1 max-w-[180px]">
+                            {isUploadingRow ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-indigo-600">
+                                <Loader2 className="w-3 h-3 animate-spin" /> Envoi…
+                              </span>
+                            ) : facture ? (
+                              <a
+                                href={facture.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline min-w-0"
+                                title={facture.filename}
+                              >
+                                <FileText className="w-3 h-3 shrink-0" />
+                                <span className="truncate">{facture.filename}</span>
+                                {(c.facture!.length > 1) && (
+                                  <span className="text-gray-400 shrink-0">+{c.facture!.length - 1}</span>
+                                )}
+                              </a>
+                            ) : (
+                              <span className={`inline-flex items-center gap-1 text-[11px] ${isDragOver ? 'text-indigo-600' : 'text-gray-300'}`}>
+                                <CloudUpload className="w-3 h-3" />
+                                {isDragOver ? 'Déposer' : 'Glisser ici'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className={`${rowPad} text-center`}>
                           {c.statut ? (
                             <span className={`inline-block text-[11px] font-medium px-2.5 py-0.5 rounded-full ${statutColors[c.statut] || 'bg-gray-100 text-gray-600'}`}>
                               {c.statut}
@@ -712,7 +830,7 @@ function CogsPage() {
                           ) : '—'}
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>
@@ -752,6 +870,8 @@ function CogsPage() {
             setEditQualiteComment={setEditQualiteComment}
             editRessourceId={editRessourceId}
             setEditRessourceId={setEditRessourceId}
+            editMethodePaiement={editMethodePaiement}
+            setEditMethodePaiement={setEditMethodePaiement}
             ressourceList={ressourceList}
             onSave={saveCogEdits}
             saving={savingCog}
@@ -1040,6 +1160,8 @@ function CogSidePanel({
   setEditQualiteComment,
   editRessourceId,
   setEditRessourceId,
+  editMethodePaiement,
+  setEditMethodePaiement,
   ressourceList,
   onSave,
   saving,
@@ -1063,6 +1185,8 @@ function CogSidePanel({
   setEditQualiteComment: (v: string) => void
   editRessourceId: string
   setEditRessourceId: (v: string) => void
+  editMethodePaiement: string
+  setEditMethodePaiement: (v: string) => void
   ressourceList: Ressource[]
   onSave: () => void
   saving: boolean
@@ -1144,30 +1268,44 @@ function CogSidePanel({
             />
           </div>
 
-          {/* Montants */}
+          {/* Montants — HT → TVA → TTC, all in € */}
           <div className="bg-gray-50 rounded-xl p-4 space-y-3">
             <div>
               <label className="block text-[10px] text-gray-400 mb-1">Montant HT engagé</label>
-              <input
-                type="number"
-                value={editMontantHT}
-                onChange={(e) => setEditMontantHT(e.target.value)}
-                placeholder="0"
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-[10px] text-gray-400 mb-0.5">Montant TTC</p>
-                <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantTTC)}</p>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={editMontantHT}
+                  onChange={(e) => setEditMontantHT(e.target.value)}
+                  placeholder="0"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 pr-7 text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">€</span>
               </div>
-              {cog.montantBudgeteSales != null && (
-                <div>
-                  <p className="text-[10px] text-gray-400 mb-0.5">Budget sales</p>
-                  <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantBudgeteSales)}</p>
-                </div>
-              )}
             </div>
+            <div>
+              <label className="block text-[10px] text-gray-400 mb-1">TVA</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={editTva}
+                  onChange={(e) => setEditTva(e.target.value)}
+                  placeholder="0"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 pr-7 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">€</span>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-400 mb-0.5">Montant TTC</p>
+              <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantTTC)}</p>
+            </div>
+            {cog.montantBudgeteSales != null && (
+              <div>
+                <p className="text-[10px] text-gray-400 mb-0.5">Budget sales</p>
+                <p className="text-sm font-semibold text-gray-800">{fmt(cog.montantBudgeteSales)}</p>
+              </div>
+            )}
           </div>
 
           {/* Info rows */}
@@ -1184,10 +1322,6 @@ function CogSidePanel({
                 <span className="font-mono font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">{cog.numeroCommande}</span>
               </div>
             )}
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Méthode paiement</span>
-              <span className="text-gray-700">{cog.methodePaiement || <span className="text-amber-500 text-xs">Non renseigné</span>}</span>
-            </div>
             {cog.createdAt && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Créé le</span>
@@ -1196,15 +1330,17 @@ function CogSidePanel({
             )}
           </div>
 
-          {/* TVA */}
+          {/* Méthode de paiement (editable) */}
           <div>
-            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">TVA (%)</label>
-            <input
-              type="number"
-              value={editTva}
-              onChange={(e) => setEditTva(e.target.value)}
-              placeholder="Ex: 20"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Méthode de paiement</label>
+            <ComboSelect
+              options={[
+                'Virement', 'Paypal', 'CB', 'Malt', 'Déjà payé', 'Process spécifique', 'Upwork',
+              ].map((v) => ({ value: v, label: v }))}
+              value={editMethodePaiement}
+              onChange={setEditMethodePaiement}
+              placeholder="Sélectionner une méthode…"
+              clearable
             />
           </div>
 
@@ -1346,7 +1482,8 @@ function CogSidePanel({
             editTva !== (cog.tva != null ? String(cog.tva) : '') ||
             editQualiteNote !== (cog.qualiteNote ?? null) ||
             editQualiteComment !== (cog.qualiteComment || '') ||
-            editRessourceId !== (cog.ressourceId || '')
+            editRessourceId !== (cog.ressourceId || '') ||
+            editMethodePaiement !== (cog.methodePaiement || '')
           ) && (
             <button
               onClick={onSave}

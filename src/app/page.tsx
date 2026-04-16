@@ -639,9 +639,9 @@ function SidePanel({
     setEditingPhase(false)
   }, [projet.id, projet.pm, projet.pm2, projet.daOfficial, projet.phase, projet.dateFinalisationPrevue, projet.facturable100])
 
-  // Fetch tasks for this project
+  // Fetch tasks for this project (open + done, so we can show today's completed tasks)
   const { data: projectTasks, revalidate: revalidateProjectTasks } = useData<Task[]>(
-    `/api/tasks?projetId=${projet.id}`,
+    `/api/tasks?projetId=${projet.id}&done=all`,
     { key: `tasks-projet-${projet.id}`, enabled: true, staleTime: 10_000 }
   )
 
@@ -654,6 +654,12 @@ function SidePanel({
   const tasks = projectTasks ?? []
   const cogs = projectCogs ?? []
   const openTasks = tasks.filter((t) => !t.done)
+  // Keep completed tasks visible for the day they were checked so the user
+  // can un-check in case of mistake. After the day is over, the API's Done
+  // filter will drop them. Shown as checked + strikethrough.
+  const todayDoneTasks = tasks.filter((t) => t.done && isToday(t.dueDate))
+  // Merge for display: open first, then today's completed
+  const visibleTasks = [...openTasks, ...todayDoneTasks]
 
   const toggleTaskDone = async (task: Task) => {
     try {
@@ -938,25 +944,38 @@ function SidePanel({
       {/* Tasks */}
       <div className="mb-6">
         <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2.5">
-          Tasks ({openTasks.length} ouvertes)
+          Tasks ({openTasks.length} ouverte{openTasks.length > 1 ? 's' : ''}
+          {todayDoneTasks.length > 0 && ` · ${todayDoneTasks.length} faite${todayDoneTasks.length > 1 ? 's' : ''} aujourd'hui`})
         </h3>
 
-        {/* Task list */}
+        {/* Task list: open tasks + tasks done today (checked + strikethrough) */}
         <div className="space-y-1 mb-3">
-          {openTasks.length === 0 && (
-            <p className="text-sm text-gray-400 py-2">Aucune task ouverte</p>
+          {visibleTasks.length === 0 && (
+            <p className="text-sm text-gray-400 py-2">Aucune task</p>
           )}
-          {openTasks.slice(0, 10).map((task) => (
+          {visibleTasks.slice(0, 12).map((task) => (
             <div key={task.id} className="flex items-center gap-2 py-1.5 group">
-              <button onClick={() => toggleTaskDone(task)} className="shrink-0 text-gray-300 hover:text-green-500 transition">
-                <Circle className="w-4 h-4" />
+              <button
+                onClick={() => toggleTaskDone(task)}
+                className={`shrink-0 transition ${
+                  task.done
+                    ? 'text-green-500 hover:text-gray-400'
+                    : 'text-gray-300 hover:text-green-500'
+                }`}
+                title={task.done ? 'Décocher' : 'Marquer comme fait'}
+              >
+                {task.done ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
               </button>
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-800 truncate">{task.name}</p>
+                <p className={`text-sm truncate ${task.done ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                  {task.name}
+                </p>
               </div>
               {(task.assigneManuel || task.assigneeName) && (
                 <span
-                  className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[8px] font-bold shrink-0"
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 ${
+                    task.done ? 'bg-gray-100 text-gray-400' : 'bg-indigo-100 text-indigo-600'
+                  }`}
                   title={task.assigneManuel || task.assigneeName}
                 >
                   {getInitials(task.assigneManuel || task.assigneeName)}
@@ -964,15 +983,17 @@ function SidePanel({
               )}
               {task.dueDate && (
                 <span className={`text-[11px] tabular-nums shrink-0 ${
-                  isOverdue(task.dueDate) ? 'text-amber-600' : isToday(task.dueDate) ? 'text-orange-500' : 'text-gray-400'
+                  task.done ? 'text-gray-300 line-through' :
+                  isOverdue(task.dueDate) ? 'text-amber-600' :
+                  isToday(task.dueDate) ? 'text-orange-500' : 'text-gray-400'
                 }`}>
                   {formatDate(task.dueDate)}
                 </span>
               )}
             </div>
           ))}
-          {openTasks.length > 10 && (
-            <p className="text-xs text-gray-400 pl-6">+ {openTasks.length - 10} autres</p>
+          {visibleTasks.length > 12 && (
+            <p className="text-xs text-gray-400 pl-6">+ {visibleTasks.length - 12} autres</p>
           )}
         </div>
 
