@@ -10,6 +10,14 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.18',
+    date: '16/04/2026',
+    changes: [
+      'Non assignés : les projets dont le client est "Peech" (projets internes) sont exclus',
+      'Non assignés : nouvel onglet Stand-by (à côté de Sans PM / Sans DA) — les projets en stand-by sont séparés et ne comptent pas dans les compteurs PM/DA ni dans le badge de la sidebar',
+    ],
+  },
+  {
     version: '1.17',
     date: '16/04/2026',
     changes: [

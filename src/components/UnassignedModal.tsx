@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { X, UserX, Loader2, Search, AlertCircle, CheckCircle2, Users, Palette } from 'lucide-react'
+import { X, UserX, Loader2, Search, AlertCircle, CheckCircle2, Users, Palette, PauseCircle } from 'lucide-react'
 import ComboSelect from './ComboSelect'
 
 interface UnassignedProjet {
@@ -15,6 +15,7 @@ interface UnassignedProjet {
   daOfficial?: string
   missingPM: boolean
   missingDA: boolean
+  standBy: boolean
 }
 
 interface Counts {
@@ -22,6 +23,7 @@ interface Counts {
   missingPM: number
   missingDA: number
   missingBoth: number
+  standBy: number
 }
 
 interface Props {
@@ -43,11 +45,10 @@ const agenceColors: Record<string, string> = {
   'Creespy': 'bg-purple-100 text-purple-700',
 }
 
-type FilterView = 'all' | 'pm' | 'da'
+type FilterView = 'all' | 'pm' | 'da' | 'standby'
 
 export default function UnassignedModal({ onClose }: Props) {
   const [projets, setProjets] = useState<UnassignedProjet[]>([])
-  const [counts, setCounts] = useState<Counts>({ total: 0, missingPM: 0, missingDA: 0, missingBoth: 0 })
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [view, setView] = useState<FilterView>('all')
@@ -66,10 +67,7 @@ export default function UnassignedModal({ onClose }: Props) {
         ])
         if (projRes.ok) {
           const data = await projRes.json()
-          if (!cancelled) {
-            setProjets(data.projets || [])
-            setCounts(data.counts || { total: 0, missingPM: 0, missingDA: 0, missingBoth: 0 })
-          }
+          if (!cancelled) setProjets(data.projets || [])
         }
         if (usersRes.ok) {
           const list = await usersRes.json()
@@ -101,8 +99,11 @@ export default function UnassignedModal({ onClose }: Props) {
 
   const visibleProjets = useMemo(() => {
     let list = projets
-    if (view === 'pm') list = list.filter((p) => p.missingPM)
-    if (view === 'da') list = list.filter((p) => p.missingDA)
+    // Stand-by projets are excluded from Tous / Sans PM / Sans DA — they live in their own tab.
+    if (view === 'all') list = list.filter((p) => !p.standBy)
+    else if (view === 'pm') list = list.filter((p) => p.missingPM && !p.standBy)
+    else if (view === 'da') list = list.filter((p) => p.missingDA && !p.standBy)
+    else if (view === 'standby') list = list.filter((p) => p.standBy)
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(
@@ -124,7 +125,8 @@ export default function UnassignedModal({ onClose }: Props) {
         body: JSON.stringify({ id: projetId, [field]: value }),
       })
       if (res.ok) {
-        // Optimistic: update the row locally
+        // Optimistic: update the row locally. Counters are re-derived from the
+        // list below, so we don't need to manually sync them.
         setProjets((prev) =>
           prev
             .map((p) => {
@@ -139,16 +141,8 @@ export default function UnassignedModal({ onClose }: Props) {
               }
               return updated
             })
-            // Drop rows that are now fully assigned
             .filter((p) => p.missingPM || p.missingDA)
         )
-        setCounts((c) => {
-          const next = { ...c }
-          if (field === 'pm' && value) next.missingPM = Math.max(0, next.missingPM - 1)
-          if (field === 'daOfficial' && value) next.missingDA = Math.max(0, next.missingDA - 1)
-          // recompute total from remaining list (filter happens in setState above; approximate)
-          return next
-        })
         setSavedFlash(projetId + field)
         setTimeout(() => setSavedFlash(null), 1500)
       }
@@ -156,6 +150,30 @@ export default function UnassignedModal({ onClose }: Props) {
       setSavingId(null)
     }
   }
+
+  // Derive counts from the current list so they stay in sync with optimistic updates.
+  const derivedCounts: Counts = useMemo(() => {
+    let missingPM = 0
+    let missingDA = 0
+    let missingBoth = 0
+    let standBy = 0
+    for (const p of projets) {
+      if (p.standBy) {
+        standBy++
+        continue
+      }
+      if (p.missingPM && p.missingDA) missingBoth++
+      else if (p.missingPM) missingPM++
+      else if (p.missingDA) missingDA++
+    }
+    return {
+      total: missingPM + missingDA + missingBoth,
+      missingPM: missingPM + missingBoth,
+      missingDA: missingDA + missingBoth,
+      missingBoth,
+      standBy,
+    }
+  }, [projets])
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/40 pt-10 md:pt-20 px-4" onClick={onClose}>
@@ -173,7 +191,10 @@ export default function UnassignedModal({ onClose }: Props) {
               <h2 className="text-lg font-bold text-gray-900">Projets non assignés</h2>
             </div>
             <p className="text-xs text-gray-500">
-              {counts.total} projet{counts.total > 1 ? 's' : ''} actif{counts.total > 1 ? 's' : ''} sans PM et/ou DA
+              {derivedCounts.total} actif{derivedCounts.total > 1 ? 's' : ''} sans PM/DA
+              {derivedCounts.standBy > 0 && (
+                <span className="text-gray-400"> · {derivedCounts.standBy} stand-by</span>
+              )}
             </p>
           </div>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
@@ -182,19 +203,19 @@ export default function UnassignedModal({ onClose }: Props) {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-2 px-6 py-3 border-b border-gray-100">
+        <div className="flex items-center gap-2 px-6 py-3 border-b border-gray-100 flex-wrap">
           <TabButton
             active={view === 'all'}
             onClick={() => setView('all')}
             label="Tous"
-            count={counts.total}
+            count={derivedCounts.total}
             color="gray"
           />
           <TabButton
             active={view === 'pm'}
             onClick={() => setView('pm')}
             label="Sans PM"
-            count={counts.missingPM}
+            count={derivedCounts.missingPM}
             icon={Users}
             color="indigo"
           />
@@ -202,14 +223,22 @@ export default function UnassignedModal({ onClose }: Props) {
             active={view === 'da'}
             onClick={() => setView('da')}
             label="Sans DA"
-            count={counts.missingDA}
+            count={derivedCounts.missingDA}
             icon={Palette}
             color="teal"
           />
-          {counts.missingBoth > 0 && (
+          <TabButton
+            active={view === 'standby'}
+            onClick={() => setView('standby')}
+            label="Stand-by"
+            count={derivedCounts.standBy}
+            icon={PauseCircle}
+            color="pink"
+          />
+          {derivedCounts.missingBoth > 0 && (
             <span className="ml-auto text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full flex items-center gap-1">
               <AlertCircle className="w-3 h-3" />
-              {counts.missingBoth} sans PM ni DA
+              {derivedCounts.missingBoth} sans PM ni DA
             </span>
           )}
         </div>
@@ -366,12 +395,13 @@ function TabButton({
   count: number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   icon?: any
-  color: 'gray' | 'indigo' | 'teal'
+  color: 'gray' | 'indigo' | 'teal' | 'pink'
 }) {
   const activeMap = {
     gray: 'bg-gray-900 text-white',
     indigo: 'bg-indigo-600 text-white',
     teal: 'bg-teal-600 text-white',
+    pink: 'bg-pink-600 text-white',
   }
   return (
     <button

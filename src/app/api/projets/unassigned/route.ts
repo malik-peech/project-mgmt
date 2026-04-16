@@ -42,11 +42,15 @@ export async function GET() {
       daOfficial?: string
       missingPM: boolean
       missingDA: boolean
+      standBy: boolean
     }[] = []
 
+    // Counters — Stand-by projets are tracked separately and do NOT contribute
+    // to the PM/DA counters (they're low-priority, not urgent to staff).
     let missingPM = 0
     let missingDA = 0
     let missingBoth = 0
+    let standBy = 0
 
     for (const r of store.projets.records) {
       const f = r.fields
@@ -59,42 +63,65 @@ export async function GET() {
       const noDA = !daOfficial?.trim()
       if (!noPM && !noDA) continue
 
-      if (noPM && noDA) missingBoth++
-      else if (noPM) missingPM++
-      else missingDA++
-
       const clientIds = f['Client link'] as string[] | undefined
       const clientId = clientIds?.[0]
+      const clientName = clientId ? clientMap.get(clientId) || '' : ''
+
+      // Skip internal Peech projets — we don't staff them via PM/DA.
+      if (clientName.trim().toLowerCase() === 'peech') continue
+
+      const isStandBy = statut === 'Stand-by'
+      if (isStandBy) {
+        standBy++
+      } else if (noPM && noDA) {
+        missingBoth++
+      } else if (noPM) {
+        missingPM++
+      } else {
+        missingDA++
+      }
+
       projets.push({
         id: r.id,
         ref: str(f['Project réf']),
         nom: str(f['Projet']) || '',
-        clientName: clientId ? clientMap.get(clientId) || '' : '',
+        clientName,
         statut,
         agence: sel(f['Agence']),
         pm,
         daOfficial,
         missingPM: noPM,
         missingDA: noDA,
+        standBy: isStandBy,
       })
     }
 
-    // Sort: both-missing first, then missing PM, then missing DA; by project name within each group
+    // Sort: non-standby both-missing → non-standby missing PM → non-standby missing DA
+    // → standby, then by name within each group.
     projets.sort((a, b) => {
-      const rank = (p: typeof a) => (p.missingPM && p.missingDA ? 0 : p.missingPM ? 1 : 2)
+      const rank = (p: typeof a) => {
+        if (p.standBy) return 3
+        if (p.missingPM && p.missingDA) return 0
+        if (p.missingPM) return 1
+        return 2
+      }
       const rDiff = rank(a) - rank(b)
       if (rDiff !== 0) return rDiff
       return (a.nom || '').localeCompare(b.nom || '')
     })
 
+    // Total for the sidebar badge = urgent (non-standby) only.
+    const urgentTotal = missingPM + missingDA + missingBoth
+
     return NextResponse.json(
       sanitize({
         projets,
         counts: {
-          total: projets.length,
+          total: urgentTotal,
           missingPM: missingPM + missingBoth,
           missingDA: missingDA + missingBoth,
           missingBoth,
+          standBy,
         },
       }),
       { headers: { 'Cache-Control': 'no-store' } }
