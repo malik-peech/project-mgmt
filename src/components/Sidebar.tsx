@@ -26,6 +26,7 @@ import {
   PackageCheck,
   UserX,
   ClipboardCheck,
+  Sparkles,
 } from 'lucide-react'
 import UnassignedModal from './UnassignedModal'
 import PMWelcomeModal from './PMWelcomeModal'
@@ -40,6 +41,7 @@ const navItems = [
 // Sales-only users (primary role = Sales, no PM/DA/Admin) see a reduced menu.
 const salesOnlyNavItems = [
   { href: '/cogs', label: 'COGS', icon: Receipt },
+  { href: '/assistant', label: 'Assistant', icon: Sparkles },
 ]
 
 export default function Sidebar() {
@@ -110,6 +112,8 @@ export default function Sidebar() {
   const showOffboarding = isAdmin || hasOffboardingProjects
   const isPM = userRole === 'PM' || isAdmin
   const showABriefer = isPM
+  // Assistant IA de références Belle Base — Sales (tous), Admin, PM+Sales.
+  const showAssistant = isSales || isAdmin
 
   // Show PM welcome modal once per session on first login for PMs only.
   useEffect(() => {
@@ -180,8 +184,12 @@ export default function Sidebar() {
   // role and are ALSO sales keep their full PM/DA menu.
   const isSalesOnly = userRole === 'Sales' && !isAdmin
   const baseItems = isSalesOnly ? salesOnlyNavItems : navItems
+  // Assistant shown in the common nav only for non-sales-only users
+  // (sales-only already have it in salesOnlyNavItems above).
+  const showAssistantInCommon = showAssistant && !isSalesOnly
   const allNavItems: NavItem[] = [
     ...baseItems,
+    ...(showAssistantInCommon ? [{ href: '/assistant', label: 'Assistant', icon: Sparkles }] : []),
     ...(showABriefer ? [{ href: '/a-briefer', label: 'À Briefer', icon: ClipboardCheck, badge: aBrieferCount }] : []),
     ...(showOnboarding ? [{ href: '/onboarding', label: 'Onboarding', icon: Rocket, badge: onboardingCount?.toOnboard || 0 }] : []),
     ...(showOffboarding ? [{ href: '/offboarding', label: 'Offboarding', icon: PackageCheck, badge: offboardingCount?.toOffboard || 0 }] : []),
