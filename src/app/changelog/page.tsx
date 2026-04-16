@@ -10,6 +10,15 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.20',
+    date: '16/04/2026',
+    changes: [
+      'Redimensionnement des colonnes sur COGS et Tasks — glisser la bordure entre deux colonnes ajuste la largeur',
+      'Les largeurs sont sauvegardées par utilisateur (localStorage) et restent entre les sessions',
+      'Tasks : ajout d\'une ligne d\'en-tête avec les libellés Priorité / Type / Date / Assig. (les handles de resize sont cachés sur mobile)',
+    ],
+  },
+  {
     version: '1.19',
     date: '16/04/2026',
     changes: [

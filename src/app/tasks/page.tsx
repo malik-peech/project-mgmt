@@ -8,6 +8,8 @@ import ForceNewTaskModal from '@/components/ForceNewTaskModal'
 import TaskCalendarView from '@/components/TaskCalendarView'
 import ComboSelect from '@/components/ComboSelect'
 import DatePicker from '@/components/DatePicker'
+import ResizeHandle from '@/components/ResizeHandle'
+import { useColumnWidths } from '@/hooks/useColumnWidths'
 import { useData } from '@/hooks/useData'
 import type { Task, TaskPriority, TaskType, Projet } from '@/types'
 
@@ -138,6 +140,13 @@ export default function TasksPage() {
 
   // Form state (modal)
   const [form, setForm] = useState({ name: '', projetId: '', type: '' as string, priority: '' as string, dueDate: '', description: '' })
+
+  // Column widths for the task list (flex, not <table>). Name takes the rest.
+  const taskColDefaults = useMemo(
+    () => ({ priority: 120, type: 120, date: 90, assignee: 44 }),
+    []
+  )
+  const { widths: tCol, startResize: startTaskColResize } = useColumnWidths('tasks.list.widths', taskColDefaults, { min: 40 })
 
   const userName = (session?.user as any)?.name || ''
   const userRole = (session?.user as any)?.role || 'PM'
@@ -742,7 +751,41 @@ export default function TasksPage() {
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm divide-y divide-gray-50">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          {/* Header row with resizable column widths */}
+          <div className="hidden sm:flex items-center gap-3 px-4 py-2 bg-gray-50/50 border-b border-gray-100 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            <span className="shrink-0 w-5" /> {/* checkbox slot */}
+            <span className="flex-1 min-w-0">Task</span>
+            <span
+              className="relative shrink-0 text-left"
+              style={{ width: tCol.priority }}
+            >
+              Priorité
+              <ResizeHandle onMouseDown={(e) => startTaskColResize('priority', e)} />
+            </span>
+            <span
+              className="relative shrink-0 text-left hidden md:inline-block"
+              style={{ width: tCol.type }}
+            >
+              Type
+              <ResizeHandle onMouseDown={(e) => startTaskColResize('type', e)} />
+            </span>
+            <span
+              className="relative shrink-0 text-left"
+              style={{ width: tCol.date }}
+            >
+              Date
+              <ResizeHandle onMouseDown={(e) => startTaskColResize('date', e)} />
+            </span>
+            <span
+              className="relative shrink-0 text-center"
+              style={{ width: tCol.assignee }}
+            >
+              Assig.
+              <ResizeHandle onMouseDown={(e) => startTaskColResize('assignee', e)} />
+            </span>
+          </div>
+          <div className="divide-y divide-gray-50">
           {filteredTasks.map((task) => (
             <div
               key={task.id}
@@ -791,8 +834,8 @@ export default function TasksPage() {
               </div>
 
               {/* Priority (click to edit) */}
-              {editingField?.id === task.id && editingField?.field === 'priority' ? (
-                <div className="w-36 shrink-0">
+              <div className="hidden sm:block shrink-0 overflow-hidden" style={{ width: tCol.priority }}>
+                {editingField?.id === task.id && editingField?.field === 'priority' ? (
                   <ComboSelect
                     options={priorityComboOptions}
                     value={task.priority || ''}
@@ -802,24 +845,24 @@ export default function TasksPage() {
                     size="sm"
                     autoOpen
                   />
-                </div>
-              ) : (
-                <button
-                  onClick={() => setEditingField({ id: task.id, field: 'priority' })}
-                  className={`hidden sm:inline-flex shrink-0 text-xs px-2 py-0.5 rounded-full font-medium transition hover:opacity-75 ${
-                    task.priority
-                      ? getPriorityColor(task.priority)
-                      : 'bg-gray-50 text-gray-300 border border-dashed border-gray-200'
-                  }`}
-                  title="Cliquer pour modifier la priorité"
-                >
-                  {task.priority || '+ priorité'}
-                </button>
-              )}
+                ) : (
+                  <button
+                    onClick={() => setEditingField({ id: task.id, field: 'priority' })}
+                    className={`inline-flex max-w-full truncate text-xs px-2 py-0.5 rounded-full font-medium transition hover:opacity-75 ${
+                      task.priority
+                        ? getPriorityColor(task.priority)
+                        : 'bg-gray-50 text-gray-300 border border-dashed border-gray-200'
+                    }`}
+                    title={task.priority || 'Cliquer pour modifier la priorité'}
+                  >
+                    <span className="truncate">{task.priority || '+ priorité'}</span>
+                  </button>
+                )}
+              </div>
 
               {/* Type (click to edit) */}
-              {editingField?.id === task.id && editingField?.field === 'type' ? (
-                <div className="w-36 shrink-0">
+              <div className="hidden md:block shrink-0 overflow-hidden" style={{ width: tCol.type }}>
+                {editingField?.id === task.id && editingField?.field === 'type' ? (
                   <ComboSelect
                     options={typeComboOptions}
                     value={task.type || ''}
@@ -829,53 +872,54 @@ export default function TasksPage() {
                     size="sm"
                     autoOpen
                   />
-                </div>
-              ) : (
-                <button
-                  onClick={() => setEditingField({ id: task.id, field: 'type' })}
-                  className={`hidden md:inline-flex shrink-0 text-xs px-2 py-0.5 rounded-full font-medium transition hover:opacity-75 ${
-                    task.type
-                      ? getTypeColor(task.type)
-                      : 'bg-gray-50 text-gray-300 border border-dashed border-gray-200'
-                  }`}
-                  title="Cliquer pour modifier le type"
-                >
-                  {task.type || '+ type'}
-                </button>
-              )}
+                ) : (
+                  <button
+                    onClick={() => setEditingField({ id: task.id, field: 'type' })}
+                    className={`inline-flex max-w-full truncate text-xs px-2 py-0.5 rounded-full font-medium transition hover:opacity-75 ${
+                      task.type
+                        ? getTypeColor(task.type)
+                        : 'bg-gray-50 text-gray-300 border border-dashed border-gray-200'
+                    }`}
+                    title={task.type || 'Cliquer pour modifier le type'}
+                  >
+                    <span className="truncate">{task.type || '+ type'}</span>
+                  </button>
+                )}
+              </div>
 
               {/* Due date (DatePicker) */}
-              {editingDate === task.id ? (
-                <DatePicker
-                  value={task.dueDate || ''}
-                  onChange={(v) => updateTaskDate(task.id, v)}
-                  placeholder="Date"
-                  clearable
-                  size="sm"
-                  autoOpen
-                  className="w-32 shrink-0"
-                />
-              ) : (
-                <button
-                  onClick={() => setEditingDate(task.id)}
-                  className={`hidden sm:inline-flex items-center gap-1 shrink-0 text-xs hover:bg-gray-100 px-1.5 py-0.5 rounded transition ${
-                    !task.dueDate ? 'text-gray-400' : (() => {
-                      const today = new Date(); today.setHours(0,0,0,0)
-                      const due = parseLocalDate(task.dueDate!)
-                      if (due < today) return 'text-amber-600 font-medium'
-                      if (due.getTime() === today.getTime()) return 'text-orange-500 font-medium'
-                      return 'text-gray-500'
-                    })()
-                  }`}
-                  title="Cliquer pour modifier la date"
-                >
-                  {formatTaskDate(task.dueDate)}
-                </button>
-              )}
+              <div className="hidden sm:block shrink-0 overflow-hidden" style={{ width: tCol.date }}>
+                {editingDate === task.id ? (
+                  <DatePicker
+                    value={task.dueDate || ''}
+                    onChange={(v) => updateTaskDate(task.id, v)}
+                    placeholder="Date"
+                    clearable
+                    size="sm"
+                    autoOpen
+                  />
+                ) : (
+                  <button
+                    onClick={() => setEditingDate(task.id)}
+                    className={`inline-flex items-center gap-1 max-w-full truncate text-xs hover:bg-gray-100 px-1.5 py-0.5 rounded transition ${
+                      !task.dueDate ? 'text-gray-400' : (() => {
+                        const today = new Date(); today.setHours(0,0,0,0)
+                        const due = parseLocalDate(task.dueDate!)
+                        if (due < today) return 'text-amber-600 font-medium'
+                        if (due.getTime() === today.getTime()) return 'text-orange-500 font-medium'
+                        return 'text-gray-500'
+                      })()
+                    }`}
+                    title={task.dueDate ? 'Cliquer pour modifier la date' : ''}
+                  >
+                    <span className="truncate">{formatTaskDate(task.dueDate)}</span>
+                  </button>
+                )}
+              </div>
 
               {/* Assignee (click to edit) */}
-              {editingAssignee === task.id ? (
-                <div className="w-36 shrink-0">
+              <div className="shrink-0 flex items-center justify-center overflow-hidden" style={{ width: tCol.assignee }}>
+                {editingAssignee === task.id ? (
                   <ComboSelect
                     options={userOptions}
                     value={task.assigneManuel || ''}
@@ -886,25 +930,26 @@ export default function TasksPage() {
                     size="sm"
                     autoOpen
                   />
-                </div>
-              ) : (
-                <button
-                  onClick={() => setEditingAssignee(task.id)}
-                  title={task.assigneManuel || task.assigneeName || 'Assigner'}
-                  className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition hover:ring-2 hover:ring-indigo-400 hover:ring-offset-1"
-                  style={task.assigneManuel || task.assigneeName ? {} : { background: 'rgb(243 244 246)' }}
-                >
-                  {task.assigneManuel || task.assigneeName ? (
-                    <span className="w-full h-full rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center">
-                      {(task.assigneManuel || task.assigneeName || '?').split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)}
-                    </span>
-                  ) : (
-                    <span className="w-full h-full rounded-full border-2 border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-[10px]">+</span>
-                  )}
-                </button>
-              )}
+                ) : (
+                  <button
+                    onClick={() => setEditingAssignee(task.id)}
+                    title={task.assigneManuel || task.assigneeName || 'Assigner'}
+                    className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition hover:ring-2 hover:ring-indigo-400 hover:ring-offset-1"
+                    style={task.assigneManuel || task.assigneeName ? {} : { background: 'rgb(243 244 246)' }}
+                  >
+                    {task.assigneManuel || task.assigneeName ? (
+                      <span className="w-full h-full rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                        {(task.assigneManuel || task.assigneeName || '?').split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)}
+                      </span>
+                    ) : (
+                      <span className="w-full h-full rounded-full border-2 border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-[10px]">+</span>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           ))}
+          </div>
         </div>
       )}
 

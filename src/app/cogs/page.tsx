@@ -11,6 +11,8 @@ import {
 import ContextMenu from '@/components/ContextMenu'
 import ComboSelect from '@/components/ComboSelect'
 import FileViewer from '@/components/FileViewer'
+import ResizeHandle from '@/components/ResizeHandle'
+import { useColumnWidths } from '@/hooks/useColumnWidths'
 import type { Cogs, Projet, Ressource } from '@/types'
 
 const statutColors: Record<string, string> = {
@@ -69,6 +71,21 @@ function CogsPage() {
   useEffect(() => {
     try { localStorage.setItem('cogs_condensed', condensed ? '1' : '0') } catch {}
   }, [condensed])
+
+  // Column widths (persisted in localStorage). Covers the main COGS table.
+  const cogsColDefaults = useMemo(
+    () => ({
+      projetRef: 260,
+      ressourceName: 180,
+      categorie: 160,
+      montantBudgeteSales: 110,
+      montantEngageProd: 110,
+      facture: 180,
+      statut: 140,
+    }),
+    []
+  )
+  const { widths: colW, startResize: startColResize } = useColumnWidths('cogs.table.widths', cogsColDefaults)
   const searchParams = useSearchParams()
 
   // Modal state
@@ -674,10 +691,19 @@ function CogsPage() {
           ) : (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-                <table className={`w-full ${condensed ? 'text-[13px]' : 'text-sm'}`}>
+                <table className={`w-full ${condensed ? 'text-[13px]' : 'text-sm'}`} style={{ tableLayout: 'fixed' }}>
+                  <colgroup>
+                    <col style={{ width: colW.projetRef }} />
+                    <col style={{ width: colW.ressourceName }} />
+                    <col style={{ width: colW.categorie }} />
+                    <col style={{ width: colW.montantBudgeteSales }} />
+                    <col style={{ width: colW.montantEngageProd }} />
+                    <col style={{ width: colW.facture }} />
+                    <col style={{ width: colW.statut }} />
+                  </colgroup>
                   <thead>
                     <tr className={`border-b border-gray-100 bg-gray-50/50 ${condensed ? '' : ''}`}>
-                      {[
+                      {([
                         { key: 'projetRef', label: 'Code / Projet', align: 'left' },
                         { key: 'ressourceName', label: 'Ressource', align: 'left' },
                         { key: 'categorie', label: 'Catégorie', align: 'left' },
@@ -685,17 +711,17 @@ function CogsPage() {
                         { key: 'montantEngageProd', label: 'HT engagé', align: 'right' },
                         { key: 'facture', label: 'Facture', align: 'left', noSort: true },
                         { key: 'statut', label: 'Statut', align: 'center' },
-                      ].map(({ key, label, align, noSort }) => (
+                      ] as const).map(({ key, label, align, noSort }) => (
                         <th
                           key={key}
-                          className={`${condensed ? 'px-3 py-1.5' : 'px-4 py-3'} font-medium text-gray-500 text-xs uppercase tracking-wider select-none transition ${
+                          className={`relative ${condensed ? 'px-3 py-1.5' : 'px-4 py-3'} font-medium text-gray-500 text-xs uppercase tracking-wider select-none transition ${
                             noSort ? '' : 'cursor-pointer hover:text-gray-700'
                           } ${
                             align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
                           }`}
                           onClick={() => !noSort && toggleSort(key as typeof sortField)}
                         >
-                          <span className="inline-flex items-center gap-1">
+                          <span className="inline-flex items-center gap-1 truncate">
                             {label}
                             {!noSort && (sortField === key ? (
                               sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
@@ -703,6 +729,7 @@ function CogsPage() {
                               <ArrowUpDown className="w-3 h-3 opacity-30" />
                             ))}
                           </span>
+                          <ResizeHandle onMouseDown={(e) => startColResize(key as keyof typeof colW, e)} />
                         </th>
                       ))}
                     </tr>
@@ -746,7 +773,7 @@ function CogsPage() {
                           if (files.length > 0) uploadToRow(c.id, files)
                         }}
                       >
-                        <td className={rowPad}>
+                        <td className={`${rowPad} overflow-hidden`}>
                           {condensed ? (
                             <div className="flex items-center gap-2 min-w-0">
                               {c.projetRef && <span className="text-[11px] font-mono text-gray-500 shrink-0">{c.projetRef}</span>}
@@ -769,32 +796,32 @@ function CogsPage() {
                                 )}
                                 {!c.projetRef && !c.numeroCommande && <span className="text-xs text-gray-400">—</span>}
                               </div>
-                              <div className="text-sm text-gray-900 truncate max-w-[200px]">{c.projetName || '—'}</div>
-                              {c.clientName && <div className="text-xs text-indigo-600">{c.clientName}</div>}
+                              <div className="text-sm text-gray-900 truncate">{c.projetName || '—'}</div>
+                              {c.clientName && <div className="text-xs text-indigo-600 truncate">{c.clientName}</div>}
                             </>
                           )}
                         </td>
-                        <td className={`${rowPad} text-gray-700`}>
+                        <td className={`${rowPad} text-gray-700 overflow-hidden`}>
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
                               setRessourceFilter(ressourceFilter === c.ressourceName ? '' : (c.ressourceName || ''))
                             }}
-                            className={`text-left hover:text-indigo-600 transition ${ressourceFilter === c.ressourceName ? 'text-indigo-600 font-medium' : ''}`}
-                            title="Filtrer par ressource"
+                            className={`w-full text-left truncate hover:text-indigo-600 transition ${ressourceFilter === c.ressourceName ? 'text-indigo-600 font-medium' : ''}`}
+                            title={c.ressourceName || ''}
                           >
                             {c.ressourceName || '—'}
                           </button>
                         </td>
-                        <td className={rowPad}>
+                        <td className={`${rowPad} overflow-hidden`}>
                           {c.categorie ? (
-                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{c.categorie}</span>
+                            <span className="inline-block max-w-full truncate align-middle text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full" title={c.categorie}>{c.categorie}</span>
                           ) : '—'}
                         </td>
                         <td className={`${rowPad} text-right font-medium text-gray-500 tabular-nums`}>{fmt(c.montantBudgeteSales)}</td>
                         <td className={`${rowPad} text-right font-medium text-gray-900 tabular-nums`}>{fmt(c.montantEngageProd)}</td>
-                        <td className={rowPad}>
-                          <div className="flex items-center gap-1 max-w-[180px]">
+                        <td className={`${rowPad} overflow-hidden`}>
+                          <div className="flex items-center gap-1 min-w-0">
                             {isUploadingRow ? (
                               <span className="inline-flex items-center gap-1 text-[11px] text-indigo-600">
                                 <Loader2 className="w-3 h-3 animate-spin" /> Envoi…
@@ -805,7 +832,7 @@ function CogsPage() {
                                 target="_blank"
                                 rel="noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline min-w-0"
+                                className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline min-w-0 max-w-full"
                                 title={facture.filename}
                               >
                                 <FileText className="w-3 h-3 shrink-0" />
@@ -822,9 +849,9 @@ function CogsPage() {
                             )}
                           </div>
                         </td>
-                        <td className={`${rowPad} text-center`}>
+                        <td className={`${rowPad} text-center overflow-hidden`}>
                           {c.statut ? (
-                            <span className={`inline-block text-[11px] font-medium px-2.5 py-0.5 rounded-full ${statutColors[c.statut] || 'bg-gray-100 text-gray-600'}`}>
+                            <span className={`inline-block max-w-full truncate align-middle text-[11px] font-medium px-2.5 py-0.5 rounded-full ${statutColors[c.statut] || 'bg-gray-100 text-gray-600'}`} title={c.statut}>
                               {c.statut}
                             </span>
                           ) : '—'}
