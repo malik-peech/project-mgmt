@@ -186,3 +186,42 @@ export interface AppUser {
   name: string
   role: UserRole
 }
+
+// ── References (AI sales assistant) ──
+// Denormalized view of a Belle-base livrable, ready for filtering + LLM tool-calling.
+export interface Reference {
+  id: string
+  titre: string
+  vimeoUrl?: string
+
+  // Client / project
+  clientName?: string
+  projetRef?: string
+  year?: number
+
+  // Categorization
+  industry?: string          // primary (singleSelect)
+  industries?: string[]      // all industries combined (Main Industries + Industry New)
+  useCase?: string           // primary (singleSelect)
+  useCases?: string[]        // all (lookup)
+  style?: string             // primary (singleSelect)
+  mainStyle?: string         // (singleSelect)
+  format?: string            // (singleSelect)
+  duree?: string             // (singleSelect)
+  narration?: string         // (singleSelect)
+  moodTone?: string[]        // (multipleSelects)
+  langue?: string[]          // (multipleSelects)
+  bu?: string[]              // lookup from projet
+  product?: string[]         // lookup from projet
+  typeProjet?: string[]      // lookup from projet (3D, Live, 2D…)
+
+  // Quality
+  rating?: number
+  creativeQuality?: number
+
+  // Diffusion
+  diffusable?: string        // "OK pour diffusion" / "Diffusion interdite" / etc.
+
+  // Metadata
+  createdAt?: string
+}
