@@ -2,8 +2,12 @@
 export type Phase = 'Démarrage' | 'Conception' | 'Production' | 'Last modifs' | 'Done' | 'Archivé'
 export type StatutProjet = 'Stand-by' | 'En cours' | 'Finalisation' | 'Done' | 'Tentative' | 'Intention'
 export type TypeProjet = 'Live' | '2D' | 'Film' | 'Film scénarisé (acting)' | '3D' | 'Web' | 'Learning' | 'Stock' | 'Adapt' | 'Illustrations' | 'Photo' | 'Podcast' | 'Solo' | 'Duo'
+export type Currency = 'EUR' | 'USD' | 'CHF'
+export type Origine = 'Client existant' | 'Nouveau client'
+export type TypeDeContact = 'Compta' | 'Client'
 
 export interface Attachment {
+  id?: string
   url: string
   filename: string
   type?: string
@@ -28,12 +32,25 @@ export interface Projet {
   phase?: Phase
   statut?: StatutProjet
   typeProjet?: TypeProjet
+  // Sales / onboarding
+  sales?: string
+  moisSignatureIds?: string[]
+  moisSignatureNames?: string[]
+  currency?: Currency
+  origine?: Origine
+  numeroDevis?: string
+  dureeContrat?: number
+  libelleFacture?: string
+  contactCompta?: string
+  typeDeContact?: TypeDeContact
   // Budgets
   cogsBudget?: number
   cogsReels?: number
   cogsPrevus?: number
   cogsAEngager?: number
   timeCreaBudget?: number
+  timeProdBudget?: number
+  timeDaBudget?: number
   sizing?: number
   travelBudget?: number
   offreInitiale?: number
@@ -125,8 +142,20 @@ export interface Ressource {
   photo?: { url: string; filename: string }[]
 }
 
+// ── Clients (onboarding) ──
+export interface Client {
+  id: string
+  name: string
+}
+
+// ── Mensuel (Mois signature) ──
+export interface Mensuel {
+  id: string
+  name: string
+}
+
 // ── User (session) ──
-export type UserRole = 'Admin' | 'PM' | 'DA'
+export type UserRole = 'Admin' | 'PM' | 'DA' | 'Sales'
 
 export interface AppUser {
   name: string

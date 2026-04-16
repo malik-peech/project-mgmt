@@ -30,6 +30,7 @@ type Store = {
   cogs: StoreTable
   ressources: StoreTable
   clients: StoreTable
+  mensuel: StoreTable
 }
 
 // ── Singleton ──
@@ -86,9 +87,10 @@ async function syncAll() {
     // Small delay between batches
     await new Promise((r) => setTimeout(r, 300))
 
-    const [ressources, clients] = await Promise.all([
+    const [ressources, clients, mensuel] = await Promise.all([
       fetchTable(TABLES.RESSOURCES),
       fetchTable(TABLES.CLIENTS),
+      fetchTable(TABLES.MENSUEL),
     ])
 
     // Only update tables that returned data (preserve stale if fetch failed)
@@ -99,6 +101,7 @@ async function syncAll() {
         cogs: emptyTable(),
         ressources: emptyTable(),
         clients: emptyTable(),
+        mensuel: emptyTable(),
       }
     }
 
@@ -107,9 +110,10 @@ async function syncAll() {
     if (cogs.length > 0 || !store.cogs.lastSync) store.cogs = buildTable(cogs)
     if (ressources.length > 0 || !store.ressources.lastSync) store.ressources = buildTable(ressources)
     if (clients.length > 0 || !store.clients.lastSync) store.clients = buildTable(clients)
+    if (mensuel.length > 0 || !store.mensuel.lastSync) store.mensuel = buildTable(mensuel)
 
     console.log(
-      `[Store] Synced: ${projets.length} projets, ${tasks.length} tasks, ${cogs.length} cogs, ${ressources.length} ressources, ${clients.length} clients`
+      `[Store] Synced: ${projets.length} projets, ${tasks.length} tasks, ${cogs.length} cogs, ${ressources.length} ressources, ${clients.length} clients, ${mensuel.length} mensuel`
     )
   } catch (err: unknown) {
     console.error('[Store] Sync error:', err)
@@ -182,6 +186,7 @@ function tableNameToKey(tableName: string): keyof Store | null {
     case TABLES.COGS: return 'cogs'
     case TABLES.RESSOURCES: return 'ressources'
     case TABLES.CLIENTS: return 'clients'
+    case TABLES.MENSUEL: return 'mensuel'
     default: return null
   }
 }

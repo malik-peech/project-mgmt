@@ -22,6 +22,7 @@ import {
   Lightbulb,
   MessageCircle,
   FileText,
+  Rocket,
 } from 'lucide-react'
 
 const navItems = [
@@ -37,6 +38,7 @@ export default function Sidebar() {
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: string })?.role
   const isAdmin = userRole === 'Admin'
+  const userName = session?.user?.name || ''
 
   const [simulatedPm, setSimulatedPm] = useState<string>('')
   const [refreshing, setRefreshing] = useState(false)
@@ -46,6 +48,29 @@ export default function Sidebar() {
   const [fbMessage, setFbMessage] = useState('')
   const [fbSending, setFbSending] = useState(false)
   const [fbSent, setFbSent] = useState(false)
+
+  // Onboarding: user is "sales" if they have any projets with Sales === userName.
+  // We fetch on login and refresh every 2 min to keep the badge in sync.
+  const [onboardingCount, setOnboardingCount] = useState<{ toOnboard: number; total: number } | null>(null)
+  useEffect(() => {
+    if (!userName) return
+    let cancelled = false
+    const fetchOnboarding = async () => {
+      try {
+        const res = await fetch(`/api/onboarding?sales=${encodeURIComponent(userName)}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled) setOnboardingCount({ toOnboard: data.counts?.toOnboard ?? 0, total: data.counts?.total ?? 0 })
+      } catch {}
+    }
+    fetchOnboarding()
+    const interval = setInterval(fetchOnboarding, 120_000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [userName])
+
+  const hasSalesProjects = onboardingCount !== null && onboardingCount.total > 0
+  const isSales = userRole === 'Sales' || hasSalesProjects
+  const showOnboarding = isSales || isAdmin
 
   const submitFeedback = async () => {
     if (!fbMessage.trim() || !session?.user?.name) return
@@ -96,9 +121,12 @@ export default function Sidebar() {
     setSimulatedPm('')
   }
 
-  const allNavItems = isAdmin
-    ? [...navItems, { href: '/admin', label: 'Admin', icon: Settings }]
-    : navItems
+  type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; badge?: number }
+  const allNavItems: NavItem[] = [
+    ...navItems,
+    ...(showOnboarding ? [{ href: '/onboarding', label: 'Onboarding', icon: Rocket, badge: onboardingCount?.toOnboard || 0 }] : []),
+    ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Settings }] : []),
+  ]
 
   const NavContent = () => (
     <>
@@ -129,7 +157,7 @@ export default function Sidebar() {
       )}
 
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {allNavItems.map(({ href, label, icon: Icon }) => {
+        {allNavItems.map(({ href, label, icon: Icon, badge }) => {
           const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href)
           return (
             <div key={href}>
@@ -143,7 +171,12 @@ export default function Sidebar() {
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />
-                {label}
+                <span className="flex-1">{label}</span>
+                {badge && badge > 0 ? (
+                  <span className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-400 text-amber-900">
+                    {badge}
+                  </span>
+                ) : null}
               </Link>
               {href === '/cogs' && isAdmin && (
                 <Link

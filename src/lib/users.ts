@@ -4,7 +4,7 @@
  * Matching = name as it appears in Airtable PM (manual) / DA fields.
  */
 
-export type UserRole = 'PM' | 'DA' | 'Admin'
+export type UserRole = 'PM' | 'DA' | 'Admin' | 'Sales'
 
 export interface AppUser {
   id: string          // Airtable record ID
@@ -29,12 +29,13 @@ const atUrl = `https://api.airtable.com/v0/${baseId}/${tableId}`
 function mapRecord(rec: { id: string; fields: Record<string, unknown> }): AppUser {
   const f = rec.fields
   const typeVal = f['Type']
+  const validRoles: UserRole[] = ['PM', 'DA', 'Admin', 'Sales']
   let role: UserRole = 'PM'
   if (typeof typeVal === 'string') {
-    role = (['PM', 'DA', 'Admin'].includes(typeVal) ? typeVal : 'PM') as UserRole
+    role = (validRoles.includes(typeVal as UserRole) ? typeVal : 'PM') as UserRole
   } else if (typeVal && typeof typeVal === 'object' && 'name' in (typeVal as Record<string, unknown>)) {
     const name = (typeVal as { name: string }).name
-    role = (['PM', 'DA', 'Admin'].includes(name) ? name : 'PM') as UserRole
+    role = (validRoles.includes(name as UserRole) ? name : 'PM') as UserRole
   }
 
   return {
@@ -113,6 +114,7 @@ export async function createUser(user: { name: string; login: string; password: 
     method: 'POST',
     headers,
     body: JSON.stringify({
+      typecast: true,
       records: [{
         fields: {
           Name: user.name,
@@ -150,6 +152,7 @@ export async function updateUser(
     method: 'PATCH',
     headers,
     body: JSON.stringify({
+      typecast: true,
       records: [{ id: recordId, fields }],
     }),
   })

@@ -22,13 +22,25 @@ function str(val: unknown): string | undefined {
   return String(val)
 }
 
+/** Extract singleSelect value (may be string or {id,name} object) */
+function sel(val: unknown): string | undefined {
+  if (val == null) return undefined
+  if (typeof val === 'string') return val
+  if (typeof val === 'object' && val && 'name' in (val as Record<string, unknown>)) {
+    return String((val as Record<string, unknown>).name)
+  }
+  return str(val)
+}
+
 export async function GET(request: Request) {
   try {
     const store = await ensureStore()
     const { searchParams } = new URL(request.url)
     const pmFilter = searchParams.get('pm')
     const daFilter = searchParams.get('da')
+    const salesFilter = searchParams.get('sales')
     const statutFilter = searchParams.get('statut')
+    const includeAll = searchParams.get('all') === '1'
 
     // Build client name lookup from store
     const clientMap = buildLookupMap(store.clients, 'Client')
@@ -36,6 +48,8 @@ export async function GET(request: Request) {
     // Filter statuts
     const activeStatuts = statutFilter
       ? [statutFilter]
+      : includeAll
+      ? ['En cours', 'Finalisation', 'Stand-by', 'Tentative', 'Intention', 'Done']
       : ['En cours', 'Finalisation', 'Stand-by', 'Tentative', 'Intention']
 
     const projets: Projet[] = []
@@ -45,29 +59,23 @@ export async function GET(request: Request) {
       const statut = f['Statut'] as string | undefined
       if (!statut || !activeStatuts.includes(statut)) continue
 
-      const pm = f['PM (manual)'] as string | undefined
-      // PM2 (manual) is singleSelect → may be {id, name} or string
-      const pm2Raw = f['PM2 (manual)']
-      const pm2 = typeof pm2Raw === 'object' && pm2Raw && 'name' in (pm2Raw as Record<string, unknown>)
-        ? String((pm2Raw as Record<string, unknown>).name)
-        : str(pm2Raw)
+      const pm = sel(f['PM (manual)'])
+      const pm2 = sel(f['PM2 (manual)'])
+      const agence = sel(f['Agence'])
+      const daOfficial = sel(f['DA (official)'])
+      const sales = sel(f['Sales'])
+      const currency = sel(f['Currency']) as Projet['currency']
+      const origine = sel(f['Origine']) as Projet['origine']
+      const typeDeContact = sel(f['type de contact']) as Projet['typeDeContact']
 
-      // Agence and DA (official) are singleSelect → may be {id, name} objects
-      const agenceRaw = f['Agence']
-      const agence = typeof agenceRaw === 'object' && agenceRaw && 'name' in (agenceRaw as Record<string, unknown>)
-        ? String((agenceRaw as Record<string, unknown>).name)
-        : str(agenceRaw)
-      const daOfficialRaw = f['DA (official)']
-      const daOfficial = typeof daOfficialRaw === 'object' && daOfficialRaw && 'name' in (daOfficialRaw as Record<string, unknown>)
-        ? String((daOfficialRaw as Record<string, unknown>).name)
-        : str(daOfficialRaw)
-
-      // PM filter matches either PM (manual) or PM2 (manual)
+      // Filters
       if (pmFilter && pm !== pmFilter && pm2 !== pmFilter) continue
       if (daFilter && daOfficial !== daFilter) continue
+      if (salesFilter && sales !== salesFilter) continue
 
       const clientIds = f['Client link'] as string[] | undefined
       const clientId = clientIds?.[0]
+      const moisSignatureIds = f['Mois signature'] as string[] | undefined
 
       projets.push({
         id: r.id,
@@ -87,11 +95,22 @@ export async function GET(request: Request) {
         phase: str(f['Phase']) as Projet['phase'],
         statut: statut as Projet['statut'],
         typeProjet: str(f['Type de projet']) as Projet['typeProjet'],
+        sales,
+        moisSignatureIds,
+        currency,
+        origine,
+        numeroDevis: str(f['Numéro de devis']),
+        dureeContrat: num(f['Durée contrat (mois)']),
+        libelleFacture: str(f['Libellé facture']),
+        contactCompta: str(f['Contact compta']),
+        typeDeContact,
         cogsBudget: num(f['COGS - budget (€)']),
         cogsReels: num(f['COGS - réels (€)']),
         cogsPrevus: num(f['COGS - prévus (€)']),
         cogsAEngager: num(f['COGS - à engager (€)']),
         timeCreaBudget: num(f['Time Créa - budget (h)']),
+        timeProdBudget: num(f['Time Prod - budget (h)']),
+        timeDaBudget: num(f['Time DA- budget (h)']),
         sizing: num(f['Sizing (h)']),
         travelBudget: num(f['Travel - budget (€)']),
         offreInitiale: num(f['Offre - Valeur initiale']),

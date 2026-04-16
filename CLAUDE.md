@@ -39,6 +39,7 @@ src/
 │   ├── cogs/page.tsx               # COGS/expenses module
 │   ├── ressources/page.tsx         # Resources directory
 │   ├── admin/page.tsx              # Admin panel (users + feedback)
+│   ├── onboarding/page.tsx         # Sales onboarding list (à onboarder + archive)
 │   ├── changelog/page.tsx          # Changelog (static, versioned)
 │   ├── login/page.tsx              # Login page
 │   ├── layout.tsx                  # Root layout
@@ -53,12 +54,18 @@ src/
 │       ├── cogs/[id]/route.ts           # GET/PATCH/DELETE COG
 │       ├── cogs/[id]/upload/route.ts    # File upload to Airtable
 │       ├── ressources/route.ts          # GET resources
+│       ├── onboarding/route.ts          # GET sales projets split by onboarded status
+│       ├── onboarding/[id]/route.ts     # PATCH onboarding fields
+│       ├── onboarding/[id]/upload/route.ts # POST/DELETE Devis signé attachments
+│       ├── clients/route.ts             # GET list + POST create client (onboarding)
+│       ├── mensuel/route.ts              # GET list of Mois signature entries
 │       ├── users/route.ts               # GET/POST/PATCH/DELETE users
 │       ├── feedback/route.ts            # POST feedback (Airtable)
 │       ├── admin/refresh/route.ts       # POST force store re-sync
 │       ├── health/route.ts              # GET health check
 │       └── tmp/[id]/route.ts            # GET temp file proxy
 ├── components/
+│   ├── OnboardingPanel.tsx         # Sales onboarding form (side panel with 6 sections + file upload + live progress)
 │   ├── Sidebar.tsx                 # Navigation + user info + feedback modal
 │   ├── TaskCalendarView.tsx        # Calendar view (week/month) with drag-drop
 │   ├── DatePicker.tsx              # Custom date picker (timezone-safe)
@@ -74,6 +81,7 @@ src/
 │   ├── airtable.ts                 # Airtable API client (fetch helpers)
 │   ├── store.ts                    # In-memory data store (singleton)
 │   ├── sanitize.ts                 # Airtable {specialValue} sanitizer
+│   ├── onboarding.ts               # Onboarding required-fields list + missingOnboardingFields()
 │   └── users.ts                    # User management (Airtable-backed)
 ├── types/
 │   └── index.ts                    # All TypeScript interfaces
@@ -86,12 +94,13 @@ src/
 
 | Table | ID | Key Fields |
 |-------|-----|------------|
-| Projets | `tbl0Pij0JqZFD9Ijr` | `Projet`, `Project ref`, `PM (manual)`, `Statut`, `Phase`, `Client link`, `Devis signe` (attachment) |
+| Projets | `tbl0Pij0JqZFD9Ijr` | `Projet`, `Project ref`, `PM (manual)`, `Sales` (singleSelect), `Statut`, `Phase`, `Client link`, `Mois signature` (linked → Mensuel), `Currency`, `Origine`, `Agence`, `Numéro de devis`, `Devis signé` (attachment), `COGS/Time*/Travel - budget`, `Date de finalisation prévue`, `Durée contrat (mois)`, `Libellé facture`, `Contact compta`, `type de contact` |
 | Tasks | `tbl63pL1r1ArbEY88` | `Name`, `Done`, `Projets` (link), `Due date`, `Priority`, `Type`, `PM` (lookup) |
 | COGS (Depenses) | `tblnrqX6xNx5EWFsC` | `Statut de la depense`, `Projet` (link), `Ressource` (link), `Montant HT engage (prod)`, `Facture` (attachment), `Numero de facture` |
 | Ressources | `tblgwh9bP5Piz32SL` | `Name`, `Email`, `Categorie`, `Blacklist` |
 | Clients | `tblquwXMfnSWP3syD` | `Client` |
-| App user | `tblGJI7r6LpcFbqZQ` | `Name`, `Login`, `Password`, `Type` (PM/DA/Admin), `Matching` |
+| Mensuel | `tblJUFh1AceiFNJJe` | `Name` (YYYY-MM) — linked from Projets via `Mois signature` |
+| App user | `tblGJI7r6LpcFbqZQ` | `Name`, `Login`, `Password`, `Type` (PM/DA/Admin/**Sales**), `Matching` |
 | Feedback | `tbl9xr21gRYnG9XtC` | `Name`, `User`, `Type` (Bug/Feature/Feedback), `Description`, `Done` |
 
 ### Important field notes
@@ -122,6 +131,8 @@ src/
 - **PM** users see only their projects/tasks/COGS (filtered by `pm === session.user.name`)
 - **DA** users see projects where they are DA
 - **Admin** users (`Malik Goulamhoussen`, `Vanessa Goulamhoussen`) see everything
+- **Sales** users (and PM/Admin who are ALSO in Projets.Sales field) see an additional "Onboarding" menu with their sales projects
+- A user can cumulate roles: primary role from `App user.Type` (PM/DA/Admin/Sales) + derived "is sales" flag from `Projets.Sales === user.matching`. Example: Fabien = PM + Sales; Malik = Admin + Sales; Laurine = Sales only.
 - Scope filters on Tasks page: "Mes projets" (all project tasks) / "Mes tasks" (only assigned to me)
 
 ## 4 Modules
@@ -173,7 +184,18 @@ src/
 - **Feedback checklist**: list of all feedback with category badges, done checkboxes
 - Admin-only (requires Admin role)
 
-### 7. Changelog (`src/app/changelog/page.tsx`)
+### 7. Onboarding (`src/app/onboarding/page.tsx`)
+- Visible only to Sales users (role='Sales' or matching name present in `Projets.Sales`)
+- Admin sees the menu and can switch to any sales' queue via the top-right selector
+- Two tabs backed by a single fetch: **À onboarder** (missing at least one required field) / **Onboardés** (archive, all 18 fields complete)
+- Clicking a project opens `OnboardingPanel` — a 640px side panel with all fields grouped into sections (Informations client / Devis / Budgets / Contrat / Facturation / Équipe)
+- Live progress bar (0-100%) + missing-field checklist that updates as you type
+- "Client" field supports inline creation via `POST /api/clients` (creates a new Client record if it doesn't exist)
+- "Mois signature" is a multi-select picker backed by the Mensuel table (linked field on Airtable)
+- "Devis signé" upload via `/api/onboarding/[id]/upload` (same tmp-proxy pattern as COGS uploads)
+- Required fields (`src/lib/onboarding.ts` / `ONBOARDING_FIELDS`): Mois signature, Currency, Client, Origine, Agence, Numéro de devis, Devis signé, COGS/Time Créa/Travel/Time Prod/Time DA budgets, Date de finalisation prévue, Durée contrat, Libellé facture, Contact compta, Type de contact, PM (manual)
+
+### 8. Changelog (`src/app/changelog/page.tsx`)
 - Static page with versioned release notes
 - `RELEASES` array: add new entry at top, increment version by .01
 - Timeline UI with dots and version badges

@@ -10,6 +10,19 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.13',
+    date: '16/04/2026',
+    changes: [
+      'Nouveau rôle Sales : une personne peut cumuler Sales + PM / Admin (champ Sales d\'Airtable)',
+      'Nouvel onglet Onboarding dans la sidebar (visible pour les Sales) avec badge du nombre de projets à onboarder',
+      'Page Onboarding : tableau des projets à onboarder (barre de progression par projet) et vue Archive des projets déjà onboardés',
+      'Formulaire d\'onboarding en panneau latéral : Mois signature, Currency, Client link (avec création inline), Origine, Agence, Numéro de devis, Devis signé (upload PDF)',
+      'Onboarding : budgets COGS / Créa / Prod / DA / Travel, Date de finalisation, Durée contrat, Libellé facture, Contact compta, Type de contact, PM',
+      'Admin : peut voir l\'onboarding d\'un autre sales via un sélecteur',
+      'Admin : rôle Sales disponible à la création d\'un utilisateur',
+    ],
+  },
+  {
     version: '1.12',
     date: '03/04/2026',
     changes: [

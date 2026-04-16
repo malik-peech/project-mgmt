@@ -26,8 +26,8 @@ export async function POST(request: Request) {
     if (!name?.trim() || !password?.trim() || !role) {
       return NextResponse.json({ error: 'name, password, and role are required' }, { status: 400 })
     }
-    if (!['PM', 'DA', 'Admin'].includes(role)) {
-      return NextResponse.json({ error: 'role must be PM, DA, or Admin' }, { status: 400 })
+    if (!['PM', 'DA', 'Admin', 'Sales'].includes(role)) {
+      return NextResponse.json({ error: 'role must be PM, DA, Admin or Sales' }, { status: 400 })
     }
 
     const user = await createUser({
@@ -59,8 +59,8 @@ export async function PATCH(request: Request) {
     if (!name?.trim()) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 })
     }
-    if (role && !['PM', 'DA', 'Admin'].includes(role)) {
-      return NextResponse.json({ error: 'role must be PM, DA, or Admin' }, { status: 400 })
+    if (role && !['PM', 'DA', 'Admin', 'Sales'].includes(role)) {
+      return NextResponse.json({ error: 'role must be PM, DA, Admin or Sales' }, { status: 400 })
     }
 
     // Find user by name to get record ID
