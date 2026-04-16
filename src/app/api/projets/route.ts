@@ -67,6 +67,8 @@ export async function GET(request: Request) {
       const currency = sel(f['Currency']) as Projet['currency']
       const origine = sel(f['Origine']) as Projet['origine']
       const typeDeContact = sel(f['type de contact']) as Projet['typeDeContact']
+      const diffusable = sel(f['Diffusable ?']) as Projet['diffusable']
+      const pointEop = sel(f['Point EOP']) as Projet['pointEop']
 
       // Filters
       if (pmFilter && pm !== pmFilter && pm2 !== pmFilter) continue
@@ -104,6 +106,12 @@ export async function GET(request: Request) {
         libelleFacture: str(f['Libellé facture']),
         contactCompta: str(f['Contact compta']),
         typeDeContact,
+        frameArchive: !!f['Frame archivé'],
+        slackArchive: !!f['Slack archivé'],
+        eopMonthIds: f['EOP month'] as string[] | undefined,
+        diffusable,
+        pointEop,
+        datePointEop: str(f['Date point EOP']),
         cogsBudget: num(f['COGS - budget (€)']),
         cogsReels: num(f['COGS - réels (€)']),
         cogsPrevus: num(f['COGS - prévus (€)']),

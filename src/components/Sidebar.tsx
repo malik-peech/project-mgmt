@@ -23,6 +23,7 @@ import {
   MessageCircle,
   FileText,
   Rocket,
+  PackageCheck,
 } from 'lucide-react'
 
 const navItems = [
@@ -55,27 +56,40 @@ export default function Sidebar() {
   const [fbSent, setFbSent] = useState(false)
 
   // Onboarding: user is "sales" if they have any projets with Sales === userName.
-  // We fetch on login and refresh every 2 min to keep the badge in sync.
+  // Offboarding: user is "PM offboarder" if they have projets in status Done.
+  // Both counts are fetched once on login + every 2 min.
   const [onboardingCount, setOnboardingCount] = useState<{ toOnboard: number; total: number } | null>(null)
+  const [offboardingCount, setOffboardingCount] = useState<{ toOffboard: number; total: number } | null>(null)
+
   useEffect(() => {
     if (!userName) return
     let cancelled = false
-    const fetchOnboarding = async () => {
+    const fetchCounts = async () => {
       try {
-        const res = await fetch(`/api/onboarding?sales=${encodeURIComponent(userName)}`)
-        if (!res.ok) return
-        const data = await res.json()
-        if (!cancelled) setOnboardingCount({ toOnboard: data.counts?.toOnboard ?? 0, total: data.counts?.total ?? 0 })
+        const [onRes, offRes] = await Promise.all([
+          fetch(`/api/onboarding?sales=${encodeURIComponent(userName)}`),
+          fetch(`/api/offboarding?pm=${encodeURIComponent(userName)}`),
+        ])
+        if (onRes.ok) {
+          const data = await onRes.json()
+          if (!cancelled) setOnboardingCount({ toOnboard: data.counts?.toOnboard ?? 0, total: data.counts?.total ?? 0 })
+        }
+        if (offRes.ok) {
+          const data = await offRes.json()
+          if (!cancelled) setOffboardingCount({ toOffboard: data.counts?.toOffboard ?? 0, total: data.counts?.total ?? 0 })
+        }
       } catch {}
     }
-    fetchOnboarding()
-    const interval = setInterval(fetchOnboarding, 120_000)
+    fetchCounts()
+    const interval = setInterval(fetchCounts, 120_000)
     return () => { cancelled = true; clearInterval(interval) }
   }, [userName])
 
   const hasSalesProjects = onboardingCount !== null && onboardingCount.total > 0
+  const hasOffboardingProjects = offboardingCount !== null && offboardingCount.total > 0
   const isSales = userRole === 'Sales' || hasSalesProjects
   const showOnboarding = isSales || isAdmin
+  const showOffboarding = isAdmin || hasOffboardingProjects
 
   const submitFeedback = async () => {
     if (!fbMessage.trim() || !session?.user?.name) return
@@ -134,6 +148,7 @@ export default function Sidebar() {
   const allNavItems: NavItem[] = [
     ...baseItems,
     ...(showOnboarding ? [{ href: '/onboarding', label: 'Onboarding', icon: Rocket, badge: onboardingCount?.toOnboard || 0 }] : []),
+    ...(showOffboarding ? [{ href: '/offboarding', label: 'Offboarding', icon: PackageCheck, badge: offboardingCount?.toOffboard || 0 }] : []),
     ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Settings }] : []),
   ]
 

@@ -40,6 +40,7 @@ src/
 │   ├── ressources/page.tsx         # Resources directory
 │   ├── admin/page.tsx              # Admin panel (users + feedback)
 │   ├── onboarding/page.tsx         # Sales onboarding list (à onboarder + archive)
+│   ├── offboarding/page.tsx        # PM offboarding list for Done projets (à offboarder + archive)
 │   ├── changelog/page.tsx          # Changelog (static, versioned)
 │   ├── login/page.tsx              # Login page
 │   ├── layout.tsx                  # Root layout
@@ -57,6 +58,9 @@ src/
 │       ├── onboarding/route.ts          # GET sales projets split by onboarded status
 │       ├── onboarding/[id]/route.ts     # PATCH onboarding fields
 │       ├── onboarding/[id]/upload/route.ts # POST/DELETE Devis signé attachments
+│       ├── offboarding/route.ts         # GET PM Done projets split by offboarded status
+│       ├── offboarding/[id]/route.ts    # PATCH offboarding fields (Frame/Slack archive, EOP month, Diffusable, Point EOP)
+│       ├── belle-base/route.ts          # GET/POST/DELETE livrables in external Belle Base (appEVRkaM6cM2EeDs)
 │       ├── clients/route.ts             # GET list + POST create client (onboarding)
 │       ├── mensuel/route.ts              # GET list of Mois signature entries
 │       ├── users/route.ts               # GET/POST/PATCH/DELETE users
@@ -66,6 +70,7 @@ src/
 │       └── tmp/[id]/route.ts            # GET temp file proxy
 ├── components/
 │   ├── OnboardingPanel.tsx         # Sales onboarding form (side panel with 6 sections + file upload + live progress)
+│   ├── OffboardingPanel.tsx        # PM offboarding form (Archivage / Fin de projet / Diffusion / Belle Base)
 │   ├── Sidebar.tsx                 # Navigation + user info + feedback modal
 │   ├── TaskCalendarView.tsx        # Calendar view (week/month) with drag-drop
 │   ├── DatePicker.tsx              # Custom date picker (timezone-safe)
@@ -82,6 +87,7 @@ src/
 │   ├── store.ts                    # In-memory data store (singleton)
 │   ├── sanitize.ts                 # Airtable {specialValue} sanitizer
 │   ├── onboarding.ts               # Onboarding required-fields list + missingOnboardingFields()
+│   ├── offboarding.ts              # Offboarding required-fields list + missingOffboardingFields()
 │   └── users.ts                    # User management (Airtable-backed)
 ├── types/
 │   └── index.ts                    # All TypeScript interfaces
@@ -195,7 +201,19 @@ src/
 - "Devis signé" upload via `/api/onboarding/[id]/upload` (same tmp-proxy pattern as COGS uploads)
 - Required fields (`src/lib/onboarding.ts` / `ONBOARDING_FIELDS`): Mois signature, Currency, Client, Origine, Agence, Numéro de devis, Devis signé, COGS/Time Créa/Travel/Time Prod/Time DA budgets, Date de finalisation prévue, Durée contrat, Libellé facture, Contact compta, Type de contact, PM (manual)
 
-### 8. Changelog (`src/app/changelog/page.tsx`)
+### 8. Offboarding (`src/app/offboarding/page.tsx`)
+- Visible for PMs and Admins once they have at least one projet in Statut = Done
+- Two tabs: **À offboarder** / **Offboardés** (archive)
+- Panel form (`OffboardingPanel.tsx`) with 4 sections:
+  - **Archivage** — Frame archivé + Slack archivé checkboxes
+  - **Fin de projet** — EOP month (linked → Mensuel) + Point EOP (Prévu/Done/No need)
+    - If Point EOP = "Prévu", a Date point EOP date field appears
+  - **Diffusion** — Diffusable ? (OK / Interdite / En attente)
+  - **Belle Base** — list & create livrables (Titre + Vimeo link) in the external Belle Base (`appEVRkaM6cM2EeDs`, table `Base`). Belle Base has a sync'd Projets table; we match by `Project réf` to resolve the linked record
+- Completion rule (→ moves to Archive): Frame + Slack checked, EOP month set, Diffusable set, Point EOP = Done OR No need
+- Admin sees all PMs by default and can filter by PM via dropdown
+
+### 9. Changelog (`src/app/changelog/page.tsx`)
 - Static page with versioned release notes
 - `RELEASES` array: add new entry at top, increment version by .01
 - Timeline UI with dots and version badges

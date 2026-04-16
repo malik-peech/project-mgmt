@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 // Pages blocked for Sales-only users (primary role = 'Sales' and not Admin).
 // Sales users only have access to /cogs, /onboarding, /changelog.
-const SALES_BLOCKED_PREFIXES = ['/tasks', '/ressources', '/admin']
+const SALES_BLOCKED_PREFIXES = ['/tasks', '/ressources', '/admin', '/offboarding']
 
 export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl

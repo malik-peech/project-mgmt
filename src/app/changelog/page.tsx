@@ -10,6 +10,19 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.16',
+    date: '16/04/2026',
+    changes: [
+      'Nouveau module Offboarding (côté PM) pour archiver les projets en statut Done',
+      'Sidebar : menu Offboarding avec badge du nombre de projets à offboarder (PM + Admin)',
+      'Formulaire offboarding : Frame archivé, Slack archivé, EOP month (linked field), Diffusable ?',
+      'Point EOP (Prévu / Done / No need) : si Prévu, champ Date point EOP affiché. Si Done le projet passe en archive',
+      'Belle Base : ajout/suppression de livrables (Titre, Vimeo link) directement dans la base externe Belle Base, linké au projet via le sync',
+      'Vue Archive pour revenir sur les projets déjà offboardés',
+      'Admin : sélecteur PM pour voir la file d\'un autre PM (défaut : tous les PM)',
+    ],
+  },
+  {
     version: '1.15',
     date: '16/04/2026',
     changes: [

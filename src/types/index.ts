@@ -5,6 +5,8 @@ export type TypeProjet = 'Live' | '2D' | 'Film' | 'Film scénarisé (acting)' | 
 export type Currency = 'EUR' | 'USD' | 'CHF'
 export type Origine = 'Client existant' | 'Nouveau client'
 export type TypeDeContact = 'Compta' | 'Client'
+export type Diffusable = 'OK pour diffusion' | 'Diffusion interdite' | 'En attente'
+export type PointEop = 'Prévu' | 'Done' | 'No need (vu avec sales)'
 
 export interface Attachment {
   id?: string
@@ -43,6 +45,14 @@ export interface Projet {
   libelleFacture?: string
   contactCompta?: string
   typeDeContact?: TypeDeContact
+  // Offboarding
+  frameArchive?: boolean
+  slackArchive?: boolean
+  eopMonthIds?: string[]
+  eopMonthNames?: string[]
+  diffusable?: Diffusable
+  pointEop?: PointEop
+  datePointEop?: string
   // Budgets
   cogsBudget?: number
   cogsReels?: number
@@ -148,10 +158,19 @@ export interface Client {
   name: string
 }
 
-// ── Mensuel (Mois signature) ──
+// ── Mensuel (Mois signature / EOP month) ──
 export interface Mensuel {
   id: string
   name: string
+}
+
+// ── Belle base livrable ──
+export interface BelleBaseEntry {
+  id: string
+  titre: string
+  vimeoLink?: string
+  projetIds: string[]        // IDs in Belle base's synced Projets table
+  projetRefs: string[]        // Project réf values (for matching against PM base)
 }
 
 // ── User (session) ──
