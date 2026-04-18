@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
-import { createRecord, TABLES } from '@/lib/airtable'
+import { TABLES } from '@/lib/airtable'
 import { ensureStore, buildLookupMap, upsertRecord } from '@/lib/store'
 import { sanitize } from '@/lib/sanitize'
 import type { Cogs } from '@/types'
+
+const BASE_ID = process.env.AIRTABLE_BASE_ID || 'appYFl5MvR7VeL0uB'
+const COGS_TABLE_ID = 'tblnrqX6xNx5EWFsC'
 
 /** Safely extract a number from an Airtable field (handles {specialValue} objects) */
 function num(val: unknown): number | undefined {
@@ -80,6 +83,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const pmFilter = searchParams.get('pm')
     const daFilter = searchParams.get('da')
+    const salesFilter = searchParams.get('sales')
     const statutFilter = searchParams.get('statut')
     const projetId = searchParams.get('projetId')
 
@@ -117,6 +121,16 @@ export async function GET(request: Request) {
       }
     }
 
+    // If Sales filter, pre-compute the set of project IDs where Sales matches.
+    // (Sales is a field on Projets, not on COGS — we match via the linked project.)
+    let salesProjetIds: Set<string> | null = null
+    if (salesFilter) {
+      salesProjetIds = new Set<string>()
+      for (const p of store.projets.records) {
+        if (extractSelect(p.fields['Sales']) === salesFilter) salesProjetIds.add(p.id)
+      }
+    }
+
     const cogs: Cogs[] = []
 
     for (const r of store.cogs.records) {
@@ -135,6 +149,12 @@ export async function GET(request: Request) {
       if (daFilter && daProjetIds) {
         const projets = f['Projet'] as string[] | undefined
         if (!projets || !projets.some((pid) => daProjetIds!.has(pid))) continue
+      }
+
+      // Filter by Sales — match via linked project's Sales
+      if (salesFilter && salesProjetIds) {
+        const projets = f['Projet'] as string[] | undefined
+        if (!projets || !projets.some((pid) => salesProjetIds!.has(pid))) continue
       }
 
       // Filter by statut
@@ -172,20 +192,64 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
+
+    // Auto-statut when caller doesn't pass one explicitly:
+    // - sales entry (montantBudgeteSales present): >200 → "A Approuver", else "Estimée"
+    // - PM entry: always "A Approuver"
+    let statut: string = body.statut
+    if (!statut) {
+      const salesAmt = typeof body.montantBudgeteSales === 'number' ? body.montantBudgeteSales : null
+      statut = salesAmt != null && salesAmt <= 200 ? 'Estimée' : 'A Approuver'
+    }
+
     const fields: Record<string, unknown> = {
       'Projet': body.projetId ? [body.projetId] : undefined,
       'Ressource': body.ressourceId ? [body.ressourceId] : undefined,
       'Montant HT engagé (prod)': body.montantEngageProd,
-      'Statut de la dépense': body.statut || 'A Approuver (CDP)',
+      'Montant HT budgété (sales)': body.montantBudgeteSales,
+      'Statut de la dépense': statut,
     }
+    if (body.categorie) fields['Catégorie'] = [body.categorie]
     if (body.commentaire) fields['Commentaire COGS'] = body.commentaire
 
     Object.keys(fields).forEach((k) => fields[k] === undefined && delete fields[k])
 
-    const record = await createRecord(TABLES.COGS, fields as any)
+    const apiKey = process.env.AIRTABLE_API_KEY
+    if (!apiKey) return NextResponse.json({ error: 'AIRTABLE_API_KEY not set' }, { status: 500 })
 
-    // Patch store directly with Airtable's response — no full re-fetch.
-    upsertRecord(TABLES.COGS, { id: record.id, fields: record.fields as Record<string, unknown> })
+    // Direct fetch with typecast so unknown singleSelect/multipleSelects options
+    // (e.g. Catégorie) get created automatically instead of 422'ing.
+    // If Catégorie is a lookup field, we retry without it rather than failing.
+    const doCreate = async (payload: Record<string, unknown>) =>
+      fetch(`https://api.airtable.com/v0/${BASE_ID}/${COGS_TABLE_ID}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fields: payload, typecast: true }),
+      })
+
+    let res = await doCreate(fields)
+    if (!res.ok && 'Catégorie' in fields) {
+      const errTxt = await res.text()
+      if (errTxt.includes('Catégorie') || errTxt.includes('computed')) {
+        const retry: Record<string, unknown> = { ...fields }
+        delete retry['Catégorie']
+        res = await doCreate(retry)
+      } else {
+        console.error('[COGS POST] Airtable error:', res.status, errTxt)
+        return NextResponse.json({ error: errTxt }, { status: res.status })
+      }
+    }
+    if (!res.ok) {
+      const errTxt = await res.text()
+      console.error('[COGS POST] Airtable error:', res.status, errTxt)
+      return NextResponse.json({ error: errTxt }, { status: res.status })
+    }
+
+    const record = await res.json() as { id: string; fields: Record<string, unknown> }
+    upsertRecord(TABLES.COGS, { id: record.id, fields: record.fields })
 
     return NextResponse.json({ id: record.id })
   } catch (error) {

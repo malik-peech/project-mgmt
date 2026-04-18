@@ -168,7 +168,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json()
-    const { id, pm, pm2, daOfficial, pasDeDa, phase, dateFinalisationPrevue, facturable100, briefEffectue, dateBrief } = body as {
+    const { id, pm, pm2, daOfficial, pasDeDa, phase, dateFinalisationPrevue, facturable100, briefEffectue, dateBrief, cogsBudget } = body as {
       id?: string
       pm?: string
       pm2?: string
@@ -179,13 +179,14 @@ export async function PATCH(request: Request) {
       facturable100?: boolean
       briefEffectue?: boolean
       dateBrief?: string | null
+      cogsBudget?: number | null
     }
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
     }
 
-    const fields: Record<string, string | boolean | null> = {}
+    const fields: Record<string, string | boolean | number | null> = {}
     if (pm !== undefined) fields['PM (manual)'] = pm || null
     if (pm2 !== undefined) fields['PM2 (manual)'] = pm2 || null
     if (daOfficial !== undefined) fields['DA (official)'] = daOfficial || null
@@ -195,6 +196,7 @@ export async function PATCH(request: Request) {
     if (facturable100 !== undefined) fields['Facturable 100%'] = !!facturable100
     if (briefEffectue !== undefined) fields['Brief effectué'] = !!briefEffectue
     if (dateBrief !== undefined) fields['Date de brief (si non)'] = dateBrief || null
+    if (cogsBudget !== undefined) fields['COGS - budget (€)'] = typeof cogsBudget === 'number' ? cogsBudget : null
 
     const updated = await updateRecord(TABLES.PROJETS, id, fields as Record<string, string>)
     // Patch store directly with Airtable's response — no full re-fetch.

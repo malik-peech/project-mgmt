@@ -13,6 +13,7 @@ import ComboSelect from '@/components/ComboSelect'
 import FileViewer from '@/components/FileViewer'
 import ResizeHandle from '@/components/ResizeHandle'
 import { useColumnWidths } from '@/hooks/useColumnWidths'
+import { isCogsACompleter } from '@/lib/cogs'
 import type { Cogs, Projet, Ressource } from '@/types'
 
 const statutColors: Record<string, string> = {
@@ -29,7 +30,19 @@ const statutColors: Record<string, string> = {
   'Stand-by': 'bg-gray-100 text-gray-800',
 }
 
-const statutTabs: string[] = ['Tous', 'A Approuver (CDP)', 'Engagée', 'À compléter', 'A payer', 'Payée']
+// Filter tabs shown in the top bar. "Paiement prévu" is the user-facing label
+// for the underlying "A payer" Airtable status.
+// The "A Approuver" tab merges legacy "A Approuver (CDP)" / "(CSM)" records.
+type TabDef = { key: string; label: string; statuts?: string[]; special?: 'all' | 'aCompleter' }
+const statutTabs: TabDef[] = [
+  { key: 'Tous', label: 'Tous', special: 'all' },
+  { key: 'A Approuver', label: 'A Approuver', statuts: ['A Approuver', 'A Approuver (CDP)', 'A Approuver (CSM)'] },
+  { key: 'Estimée', label: 'Estimée', statuts: ['Estimée'] },
+  { key: 'Engagée', label: 'Engagée', statuts: ['Engagée'] },
+  { key: 'À compléter', label: 'À compléter', special: 'aCompleter' },
+  { key: 'A payer', label: 'Paiement prévu', statuts: ['A payer'] },
+  { key: 'Payée', label: 'Payée', statuts: ['Payée'] },
+]
 const statutOptions: string[] = [
   'A Approuver (CDP)', 'A Approuver (CSM)', 'A Approuver', 'Estimée', 'Engagée',
   'A payer', 'Autorisée via flash', 'Payée', 'Annulée', 'Refusée', 'Stand-by',
@@ -392,13 +405,12 @@ function CogsPage() {
 
   const filtered = useMemo(() => {
     let list = cogsList
+    const activeDef = statutTabs.find((t) => t.key === activeTab)
     if (activeTab === 'À compléter') {
-      // "A payer" COGS that are missing required fields
-      list = list.filter((c) => {
-        if (c.statut !== 'A payer') return false
-        const missing = !c.montantEngageProd || !c.ressourceName || c.tva == null || c.qualiteNote == null || !c.qualiteComment || !c.facture || c.facture.length === 0
-        return missing
-      })
+      list = list.filter(isCogsACompleter)
+    } else if (activeDef?.statuts) {
+      const allowed = new Set(activeDef.statuts)
+      list = list.filter((c) => c.statut != null && allowed.has(c.statut))
     } else if (activeTab === 'À autoriser') {
       // COGS with numéro de commande = 0 and statut not finalized
       list = list.filter((c) => {
@@ -406,8 +418,6 @@ function CogsPage() {
         const num = (c.numeroCommande || '').trim()
         return num === '0' || num === ''
       })
-    } else if (activeTab !== 'Tous') {
-      list = list.filter((c) => c.statut === activeTab)
     }
     if (projetFilter) list = list.filter((c) => c.projetId === projetFilter)
     if (ressourceFilter) list = list.filter((c) => c.ressourceName === ressourceFilter)
@@ -476,6 +486,7 @@ function CogsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projetId: formProjetId,
+          categorie: formCategorie,
           ressourceId: formRessourceId || undefined,
           montantEngageProd: parseFloat(formMontant),
           commentaire: formCommentaire || undefined,
@@ -592,29 +603,35 @@ function CogsPage() {
             <div className="flex flex-wrap items-center gap-2">
               {/* Status tabs */}
               <div className="flex gap-1 flex-wrap">
-                {statutTabs.map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition ${
-                      activeTab === tab
-                        ? tab === 'À compléter' ? 'bg-amber-500 text-white' : 'bg-indigo-600 text-white'
-                        : tab === 'À compléter' && cogsList.filter((c) => c.statut === 'A payer' && (!c.numeroFacture || c.qualiteNote == null || !c.qualiteComment || !c.methodePaiement || c.tva == null || !c.facture || c.facture.length === 0)).length > 0
-                          ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {tab}
-                    {tab !== 'Tous' && (
-                      <span className="ml-1 opacity-75">
-                        {tab === 'À compléter'
-                          ? cogsList.filter((c) => c.statut === 'A payer' && (!c.numeroFacture || c.qualiteNote == null || !c.qualiteComment || !c.methodePaiement || c.tva == null || !c.facture || c.facture.length === 0)).length
-                          : cogsList.filter((c) => c.statut === tab).length
-                        }
-                      </span>
-                    )}
-                  </button>
-                ))}
+                {statutTabs.map((tab) => {
+                  const count = tab.special === 'all'
+                    ? null
+                    : tab.special === 'aCompleter'
+                      ? cogsList.filter(isCogsACompleter).length
+                      : tab.statuts
+                        ? cogsList.filter((c) => c.statut != null && tab.statuts!.includes(c.statut)).length
+                        : 0
+                  const isACompleter = tab.special === 'aCompleter'
+                  const hasItems = count != null && count > 0
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => setActiveTab(tab.key)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition ${
+                        activeTab === tab.key
+                          ? isACompleter ? 'bg-amber-500 text-white' : 'bg-indigo-600 text-white'
+                          : isACompleter && hasItems
+                            ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {tab.label}
+                      {count != null && (
+                        <span className="ml-1 opacity-75">{count}</span>
+                      )}
+                    </button>
+                  )
+                })}
                 {/* Admin-only: À autoriser */}
                 {userRole === 'Admin' && (
                   <button
@@ -954,7 +971,9 @@ function CogsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ressource</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Ressource <span className="text-gray-400 font-normal">(optionnel)</span>
+                </label>
                 <ComboSelect
                   options={ressourceComboOptions}
                   value={formRessourceId}
@@ -984,7 +1003,7 @@ function CogsPage() {
                 className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Annuler</button>
               <button onClick={handleSubmit} disabled={!formProjetId || !formCategorie || !formMontant || submitting}
                 className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">
-                {submitting ? 'Création...' : 'Créer la dépense'}
+                {submitting ? 'Envoi...' : 'Faire la demande'}
               </button>
             </div>
           </div>

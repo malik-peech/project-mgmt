@@ -27,9 +27,12 @@ import {
   UserX,
   ClipboardCheck,
   Sparkles,
+  Wallet,
 } from 'lucide-react'
 import UnassignedModal from './UnassignedModal'
 import PMWelcomeModal from './PMWelcomeModal'
+import { isCogsACompleter } from '@/lib/cogs'
+import type { Cogs } from '@/types'
 
 const navItems = [
   { href: '/', label: 'Projets', icon: LayoutDashboard },
@@ -68,6 +71,7 @@ export default function Sidebar() {
   const [offboardingCount, setOffboardingCount] = useState<{ toOffboard: number; total: number } | null>(null)
   const [unassignedCount, setUnassignedCount] = useState(0)
   const [aBrieferCount, setABrieferCount] = useState(0)
+  const [cogsACompleterCount, setCogsACompleterCount] = useState(0)
   const [showUnassigned, setShowUnassigned] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
 
@@ -76,11 +80,18 @@ export default function Sidebar() {
     let cancelled = false
     const fetchCounts = async () => {
       try {
-        const [onRes, offRes, unRes, abRes] = await Promise.all([
+        // Scope COGS "à compléter" to the user's role — admin sees everything.
+        const cogsParam = userRole === 'Admin'
+          ? ''
+          : userRole === 'DA'
+            ? `da=${encodeURIComponent(userName)}`
+            : `pm=${encodeURIComponent(userName)}`
+        const [onRes, offRes, unRes, abRes, cogsRes] = await Promise.all([
           fetch(`/api/onboarding?sales=${encodeURIComponent(userName)}`),
           fetch(`/api/offboarding?pm=${encodeURIComponent(userName)}`),
           fetch('/api/projets/unassigned'),
           fetch(`/api/a-briefer?pm=${encodeURIComponent(userName)}`),
+          fetch(`/api/cogs${cogsParam ? '?' + cogsParam : ''}`),
         ])
         if (onRes.ok) {
           const data = await onRes.json()
@@ -98,12 +109,16 @@ export default function Sidebar() {
           const data = await abRes.json()
           if (!cancelled) setABrieferCount((data.projets || []).length)
         }
+        if (cogsRes.ok) {
+          const list = (await cogsRes.json()) as Cogs[]
+          if (!cancelled) setCogsACompleterCount(list.filter(isCogsACompleter).length)
+        }
       } catch {}
     }
     fetchCounts()
     const interval = setInterval(fetchCounts, 120_000)
     return () => { cancelled = true; clearInterval(interval) }
-  }, [userName])
+  }, [userName, userRole])
 
   const hasSalesProjects = onboardingCount !== null && onboardingCount.total > 0
   const hasOffboardingProjects = offboardingCount !== null && offboardingCount.total > 0
@@ -179,16 +194,25 @@ export default function Sidebar() {
     setSimulatedPm('')
   }
 
-  type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; badge?: number }
+  type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; badge?: number; badgeColor?: 'amber' | 'yellow' }
   // Sales-only = primary role is Sales AND not also Admin. Users who have PM/DA as primary
   // role and are ALSO sales keep their full PM/DA menu.
   const isSalesOnly = userRole === 'Sales' && !isAdmin
-  const baseItems = isSalesOnly ? salesOnlyNavItems : navItems
+  const rawBase = isSalesOnly ? salesOnlyNavItems : navItems
+  // Enrich the /cogs entry with the "à compléter" yellow badge (PM/DA/Admin only).
+  const baseItems: NavItem[] = rawBase.map((item) =>
+    item.href === '/cogs' && !isSalesOnly && cogsACompleterCount > 0
+      ? { ...item, badge: cogsACompleterCount, badgeColor: 'yellow' }
+      : item
+  )
   // Assistant shown in the common nav only for non-sales-only users
   // (sales-only already have it in salesOnlyNavItems above).
   const showAssistantInCommon = showAssistant && !isSalesOnly
+  // Sales users (sales-only or PM/DA/Admin also Sales) get the fast Sales COGS entry view.
+  const showCogsSales = isSales || isAdmin
   const allNavItems: NavItem[] = [
     ...baseItems,
+    ...(showCogsSales ? [{ href: '/cogs-sales', label: 'Saisie COGS', icon: Wallet }] : []),
     ...(showAssistantInCommon ? [{ href: '/assistant', label: 'Assistant', icon: Sparkles }] : []),
     ...(showABriefer ? [{ href: '/a-briefer', label: 'À Briefer', icon: ClipboardCheck, badge: aBrieferCount }] : []),
     ...(showOnboarding ? [{ href: '/onboarding', label: 'Onboarding', icon: Rocket, badge: onboardingCount?.toOnboard || 0 }] : []),
@@ -225,8 +249,11 @@ export default function Sidebar() {
       )}
 
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {allNavItems.map(({ href, label, icon: Icon, badge }) => {
+        {allNavItems.map(({ href, label, icon: Icon, badge, badgeColor }) => {
           const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href)
+          const badgeClass = badgeColor === 'yellow'
+            ? 'bg-yellow-400 text-yellow-900'
+            : 'bg-amber-400 text-amber-900'
           return (
             <div key={href}>
               <Link
@@ -241,7 +268,7 @@ export default function Sidebar() {
                 <Icon className="w-4 h-4 shrink-0" />
                 <span className="flex-1">{label}</span>
                 {badge && badge > 0 ? (
-                  <span className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-400 text-amber-900">
+                  <span className={`ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>
                     {badge}
                   </span>
                 ) : null}
