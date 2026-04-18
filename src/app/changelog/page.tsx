@@ -10,6 +10,21 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.22',
+    date: '18/04/2026',
+    changes: [
+      'COGS : nouvelle demande → statut auto "A Approuver" (plus "(CDP)"), bouton "Faire la demande", Ressource (optionnel)',
+      'COGS : filtres revus — A Approuver / Estimée / Engagée / À compléter / Paiement prévu (ex-"A payer") / Payée. Les lignes À compléter ne s\'affichent plus dans Paiement prévu',
+      'COGS : "À compléter" ne demande plus la qualité (commentaire). Pastille jaune sur le menu COGS de la sidebar avec le compteur',
+      'COGS : vue condensée par défaut (le choix aéré est mémorisé)',
+      'Nouvelle page Saisie COGS (Sales) : onglet "À faire" (projets avec budget > 0 et 0 COGS), card par projet avec budget éditable, somme HT sales, écart vs budget et taux COGS. Statut auto : >200€ = A Approuver, sinon Estimée',
+      'Tasks : badge rouge dans la sidebar avec le nombre de "Mes tasks" en retard',
+      'Sidebar : "À Briefer" renommé en "Brief client à planifier" (sidebar + modale de bienvenue PM)',
+      'Non assignés : option "Pas de DA" dans le sélecteur DA (coche la case Pas de DA sur Airtable, la ligne disparaît)',
+      'Sidebar : colonne latérale sticky — les boutons Changelog / Feedback / Sync / Déconnexion restent visibles indépendamment du scroll de la page',
+    ],
+  },
+  {
     version: '1.21',
     date: '16/04/2026',
     changes: [

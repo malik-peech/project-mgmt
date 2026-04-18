@@ -40,6 +40,7 @@ export async function GET() {
       agence?: string
       pm?: string
       daOfficial?: string
+      pasDeDa: boolean
       missingPM: boolean
       missingDA: boolean
       standBy: boolean
@@ -59,8 +60,11 @@ export async function GET() {
 
       const pm = sel(f['PM (manual)'])
       const daOfficial = sel(f['DA (official)'])
+      const pasDeDa = !!f['Pas de DA']
+      // A DA is "present" either when the field is filled OR when the PM has
+      // explicitly flagged the project as not needing one.
       const noPM = !pm?.trim()
-      const noDA = !daOfficial?.trim()
+      const noDA = !daOfficial?.trim() && !pasDeDa
       if (!noPM && !noDA) continue
 
       const clientIds = f['Client link'] as string[] | undefined
@@ -90,6 +94,7 @@ export async function GET() {
         agence: sel(f['Agence']),
         pm,
         daOfficial,
+        pasDeDa,
         missingPM: noPM,
         missingDA: noDA,
         standBy: isStandBy,

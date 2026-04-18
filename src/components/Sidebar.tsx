@@ -32,7 +32,7 @@ import {
 import UnassignedModal from './UnassignedModal'
 import PMWelcomeModal from './PMWelcomeModal'
 import { isCogsACompleter } from '@/lib/cogs'
-import type { Cogs } from '@/types'
+import type { Cogs, Task } from '@/types'
 
 const navItems = [
   { href: '/', label: 'Projets', icon: LayoutDashboard },
@@ -72,6 +72,7 @@ export default function Sidebar() {
   const [unassignedCount, setUnassignedCount] = useState(0)
   const [aBrieferCount, setABrieferCount] = useState(0)
   const [cogsACompleterCount, setCogsACompleterCount] = useState(0)
+  const [tasksOverdueCount, setTasksOverdueCount] = useState(0)
   const [showUnassigned, setShowUnassigned] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
 
@@ -86,12 +87,13 @@ export default function Sidebar() {
           : userRole === 'DA'
             ? `da=${encodeURIComponent(userName)}`
             : `pm=${encodeURIComponent(userName)}`
-        const [onRes, offRes, unRes, abRes, cogsRes] = await Promise.all([
+        const [onRes, offRes, unRes, abRes, cogsRes, tasksRes] = await Promise.all([
           fetch(`/api/onboarding?sales=${encodeURIComponent(userName)}`),
           fetch(`/api/offboarding?pm=${encodeURIComponent(userName)}`),
           fetch('/api/projets/unassigned'),
           fetch(`/api/a-briefer?pm=${encodeURIComponent(userName)}`),
           fetch(`/api/cogs${cogsParam ? '?' + cogsParam : ''}`),
+          fetch(`/api/tasks?pm=${encodeURIComponent(userName)}`),
         ])
         if (onRes.ok) {
           const data = await onRes.json()
@@ -112,6 +114,22 @@ export default function Sidebar() {
         if (cogsRes.ok) {
           const list = (await cogsRes.json()) as Cogs[]
           if (!cancelled) setCogsACompleterCount(list.filter(isCogsACompleter).length)
+        }
+        if (tasksRes.ok) {
+          // "Mes tasks" scope: only tasks explicitly assigned to me.
+          const list = (await tasksRes.json()) as Task[]
+          const today = new Date()
+          today.setHours(0, 0, 0, 0)
+          const overdue = list.filter((t) => {
+            if (t.done) return false
+            if (t.assigneManuel !== userName) return false
+            if (!t.dueDate) return false
+            const parts = t.dueDate.substring(0, 10).split('-').map(Number)
+            if (parts.length < 3 || parts.some(isNaN)) return false
+            const due = new Date(parts[0], parts[1] - 1, parts[2])
+            return due.getTime() < today.getTime()
+          }).length
+          if (!cancelled) setTasksOverdueCount(overdue)
         }
       } catch {}
     }
@@ -194,17 +212,22 @@ export default function Sidebar() {
     setSimulatedPm('')
   }
 
-  type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; badge?: number; badgeColor?: 'amber' | 'yellow' }
+  type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; badge?: number; badgeColor?: 'amber' | 'yellow' | 'red' }
   // Sales-only = primary role is Sales AND not also Admin. Users who have PM/DA as primary
   // role and are ALSO sales keep their full PM/DA menu.
   const isSalesOnly = userRole === 'Sales' && !isAdmin
   const rawBase = isSalesOnly ? salesOnlyNavItems : navItems
-  // Enrich the /cogs entry with the "à compléter" yellow badge (PM/DA/Admin only).
-  const baseItems: NavItem[] = rawBase.map((item) =>
-    item.href === '/cogs' && !isSalesOnly && cogsACompleterCount > 0
-      ? { ...item, badge: cogsACompleterCount, badgeColor: 'yellow' }
-      : item
-  )
+  // Enrich nav items with inline badges (sales-only users don't see these).
+  const baseItems: NavItem[] = rawBase.map((item) => {
+    if (isSalesOnly) return item
+    if (item.href === '/cogs' && cogsACompleterCount > 0) {
+      return { ...item, badge: cogsACompleterCount, badgeColor: 'yellow' }
+    }
+    if (item.href === '/tasks' && tasksOverdueCount > 0) {
+      return { ...item, badge: tasksOverdueCount, badgeColor: 'red' }
+    }
+    return item
+  })
   // Assistant shown in the common nav only for non-sales-only users
   // (sales-only already have it in salesOnlyNavItems above).
   const showAssistantInCommon = showAssistant && !isSalesOnly
@@ -214,7 +237,7 @@ export default function Sidebar() {
     ...baseItems,
     ...(showCogsSales ? [{ href: '/cogs-sales', label: 'Saisie COGS', icon: Wallet }] : []),
     ...(showAssistantInCommon ? [{ href: '/assistant', label: 'Assistant', icon: Sparkles }] : []),
-    ...(showABriefer ? [{ href: '/a-briefer', label: 'À Briefer', icon: ClipboardCheck, badge: aBrieferCount }] : []),
+    ...(showABriefer ? [{ href: '/a-briefer', label: 'Brief client à planifier', icon: ClipboardCheck, badge: aBrieferCount }] : []),
     ...(showOnboarding ? [{ href: '/onboarding', label: 'Onboarding', icon: Rocket, badge: onboardingCount?.toOnboard || 0 }] : []),
     ...(showOffboarding ? [{ href: '/offboarding', label: 'Offboarding', icon: PackageCheck, badge: offboardingCount?.toOffboard || 0 }] : []),
     ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Settings }] : []),
@@ -248,12 +271,14 @@ export default function Sidebar() {
         </div>
       )}
 
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-1">
         {allNavItems.map(({ href, label, icon: Icon, badge, badgeColor }) => {
           const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href)
           const badgeClass = badgeColor === 'yellow'
             ? 'bg-yellow-400 text-yellow-900'
-            : 'bg-amber-400 text-amber-900'
+            : badgeColor === 'red'
+              ? 'bg-red-500 text-white'
+              : 'bg-amber-400 text-amber-900'
           return (
             <div key={href}>
               <Link
@@ -378,7 +403,7 @@ export default function Sidebar() {
         <NavContent />
       </aside>
 
-      <aside className="hidden md:flex w-[250px] shrink-0 flex-col bg-[var(--color-sidebar)] min-h-screen">
+      <aside className="hidden md:flex w-[250px] shrink-0 flex-col bg-[var(--color-sidebar)] sticky top-0 h-screen">
         <NavContent />
       </aside>
 

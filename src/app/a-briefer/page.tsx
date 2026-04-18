@@ -165,7 +165,7 @@ export default function ABrieferPage() {
             <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
               <ClipboardCheck className="w-4 h-4 text-indigo-600" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">À Briefer</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Brief client à planifier</h1>
           </div>
           <p className="text-sm text-gray-500">
             {projets.length} projet{projets.length > 1 ? 's' : ''} dont le brief n&apos;est pas encore effectué

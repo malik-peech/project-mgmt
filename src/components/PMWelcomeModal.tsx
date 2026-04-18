@@ -166,7 +166,7 @@ export default function PMWelcomeModal({ userName, onClose }: { userName: string
             <TabBtn
               active={tab === 'briefs'}
               onClick={() => setTab('briefs')}
-              label="Briefs non planifiés"
+              label="Brief client à planifier"
               count={data.counts.unplannedBriefs}
               icon={ClipboardCheck}
               color="indigo"
@@ -207,7 +207,7 @@ export default function PMWelcomeModal({ userName, onClose }: { userName: string
           ) : tab === 'briefs' ? (
             <EntryList
               entries={data.unplannedBriefs}
-              emptyMessage="Tous vos briefs sont planifiés ou faits 🎉"
+              emptyMessage="Tous les briefs clients sont planifiés ou faits 🎉"
               renderActions={(entry) => (
                 <div className="flex items-center gap-2">
                   <div className="w-36">

@@ -13,10 +13,14 @@ interface UnassignedProjet {
   agence?: string
   pm?: string
   daOfficial?: string
+  pasDeDa?: boolean
   missingPM: boolean
   missingDA: boolean
   standBy: boolean
 }
+
+// Sentinel value for the synthetic "Pas de DA" option in the DA picker.
+const PAS_DE_DA = '__PAS_DE_DA__'
 
 interface Counts {
   total: number
@@ -93,7 +97,10 @@ export default function UnassignedModal({ onClose }: Props) {
     [users]
   )
   const daOptions = useMemo(
-    () => users.filter((u) => u.role === 'DA').map((u) => ({ value: u.name, label: u.name })),
+    () => [
+      { value: PAS_DE_DA, label: 'Pas de DA', sub: 'Aucun DA nécessaire' },
+      ...users.filter((u) => u.role === 'DA').map((u) => ({ value: u.name, label: u.name })),
+    ],
     [users]
   )
 
@@ -119,10 +126,20 @@ export default function UnassignedModal({ onClose }: Props) {
   const assign = async (projetId: string, field: 'pm' | 'daOfficial', value: string) => {
     setSavingId(projetId + field)
     try {
+      // Synthetic "Pas de DA" value → clear the DA field AND set the pasDeDa flag.
+      const body: Record<string, string | boolean | null> = { id: projetId }
+      const pickedPasDeDa = field === 'daOfficial' && value === PAS_DE_DA
+      if (pickedPasDeDa) {
+        body.daOfficial = ''
+        body.pasDeDa = true
+      } else {
+        body[field] = value
+        if (field === 'daOfficial' && value) body.pasDeDa = false
+      }
       const res = await fetch('/api/projets', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: projetId, [field]: value }),
+        body: JSON.stringify(body),
       })
       if (res.ok) {
         // Optimistic: update the row locally. Counters are re-derived from the
@@ -135,8 +152,13 @@ export default function UnassignedModal({ onClose }: Props) {
               if (field === 'pm') {
                 updated.pm = value
                 updated.missingPM = !value.trim()
+              } else if (pickedPasDeDa) {
+                updated.daOfficial = ''
+                updated.pasDeDa = true
+                updated.missingDA = false
               } else {
                 updated.daOfficial = value
+                updated.pasDeDa = false
                 updated.missingDA = !value.trim()
               }
               return updated
@@ -344,7 +366,7 @@ export default function UnassignedModal({ onClose }: Props) {
                     <div className="relative">
                       <ComboSelect
                         options={daOptions}
-                        value={p.daOfficial || ''}
+                        value={p.pasDeDa ? PAS_DE_DA : (p.daOfficial || '')}
                         onChange={(v) => assign(p.id, 'daOfficial', v)}
                         placeholder={p.missingDA ? 'Affecter un DA…' : ''}
                         size="sm"

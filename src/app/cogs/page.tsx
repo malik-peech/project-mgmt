@@ -74,9 +74,10 @@ function CogsPage() {
   const [ressourceFilter, setRessourceFilter] = useState('')
   const [categorieFilter, setCategorieFilter] = useState('')
   const [expandedProjetId, setExpandedProjetId] = useState<string | null>(null)
+  // Condensed view is the default; only the explicit opt-out ("0") sticks.
   const [condensed, setCondensed] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    return localStorage.getItem('cogs_condensed') === '1'
+    if (typeof window === 'undefined') return true
+    return localStorage.getItem('cogs_condensed') !== '0'
   })
   const [rowUploadingId, setRowUploadingId] = useState<string | null>(null)
   const [rowDragOverId, setRowDragOverId] = useState<string | null>(null)
@@ -411,6 +412,11 @@ function CogsPage() {
     } else if (activeDef?.statuts) {
       const allowed = new Set(activeDef.statuts)
       list = list.filter((c) => c.statut != null && allowed.has(c.statut))
+      // "Paiement prévu" hides rows that still need completion — those surface
+      // in the dedicated "À compléter" tab.
+      if (activeTab === 'A payer') {
+        list = list.filter((c) => !isCogsACompleter(c))
+      }
     } else if (activeTab === 'À autoriser') {
       // COGS with numéro de commande = 0 and statut not finalized
       list = list.filter((c) => {
@@ -609,7 +615,12 @@ function CogsPage() {
                     : tab.special === 'aCompleter'
                       ? cogsList.filter(isCogsACompleter).length
                       : tab.statuts
-                        ? cogsList.filter((c) => c.statut != null && tab.statuts!.includes(c.statut)).length
+                        ? cogsList.filter((c) =>
+                            c.statut != null
+                            && tab.statuts!.includes(c.statut)
+                            // "Paiement prévu" count excludes rows in À compléter
+                            && !(tab.key === 'A payer' && isCogsACompleter(c))
+                          ).length
                         : 0
                   const isACompleter = tab.special === 'aCompleter'
                   const hasItems = count != null && count > 0
