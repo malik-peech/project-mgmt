@@ -4,10 +4,9 @@ import { useEffect, useState, useRef } from 'react'
 import { X, CheckCircle2, Circle, Upload, Loader2, Paperclip, Trash2, Plus } from 'lucide-react'
 import ComboSelect from './ComboSelect'
 import DatePicker from './DatePicker'
-import type { Projet, Attachment } from '@/types'
+import type { Projet, Attachment, Client } from '@/types'
 import { missingOnboardingFields, ONBOARDING_FIELD_LABELS } from '@/lib/onboarding'
 
-interface Client { id: string; name: string }
 interface Mensuel { id: string; name: string }
 
 interface Props {
@@ -84,13 +83,35 @@ export default function OnboardingPanel({
   const [newClientName, setNewClientName] = useState('')
   const [creatingClient, setCreatingClient] = useState(false)
   const [showMoisPicker, setShowMoisPicker] = useState(false)
+  // Track client IDs created in this session — we only surface the
+  // official-info form for brand-new clients, not for every existing client.
+  const [newClientIds, setNewClientIds] = useState<string[]>([])
+  const [clientInfo, setClientInfo] = useState({
+    officialSiren: '',
+    nameOfficial: '',
+    address: '',
+    postalCode: '',
+    city: '',
+    countryAlpha2: '',
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Re-init when projet changes
   useEffect(() => {
     setForm(initForm(projet))
     setDevisFiles(projet.devisSigne || [])
+    setNewClientIds([])
+    setClientInfo({
+      officialSiren: '',
+      nameOfficial: '',
+      address: '',
+      postalCode: '',
+      city: '',
+      countryAlpha2: '',
+    })
   }, [projet.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const showClientInfoSection = !!form.clientId && newClientIds.includes(form.clientId)
 
   const update = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -131,9 +152,18 @@ export default function OnboardingPanel({
         body: JSON.stringify({ name: newClientName.trim() }),
       })
       if (res.ok) {
-        const client = await res.json()
+        const client: Client = await res.json()
         onClientCreated(client)
         update('clientId', client.id)
+        setNewClientIds((ids) => (ids.includes(client.id) ? ids : [...ids, client.id]))
+        setClientInfo({
+          officialSiren: client.officialSiren || '',
+          nameOfficial: client.nameOfficial || newClientName.trim(),
+          address: client.address || '',
+          postalCode: client.postalCode || '',
+          city: client.city || '',
+          countryAlpha2: client.countryAlpha2 || '',
+        })
         setNewClientName('')
         setShowNewClient(false)
       }
@@ -194,6 +224,18 @@ export default function OnboardingPanel({
         body: JSON.stringify(body),
       })
       if (res.ok) {
+        if (showClientInfoSection && form.clientId) {
+          const clientRes = await fetch(`/api/clients/${form.clientId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(clientInfo),
+          })
+          if (!clientRes.ok) {
+            const err = await clientRes.text()
+            alert(`Erreur (infos client): ${err}`)
+            return
+          }
+        }
         // Build the optimistic updated projet from current form state so the
         // list reflects changes instantly (no 3-5s wait on Airtable round-trip).
         onSaved(previewProjet)
@@ -393,6 +435,72 @@ export default function OnboardingPanel({
               </div>
             </Field>
           </Section>
+
+          {/* SECTION: Informations officielles client (nouveau client créé) */}
+          {showClientInfoSection && (
+            <Section title="Informations officielles client">
+              <p className="-mt-1 text-xs text-gray-500">
+                Nouveau client — complétez les infos légales pour la facturation.
+              </p>
+              <Field label="Official SIREN">
+                <input
+                  type="text"
+                  value={clientInfo.officialSiren}
+                  onChange={(e) => setClientInfo((c) => ({ ...c, officialSiren: e.target.value }))}
+                  placeholder="ex. 552120222"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </Field>
+              <Field label="Nom officiel (raison sociale)">
+                <input
+                  type="text"
+                  value={clientInfo.nameOfficial}
+                  onChange={(e) => setClientInfo((c) => ({ ...c, nameOfficial: e.target.value }))}
+                  placeholder="ex. SNCF Voyageurs SA"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </Field>
+              <Field label="Adresse">
+                <input
+                  type="text"
+                  value={clientInfo.address}
+                  onChange={(e) => setClientInfo((c) => ({ ...c, address: e.target.value }))}
+                  placeholder="ex. 2 place aux Étoiles"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Code postal">
+                  <input
+                    type="text"
+                    value={clientInfo.postalCode}
+                    onChange={(e) => setClientInfo((c) => ({ ...c, postalCode: e.target.value }))}
+                    placeholder="ex. 93200"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </Field>
+                <Field label="Ville">
+                  <input
+                    type="text"
+                    value={clientInfo.city}
+                    onChange={(e) => setClientInfo((c) => ({ ...c, city: e.target.value }))}
+                    placeholder="ex. Saint-Denis"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </Field>
+              </div>
+              <Field label="Pays (code ISO α-2)">
+                <input
+                  type="text"
+                  maxLength={2}
+                  value={clientInfo.countryAlpha2}
+                  onChange={(e) => setClientInfo((c) => ({ ...c, countryAlpha2: e.target.value.toUpperCase() }))}
+                  placeholder="ex. FR"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 uppercase"
+                />
+              </Field>
+            </Section>
+          )}
 
           {/* SECTION: Devis */}
           <Section title="Devis">

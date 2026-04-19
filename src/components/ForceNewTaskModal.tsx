@@ -35,10 +35,11 @@ export default function ForceNewTaskModal({ projetId, projetName, projetRef, cli
   const [selectedProjetId, setSelectedProjetId] = useState(projetId || '')
   const [submitting, setSubmitting] = useState(false)
 
-  // Tomorrow as min date
+  // Tomorrow as min date — computed in LOCAL time to avoid the UTC shift
+  // (toISOString on UTC+1/+2 evenings rolls back to today).
   const tomorrow = new Date()
   tomorrow.setDate(tomorrow.getDate() + 1)
-  const minDate = tomorrow.toISOString().split('T')[0]
+  const minDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
 
   const typeOptions = TYPE_OPTIONS.map((t) => ({ value: t, label: t }))
   const priorityOptions = PRIORITY_OPTIONS.map((p) => ({ value: p, label: p }))
@@ -51,6 +52,7 @@ export default function ForceNewTaskModal({ projetId, projetName, projetRef, cli
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim() || !dueDate) return
+    if (dueDate < minDate) return
     setSubmitting(true)
     try {
       const body: Record<string, string> = { name, dueDate }
@@ -123,13 +125,16 @@ export default function ForceNewTaskModal({ projetId, projetName, projetRef, cli
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
 
-          {/* Due date (must be future) */}
-          <DatePicker
-            value={dueDate}
-            onChange={setDueDate}
-            min={minDate}
-            placeholder="Date d'échéance *"
-          />
+          {/* Due date (must be future — today is blocked) */}
+          <div>
+            <DatePicker
+              value={dueDate}
+              onChange={setDueDate}
+              min={minDate}
+              placeholder="Date d'échéance *"
+            />
+            <p className="mt-1 text-[11px] text-gray-400">La date doit être au plus tôt demain.</p>
+          </div>
 
           {/* Type + Priority */}
           <div className="grid grid-cols-2 gap-2">

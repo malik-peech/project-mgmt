@@ -10,6 +10,14 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.23',
+    date: '19/04/2026',
+    changes: [
+      'Onboarding : quand le Sales crée un nouveau client, une nouvelle section "Informations officielles client" apparaît pour saisir SIREN, nom officiel, adresse, code postal, ville et pays (code ISO α-2). Ces champs sont écrits sur la fiche Client dans Airtable.',
+      'Tasks : le popup "Planifier la prochaine task" bloque définitivement le jour même — seule une date future (≥ demain) est acceptée. Fix timezone (UTC) qui autorisait parfois today en UTC+1/+2.',
+    ],
+  },
+  {
     version: '1.22',
     date: '18/04/2026',
     changes: [

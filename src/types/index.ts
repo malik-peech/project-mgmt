@@ -162,6 +162,12 @@ export interface Ressource {
 export interface Client {
   id: string
   name: string
+  officialSiren?: string
+  nameOfficial?: string
+  address?: string
+  postalCode?: string
+  city?: string
+  countryAlpha2?: string
 }
 
 // ── Mensuel (Mois signature / EOP month) ──
