@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   ListTodo,
   Receipt,
-  Shield,
   Settings,
   Menu,
   X,
@@ -28,6 +27,7 @@ import {
   ClipboardCheck,
   Sparkles,
   Wallet,
+  ShieldCheck,
 } from 'lucide-react'
 import UnassignedModal from './UnassignedModal'
 import PMWelcomeModal from './PMWelcomeModal'
@@ -72,6 +72,7 @@ export default function Sidebar() {
   const [unassignedCount, setUnassignedCount] = useState(0)
   const [aBrieferCount, setABrieferCount] = useState(0)
   const [cogsACompleterCount, setCogsACompleterCount] = useState(0)
+  const [cogsAAutoriserCount, setCogsAAutoriserCount] = useState(0)
   const [tasksOverdueCount, setTasksOverdueCount] = useState(0)
   const [showUnassigned, setShowUnassigned] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
@@ -87,13 +88,14 @@ export default function Sidebar() {
           : userRole === 'DA'
             ? `da=${encodeURIComponent(userName)}`
             : `pm=${encodeURIComponent(userName)}`
-        const [onRes, offRes, unRes, abRes, cogsRes, tasksRes] = await Promise.all([
+        const [onRes, offRes, unRes, abRes, cogsRes, tasksRes, autorRes] = await Promise.all([
           fetch(`/api/onboarding?sales=${encodeURIComponent(userName)}`),
           fetch(`/api/offboarding?pm=${encodeURIComponent(userName)}`),
           fetch('/api/projets/unassigned'),
           fetch(`/api/a-briefer?pm=${encodeURIComponent(userName)}`),
           fetch(`/api/cogs${cogsParam ? '?' + cogsParam : ''}`),
           fetch(`/api/tasks?pm=${encodeURIComponent(userName)}`),
+          userRole === 'Admin' ? fetch('/api/admin/cogs-to-approve') : Promise.resolve(null),
         ])
         if (onRes.ok) {
           const data = await onRes.json()
@@ -130,6 +132,10 @@ export default function Sidebar() {
             return due.getTime() < today.getTime()
           }).length
           if (!cancelled) setTasksOverdueCount(overdue)
+        }
+        if (autorRes && autorRes.ok) {
+          const data = await autorRes.json()
+          if (!cancelled) setCogsAAutoriserCount(data.counts?.cogs || 0)
         }
       } catch {}
     }
@@ -240,6 +246,17 @@ export default function Sidebar() {
     ...(showABriefer ? [{ href: '/a-briefer', label: 'Brief client à planifier', icon: ClipboardCheck, badge: aBrieferCount }] : []),
     ...(showOnboarding ? [{ href: '/onboarding', label: 'Onboarding', icon: Rocket, badge: onboardingCount?.toOnboard || 0 }] : []),
     ...(showOffboarding ? [{ href: '/offboarding', label: 'Offboarding', icon: PackageCheck, badge: offboardingCount?.toOffboard || 0 }] : []),
+    ...(isAdmin
+      ? [
+          {
+            href: '/autorisation-cogs',
+            label: 'Autorisation COGS',
+            icon: ShieldCheck,
+            badge: cogsAAutoriserCount,
+            badgeColor: 'amber' as const,
+          },
+        ]
+      : []),
     ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Settings }] : []),
   ]
 
@@ -280,35 +297,24 @@ export default function Sidebar() {
               ? 'bg-red-500 text-white'
               : 'bg-amber-400 text-amber-900'
           return (
-            <div key={href}>
-              <Link
-                href={href}
-                onClick={() => setMobileOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
-                  isActive
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-indigo-200 hover:bg-indigo-800 hover:text-white'
-                }`}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span className="flex-1">{label}</span>
-                {badge && badge > 0 ? (
-                  <span className={`ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>
-                    {badge}
-                  </span>
-                ) : null}
-              </Link>
-              {href === '/cogs' && isAdmin && (
-                <Link
-                  href="/cogs?view=a-autoriser"
-                  onClick={() => setMobileOpen(false)}
-                  className="flex items-center gap-2 ml-9 mt-1 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-300 hover:bg-indigo-800 hover:text-white transition"
-                >
-                  <Shield className="w-3.5 h-3.5 shrink-0" />
-                  À autoriser
-                </Link>
-              )}
-            </div>
+            <Link
+              key={href}
+              href={href}
+              onClick={() => setMobileOpen(false)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                isActive
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-indigo-200 hover:bg-indigo-800 hover:text-white'
+              }`}
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              <span className="flex-1">{label}</span>
+              {badge && badge > 0 ? (
+                <span className={`ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full ${badgeClass}`}>
+                  {badge}
+                </span>
+              ) : null}
+            </Link>
           )
         })}
       </nav>

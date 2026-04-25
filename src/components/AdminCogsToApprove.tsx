@@ -136,7 +136,7 @@ export default function AdminCogsToApprove() {
   }
 
   return (
-    <div className="mt-10 mb-8">
+    <div>
       {/* Header — same shape as Saisie COGS */}
       <div className="flex items-start md:items-center justify-between flex-col md:flex-row gap-4 mb-4">
         <div>
