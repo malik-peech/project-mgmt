@@ -89,6 +89,21 @@ export async function PATCH(
     if (body.pm !== undefined) {
       fields['PM (manual)'] = body.pm || null
     }
+    if (body.bdc !== undefined) {
+      fields['BDC'] = body.bdc || null
+    }
+    if (body.numeroCommande !== undefined) {
+      fields['Numéro de commande'] = body.numeroCommande || null
+    }
+    if (body.repriseLigneDevisFacture !== undefined) {
+      fields['Reprise ligne devis sur facture'] = !!body.repriseLigneDevisFacture
+    }
+    if (body.briefEffectue !== undefined) {
+      fields['Brief effectué'] = !!body.briefEffectue
+    }
+    if (body.dateBrief !== undefined) {
+      fields['Date de brief (si non)'] = body.dateBrief || null
+    }
 
     if (Object.keys(fields).length === 0) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 })

@@ -9,9 +9,18 @@ const BASE_ID = process.env.AIRTABLE_BASE_ID || 'appYFl5MvR7VeL0uB'
 const PROJETS_TABLE_ID = 'tbl0Pij0JqZFD9Ijr'
 const TMP_DIR = '/tmp/pm-uploads'
 
+const ALLOWED_FIELDS = new Set(['Devis signé', 'Bon de commande'])
+
+function resolveFieldName(raw: string | null): string {
+  if (!raw) return 'Devis signé'
+  if (ALLOWED_FIELDS.has(raw)) return raw
+  return 'Devis signé'
+}
+
 /**
- * Upload a file to Airtable's "Devis signé" attachment field on a Projet record.
- * Mirrors /api/cogs/[id]/upload but for the projets "Devis signé" field.
+ * Upload a file to a Projet attachment field.
+ * Default target field is "Devis signé"; pass ?field=Bon%20de%20commande
+ * to target the Bon de commande attachment field instead.
  */
 export async function POST(
   request: Request,
@@ -26,6 +35,7 @@ export async function POST(
     }
 
     const url = new URL(request.url)
+    const fieldName = resolveFieldName(url.searchParams.get('field'))
     const baseUrl = process.env.NEXTAUTH_URL || `${url.protocol}//${url.host}`
 
     const formData = await request.formData()
@@ -46,7 +56,7 @@ export async function POST(
     let existingAttachments: { id?: string; url: string; filename?: string }[] = []
     if (getRes.ok) {
       const record = await getRes.json()
-      existingAttachments = (record.fields?.['Devis signé'] as { id?: string; url: string; filename?: string }[]) || []
+      existingAttachments = (record.fields?.[fieldName] as { id?: string; url: string; filename?: string }[]) || []
     }
 
     const newAttachments: { url: string; filename: string }[] = []
@@ -76,13 +86,13 @@ export async function POST(
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ fields: { 'Devis signé': patchAttachments } }),
+        body: JSON.stringify({ fields: { [fieldName]: patchAttachments } }),
       }
     )
 
     if (!updateRes.ok) {
       const err = await updateRes.text()
-      console.error('[Devis upload] Airtable error:', updateRes.status, err)
+      console.error(`[Projet upload ${fieldName}] Airtable error:`, updateRes.status, err)
       return NextResponse.json({ error: `Upload failed: ${err}` }, { status: updateRes.status })
     }
 
@@ -92,19 +102,19 @@ export async function POST(
       updatedFields = updated.fields
       upsertRecord(TABLES.PROJETS, { id: updated.id, fields: updated.fields })
     } catch (e) {
-      console.error('[Devis upload] failed to parse response:', e)
+      console.error(`[Projet upload ${fieldName}] failed to parse response:`, e)
     }
 
-    return NextResponse.json({ ok: true, count: newAttachments.length, fields: updatedFields })
+    return NextResponse.json({ ok: true, count: newAttachments.length, fields: updatedFields, field: fieldName })
   } catch (error) {
-    console.error('Error uploading devis signé:', error)
+    console.error('Error uploading attachment:', error)
     return NextResponse.json({ error: 'Failed to upload' }, { status: 500 })
   }
 }
 
 /**
- * DELETE /api/onboarding/[id]/upload?attachmentId=xxx
- * Remove a single attachment from the Devis signé field.
+ * DELETE /api/onboarding/[id]/upload?attachmentId=xxx[&field=...]
+ * Remove a single attachment from the targeted attachment field.
  */
 export async function DELETE(
   request: Request,
@@ -118,6 +128,7 @@ export async function DELETE(
     }
 
     const { searchParams } = new URL(request.url)
+    const fieldName = resolveFieldName(searchParams.get('field'))
     const attachmentId = searchParams.get('attachmentId')
     const attachmentUrl = searchParams.get('attachmentUrl')
     if (!attachmentId && !attachmentUrl) {
@@ -132,7 +143,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Failed to fetch record' }, { status: 500 })
     }
     const record = await getRes.json()
-    const existing = (record.fields?.['Devis signé'] as { id: string; url?: string }[]) || []
+    const existing = (record.fields?.[fieldName] as { id: string; url?: string }[]) || []
     const filtered = existing
       .filter((a) => (attachmentId ? a.id !== attachmentId : a.url !== attachmentUrl))
       .map((a) => ({ id: a.id }))
@@ -142,7 +153,7 @@ export async function DELETE(
       {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: { 'Devis signé': filtered } }),
+        body: JSON.stringify({ fields: { [fieldName]: filtered } }),
       }
     )
 
@@ -154,7 +165,7 @@ export async function DELETE(
     upsertRecord(TABLES.PROJETS, { id: updated.id, fields: updated.fields })
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error('Error deleting devis attachment:', error)
+    console.error('Error deleting attachment:', error)
     return NextResponse.json({ error: 'Failed to delete' }, { status: 500 })
   }
 }

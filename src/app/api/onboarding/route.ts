@@ -93,6 +93,20 @@ export async function GET(request: Request) {
         libelleFacture: str(f['Libellé facture']),
         contactCompta: str(f['Contact compta']),
         typeDeContact: sel(f['type de contact']) as Projet['typeDeContact'],
+        bdc: sel(f['BDC']) as Projet['bdc'],
+        numeroCommande: str(f['Numéro de commande']),
+        repriseLigneDevisFacture: !!f['Reprise ligne devis sur facture'],
+        briefEffectue: !!f['Brief effectué'],
+        dateBrief: str(f['Date de brief (si non)']),
+        bonDeCommande: Array.isArray(f['Bon de commande'])
+          ? (f['Bon de commande'] as { id?: string; url: string; filename: string; type?: string; size?: number }[]).map((a) => ({
+              id: a.id,
+              url: a.url,
+              filename: a.filename,
+              type: a.type,
+              size: a.size,
+            }))
+          : undefined,
         cogsBudget: num(f['COGS - budget (€)']),
         timeCreaBudget: num(f['Time Créa - budget (h)']),
         timeProdBudget: num(f['Time Prod - budget (h)']),

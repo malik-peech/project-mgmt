@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { ClipboardCheck, Search, Loader2, CheckCircle2, Filter, X } from 'lucide-react'
 import DatePicker from '@/components/DatePicker'
+import BriefConfirmModal from '@/components/BriefConfirmModal'
 
 interface ABrieferProjet {
   id: string
@@ -63,6 +64,7 @@ export default function ABrieferPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [briefConfirm, setBriefConfirm] = useState<ABrieferProjet | null>(null)
 
   // Admin PM override
   const [pmOverride, setPmOverride] = useState<string>('')
@@ -111,13 +113,27 @@ export default function ABrieferPage() {
     )
   }, [projets, search])
 
-  const toggleBrief = async (p: ABrieferProjet) => {
+  const requestBriefToggle = (p: ABrieferProjet) => {
+    if (p.briefEffectue) {
+      // Reverting an already-done brief — no confirmation needed.
+      void doToggleBrief(p, p.dateBrief)
+    } else {
+      setBriefConfirm(p)
+    }
+  }
+
+  const doToggleBrief = async (p: ABrieferProjet, dateBrief?: string) => {
     setSavingId(p.id)
     try {
+      const body: Record<string, string | boolean | null> = {
+        id: p.id,
+        briefEffectue: !p.briefEffectue,
+      }
+      if (!p.briefEffectue && dateBrief) body.dateBrief = dateBrief
       const res = await fetch('/api/projets', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: p.id, briefEffectue: !p.briefEffectue }),
+        body: JSON.stringify(body),
       })
       if (res.ok) {
         // If toggled to "done", drop from list; otherwise update locally.
@@ -129,6 +145,7 @@ export default function ABrieferPage() {
       }
     } finally {
       setSavingId(null)
+      setBriefConfirm(null)
     }
   }
 
@@ -241,14 +258,18 @@ export default function ABrieferPage() {
                 <div className="flex items-center">
                   <button
                     type="button"
-                    onClick={() => toggleBrief(p)}
+                    onClick={() => requestBriefToggle(p)}
                     disabled={savingId === p.id}
                     className={`w-5 h-5 rounded border-2 flex items-center justify-center transition ${
                       p.briefEffectue
                         ? 'bg-green-500 border-green-500 text-white'
                         : 'border-gray-300 hover:border-indigo-400 bg-white'
                     }`}
-                    title={p.briefEffectue ? 'Brief effectué' : 'Cliquer pour marquer comme fait'}
+                    title={
+                      p.briefEffectue
+                        ? 'Brief effectué — cliquer pour annuler'
+                        : 'Cliquer pour confirmer que le brief a été effectué'
+                    }
                   >
                     {savingId === p.id ? (
                       <Loader2 className="w-3 h-3 animate-spin" />
@@ -322,9 +343,20 @@ export default function ABrieferPage() {
           </div>
 
           <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 text-[11px] text-gray-500">
-            Cliquer sur la case pour marquer un brief comme effectué · {formatDate(new Date().toISOString())}
+            Cliquer sur la case pour confirmer qu&apos;un brief a été effectué · {formatDate(new Date().toISOString())}
           </div>
         </div>
+      )}
+
+      {briefConfirm && (
+        <BriefConfirmModal
+          projetNom={briefConfirm.nom}
+          projetRef={briefConfirm.ref}
+          clientName={briefConfirm.clientName}
+          initialDate={briefConfirm.dateBrief}
+          onConfirm={(date) => doToggleBrief(briefConfirm, date)}
+          onCancel={() => setBriefConfirm(null)}
+        />
       )}
     </div>
   )

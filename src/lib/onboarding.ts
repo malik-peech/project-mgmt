@@ -23,6 +23,9 @@ export const ONBOARDING_FIELDS = [
   'contactCompta',
   'typeDeContact',
   'pm',
+  'briefEffectue',
+  'bdc',
+  'numeroCommande',
 ] as const
 
 export type OnboardingField = typeof ONBOARDING_FIELDS[number]
@@ -48,6 +51,15 @@ export function missingOnboardingFields(p: Projet): OnboardingField[] {
   if (!p.contactCompta?.trim()) missing.push('contactCompta')
   if (!p.typeDeContact) missing.push('typeDeContact')
   if (!p.pm) missing.push('pm')
+  if (!p.briefEffectue) missing.push('briefEffectue')
+  if (!p.bdc) missing.push('bdc')
+  // Numéro de commande required only when BDC requires one
+  if (
+    (p.bdc === 'Numéro à référencer' || p.bdc === 'Déposer sur Chorus') &&
+    !p.numeroCommande?.trim()
+  ) {
+    missing.push('numeroCommande')
+  }
   return missing
 }
 
@@ -74,4 +86,7 @@ export const ONBOARDING_FIELD_LABELS: Record<OnboardingField, string> = {
   contactCompta: 'Contact compta',
   typeDeContact: 'Type de contact',
   pm: 'PM',
+  briefEffectue: 'Brief effectué',
+  bdc: 'BDC',
+  numeroCommande: 'Numéro de commande',
 }

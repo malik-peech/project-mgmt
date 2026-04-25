@@ -17,6 +17,7 @@ import {
   Lightbulb,
   MessageCircle,
 } from 'lucide-react'
+import AdminCogsToApprove from '@/components/AdminCogsToApprove'
 
 type UserRole = 'PM' | 'DA' | 'Admin' | 'Sales'
 interface User {
@@ -231,8 +232,11 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* ── COGS à autoriser ── */}
+      <AdminCogsToApprove />
+
       {/* ── Users ── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-8">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <div className="flex items-center gap-3">
             <Users className="w-5 h-5 text-indigo-600" />

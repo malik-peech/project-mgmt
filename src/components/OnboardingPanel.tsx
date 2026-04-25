@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { X, CheckCircle2, Circle, Upload, Loader2, Paperclip, Trash2, Plus } from 'lucide-react'
 import ComboSelect from './ComboSelect'
 import DatePicker from './DatePicker'
+import BriefConfirmModal from './BriefConfirmModal'
 import type { Projet, Attachment } from '@/types'
 import { missingOnboardingFields, ONBOARDING_FIELD_LABELS } from '@/lib/onboarding'
 
@@ -24,6 +25,7 @@ const CURRENCIES = ['EUR', 'USD', 'CHF']
 const ORIGINES = ['Client existant', 'Nouveau client']
 const AGENCES = ['Peech', 'Newic', 'Meecro', 'Creespy']
 const TYPES_CONTACT = ['Compta', 'Client']
+const BDC_OPTIONS = ['Pas de bon de commande', 'Numéro à référencer', 'Déposer sur Chorus']
 
 type FormState = {
   moisSignatureIds: string[]
@@ -43,6 +45,11 @@ type FormState = {
   contactCompta: string
   typeDeContact: string
   pm: string
+  briefEffectue: boolean
+  dateBrief: string
+  bdc: string
+  numeroCommande: string
+  repriseLigneDevisFacture: boolean
 }
 
 function initForm(p: Projet): FormState {
@@ -64,6 +71,11 @@ function initForm(p: Projet): FormState {
     contactCompta: p.contactCompta || '',
     typeDeContact: p.typeDeContact || '',
     pm: p.pm || '',
+    briefEffectue: !!p.briefEffectue,
+    dateBrief: p.dateBrief || '',
+    bdc: p.bdc || '',
+    numeroCommande: p.numeroCommande || '',
+    repriseLigneDevisFacture: !!p.repriseLigneDevisFacture,
   }
 }
 
@@ -78,18 +90,23 @@ export default function OnboardingPanel({
 }: Props) {
   const [form, setForm] = useState<FormState>(() => initForm(projet))
   const [devisFiles, setDevisFiles] = useState<Attachment[]>(projet.devisSigne || [])
+  const [bonCommandeFiles, setBonCommandeFiles] = useState<Attachment[]>(projet.bonDeCommande || [])
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadingBdc, setUploadingBdc] = useState(false)
   const [showNewClient, setShowNewClient] = useState(false)
   const [newClientName, setNewClientName] = useState('')
   const [creatingClient, setCreatingClient] = useState(false)
   const [showMoisPicker, setShowMoisPicker] = useState(false)
+  const [showBriefConfirm, setShowBriefConfirm] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const bdcFileInputRef = useRef<HTMLInputElement>(null)
 
   // Re-init when projet changes
   useEffect(() => {
     setForm(initForm(projet))
     setDevisFiles(projet.devisSigne || [])
+    setBonCommandeFiles(projet.bonDeCommande || [])
   }, [projet.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }))
@@ -114,12 +131,20 @@ export default function OnboardingPanel({
     contactCompta: form.contactCompta,
     typeDeContact: form.typeDeContact as Projet['typeDeContact'],
     pm: form.pm,
+    briefEffectue: form.briefEffectue,
+    dateBrief: form.dateBrief,
+    bdc: form.bdc as Projet['bdc'],
+    numeroCommande: form.numeroCommande,
+    repriseLigneDevisFacture: form.repriseLigneDevisFacture,
     devisSigne: devisFiles,
+    bonDeCommande: bonCommandeFiles,
   }
   const missing = missingOnboardingFields(previewProjet)
-  const total = 18
+  const total = 21
   const filled = total - missing.length
   const pct = Math.round((filled / total) * 100)
+  const bdcRequiresNumero =
+    form.bdc === 'Numéro à référencer' || form.bdc === 'Déposer sur Chorus'
 
   const createClient = async () => {
     if (!newClientName.trim()) return
@@ -160,10 +185,46 @@ export default function OnboardingPanel({
     }
   }
 
+  const handleBdcUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setUploadingBdc(true)
+    try {
+      const fd = new FormData()
+      for (const f of Array.from(files)) fd.append('files', f)
+      const res = await fetch(
+        `/api/onboarding/${projet.id}/upload?field=${encodeURIComponent('Bon de commande')}`,
+        { method: 'POST', body: fd },
+      )
+      if (res.ok) {
+        const json = await res.json()
+        const updatedAttachments = (json.fields?.['Bon de commande'] as Attachment[]) || []
+        setBonCommandeFiles(updatedAttachments)
+      }
+    } finally {
+      setUploadingBdc(false)
+      if (bdcFileInputRef.current) bdcFileInputRef.current.value = ''
+    }
+  }
+
   const deleteAttachment = async (att: Attachment & { id?: string }) => {
     const qs = att.id ? `attachmentId=${att.id}` : `attachmentUrl=${encodeURIComponent(att.url)}`
     const res = await fetch(`/api/onboarding/${projet.id}/upload?${qs}`, { method: 'DELETE' })
     if (res.ok) setDevisFiles((curr) => curr.filter((a) => a.url !== att.url))
+  }
+
+  const deleteBdcAttachment = async (att: Attachment & { id?: string }) => {
+    const params = new URLSearchParams()
+    if (att.id) params.set('attachmentId', att.id)
+    else params.set('attachmentUrl', att.url)
+    params.set('field', 'Bon de commande')
+    const res = await fetch(`/api/onboarding/${projet.id}/upload?${params.toString()}`, { method: 'DELETE' })
+    if (res.ok) setBonCommandeFiles((curr) => curr.filter((a) => a.url !== att.url))
+  }
+
+  const confirmBriefEffectue = async (dateBrief: string) => {
+    update('briefEffectue', true)
+    update('dateBrief', dateBrief)
+    setShowBriefConfirm(false)
   }
 
   const save = async () => {
@@ -187,6 +248,11 @@ export default function OnboardingPanel({
         contactCompta: form.contactCompta || null,
         typeDeContact: form.typeDeContact || null,
         pm: form.pm || null,
+        briefEffectue: form.briefEffectue,
+        dateBrief: form.dateBrief || null,
+        bdc: form.bdc || null,
+        numeroCommande: form.numeroCommande || null,
+        repriseLigneDevisFacture: form.repriseLigneDevisFacture,
       }
       const res = await fetch(`/api/onboarding/${projet.id}`, {
         method: 'PATCH',
@@ -217,6 +283,7 @@ export default function OnboardingPanel({
   const origineOptions = ORIGINES.map((o) => ({ value: o, label: o }))
   const agenceOptions = AGENCES.map((a) => ({ value: a, label: a }))
   const typeContactOptions = TYPES_CONTACT.map((t) => ({ value: t, label: t }))
+  const bdcOptions = BDC_OPTIONS.map((b) => ({ value: b, label: b }))
   const pmDropdownOptions = pmOptions.map((p) => ({ value: p, label: p }))
 
   return (
@@ -268,6 +335,59 @@ export default function OnboardingPanel({
 
         {/* Form content */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+          {/* SECTION: Brief client */}
+          <Section title="Brief client">
+            <Field label="Brief effectué" required missing={missing.includes('briefEffectue')}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (form.briefEffectue) {
+                    // Untoggle directly (no popup needed when reverting)
+                    update('briefEffectue', false)
+                  } else {
+                    setShowBriefConfirm(true)
+                  }
+                }}
+                className={`flex items-center gap-2 w-full px-3 py-2 border rounded-lg text-sm transition ${
+                  form.briefEffectue
+                    ? 'bg-green-50 border-green-300 text-green-800 hover:bg-green-100'
+                    : 'bg-white border-gray-200 text-gray-700 hover:border-amber-400 hover:bg-amber-50'
+                }`}
+              >
+                <span
+                  className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${
+                    form.briefEffectue
+                      ? 'bg-green-500 border-green-500 text-white'
+                      : 'border-gray-300 bg-white'
+                  }`}
+                >
+                  {form.briefEffectue && <CheckCircle2 className="w-3 h-3" />}
+                </span>
+                <span>
+                  {form.briefEffectue
+                    ? 'Brief effectué — cliquer pour annuler'
+                    : 'Cliquer pour confirmer que le brief a été effectué'}
+                </span>
+              </button>
+              {!form.briefEffectue && (
+                <p className="text-[11px] text-amber-700 mt-1.5">
+                  Le projet reste en onboarding tant que le brief n&apos;est pas effectué.
+                </p>
+              )}
+            </Field>
+            <Field label="Date de brief (si non)">
+              <DatePicker
+                value={form.dateBrief}
+                onChange={(v) => update('dateBrief', v)}
+                placeholder="Date prévue du brief…"
+                clearable
+              />
+              <p className="text-[11px] text-gray-400 mt-1">
+                Renseignez ici la date prévisionnelle du brief tant qu&apos;il n&apos;a pas été effectué.
+              </p>
+            </Field>
+          </Section>
+
           {/* SECTION: Informations client */}
           <Section title="Informations client">
             <Field label="Client" required missing={missing.includes('clientLink')}>
@@ -544,6 +664,90 @@ export default function OnboardingPanel({
 
           {/* SECTION: Facturation */}
           <Section title="Facturation">
+            <Field label="BDC" required missing={missing.includes('bdc')}>
+              <ComboSelect
+                options={bdcOptions}
+                value={form.bdc}
+                onChange={(v) => {
+                  update('bdc', v)
+                  // If switching to "Pas de bon de commande", clear the numeroCommande
+                  if (v === 'Pas de bon de commande') update('numeroCommande', '')
+                }}
+                placeholder="Choisir…"
+                clearable
+              />
+            </Field>
+
+            {bdcRequiresNumero && (
+              <Field
+                label="Numéro de commande"
+                required
+                missing={missing.includes('numeroCommande')}
+              >
+                <textarea
+                  value={form.numeroCommande}
+                  onChange={(e) => update('numeroCommande', e.target.value)}
+                  rows={2}
+                  placeholder="Numéro / référence du bon de commande…"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+              </Field>
+            )}
+
+            <Field label="Bon de commande (PDF)">
+              <div className="space-y-2">
+                {bonCommandeFiles.length > 0 && (
+                  <div className="space-y-1.5">
+                    {bonCommandeFiles.map((att, i) => (
+                      <div
+                        key={`${att.url}-${i}`}
+                        className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg"
+                      >
+                        <Paperclip className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <a
+                          href={att.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 text-sm text-indigo-600 hover:underline truncate"
+                        >
+                          {att.filename}
+                        </a>
+                        <button
+                          onClick={() => deleteBdcAttachment(att)}
+                          className="p-1 text-gray-400 hover:text-red-500"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <input
+                  ref={bdcFileInputRef}
+                  type="file"
+                  multiple
+                  onChange={(e) => handleBdcUpload(e.target.files)}
+                  className="hidden"
+                  id={`bdc-upload-${projet.id}`}
+                />
+                <label
+                  htmlFor={`bdc-upload-${projet.id}`}
+                  className="flex items-center justify-center gap-2 w-full px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer transition"
+                >
+                  {uploadingBdc ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Upload…
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" /> Ajouter un fichier
+                    </>
+                  )}
+                </label>
+              </div>
+            </Field>
+
             <Field label="Libellé facture" required missing={missing.includes('libelleFacture')}>
               <input
                 type="text"
@@ -553,6 +757,21 @@ export default function OnboardingPanel({
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </Field>
+
+            <Field label="Reprise ligne devis sur facture">
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form.repriseLigneDevisFacture}
+                  onChange={(e) => update('repriseLigneDevisFacture', e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm text-gray-700">
+                  Reprendre les lignes du devis sur la facture
+                </span>
+              </label>
+            </Field>
+
             <Field label="Contact compta" required missing={missing.includes('contactCompta')}>
               <textarea
                 value={form.contactCompta}
@@ -632,6 +851,17 @@ export default function OnboardingPanel({
           </div>
         </div>
       </div>
+
+      {showBriefConfirm && (
+        <BriefConfirmModal
+          projetNom={projet.nom}
+          projetRef={projet.ref}
+          clientName={projet.clientName}
+          initialDate={form.dateBrief}
+          onConfirm={confirmBriefEffectue}
+          onCancel={() => setShowBriefConfirm(false)}
+        />
+      )}
     </div>
   )
 }

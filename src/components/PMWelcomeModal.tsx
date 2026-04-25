@@ -12,6 +12,7 @@ import {
   Circle,
 } from 'lucide-react'
 import DatePicker from './DatePicker'
+import BriefConfirmModal from './BriefConfirmModal'
 
 interface Entry {
   id: string
@@ -48,6 +49,7 @@ export default function PMWelcomeModal({ userName, onClose }: { userName: string
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<TabKey>('briefs')
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [briefConfirmEntry, setBriefConfirmEntry] = useState<Entry | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -82,8 +84,8 @@ export default function PMWelcomeModal({ userName, onClose }: { userName: string
     }
   }
 
-  const markBriefDone = async (entry: Entry) => {
-    await patchProjet(entry.id, { briefEffectue: true })
+  const markBriefDone = async (entry: Entry, dateBrief: string) => {
+    await patchProjet(entry.id, { briefEffectue: true, dateBrief: dateBrief || null })
     setData((prev) =>
       prev
         ? {
@@ -93,6 +95,7 @@ export default function PMWelcomeModal({ userName, onClose }: { userName: string
           }
         : prev
     )
+    setBriefConfirmEntry(null)
   }
 
   const updateBriefDate = async (entry: Entry, value: string) => {
@@ -220,12 +223,12 @@ export default function PMWelcomeModal({ userName, onClose }: { userName: string
                     />
                   </div>
                   <button
-                    onClick={() => markBriefDone(entry)}
+                    onClick={() => setBriefConfirmEntry(entry)}
                     disabled={savingId === entry.id}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 transition disabled:opacity-50"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 transition disabled:opacity-50"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    Fait
+                    Brief effectué
                   </button>
                 </div>
               )}
@@ -293,6 +296,17 @@ export default function PMWelcomeModal({ userName, onClose }: { userName: string
           </button>
         </div>
       </div>
+
+      {briefConfirmEntry && (
+        <BriefConfirmModal
+          projetNom={briefConfirmEntry.nom}
+          projetRef={briefConfirmEntry.ref}
+          clientName={briefConfirmEntry.clientName}
+          initialDate={briefConfirmEntry.dateBrief}
+          onConfirm={(date) => markBriefDone(briefConfirmEntry, date)}
+          onCancel={() => setBriefConfirmEntry(null)}
+        />
+      )}
     </div>
   )
 }

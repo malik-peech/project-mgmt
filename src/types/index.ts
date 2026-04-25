@@ -5,6 +5,7 @@ export type TypeProjet = 'Live' | '2D' | 'Film' | 'Film scénarisé (acting)' | 
 export type Currency = 'EUR' | 'USD' | 'CHF'
 export type Origine = 'Client existant' | 'Nouveau client'
 export type TypeDeContact = 'Compta' | 'Client'
+export type Bdc = 'Numéro à référencer' | 'Déposer sur Chorus' | 'Pas de bon de commande'
 export type Diffusable = 'OK pour diffusion' | 'Diffusion interdite'
 export type PointEop = 'Prévu' | 'Done' | 'No need (vu avec sales)'
 
@@ -49,6 +50,10 @@ export interface Projet {
   libelleFacture?: string
   contactCompta?: string
   typeDeContact?: TypeDeContact
+  bdc?: Bdc
+  numeroCommande?: string
+  bonDeCommande?: Attachment[]
+  repriseLigneDevisFacture?: boolean
   // Offboarding
   frameArchive?: boolean
   slackArchive?: boolean
