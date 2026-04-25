@@ -9,6 +9,8 @@ const APPROUVER_STATUTS = new Set([
   'A Approuver (CSM)',
 ])
 
+const ATTENTION_AMOUNT_THRESHOLD = 200
+
 function num(val: unknown): number | undefined {
   if (val == null) return undefined
   if (typeof val === 'number') return val
@@ -34,6 +36,22 @@ function sel(val: unknown): string | undefined {
   return str(val)
 }
 
+/** A COGS line "needs attention" from the admin if EITHER:
+ *  - its statut is one of the "A Approuver" variants, OR
+ *  - its amount (HT Sales or HT Prod) is > 200 € AND no Autorisation Vanessa has been entered.
+ */
+function needsAttention(c: {
+  statut?: string
+  montantBudgeteSales?: number
+  montantEngageProd?: number
+  autorisationVanessa?: number
+}): boolean {
+  if (c.statut && APPROUVER_STATUTS.has(c.statut)) return true
+  const amount = Math.max(c.montantBudgeteSales || 0, c.montantEngageProd || 0)
+  if (amount > ATTENTION_AMOUNT_THRESHOLD && c.autorisationVanessa == null) return true
+  return false
+}
+
 type ProjetRow = {
   id: string
   ref?: string
@@ -43,21 +61,23 @@ type ProjetRow = {
   pm2?: string
   agence?: string
   statut?: string
-  bdc?: string
-  numeroCommande?: string
   cogsBudget?: number
   offreInitiale?: number
   offreFinale?: number
   toApproveCount: number
-  cogsList: Cogs[]
+  cogsList: (Cogs & { needsAttention: boolean })[]
 }
 
 /**
  * GET /api/admin/cogs-to-approve
  *
- * Returns all projects that have at least one COGS in an "A Approuver" status.
- * For each such project, returns ALL its COGS (any status) so the admin can
- * see the full picture and edit individual rows.
+ * Returns all projects that have at least one COGS needing admin attention:
+ *   - statut in "A Approuver" / "(CDP)" / "(CSM)", OR
+ *   - amount > 200 € (HT sales or prod) AND no Autorisation Vanessa entered.
+ *
+ * For each qualifying project, returns ALL its COGS so the admin can see
+ * the full picture and edit individual rows. Each COGS carries a
+ * `needsAttention` flag.
  */
 export async function GET() {
   try {
@@ -67,34 +87,50 @@ export async function GET() {
     const projetNameMap = buildLookupMap(store.projets, 'Projet')
     const projetRefMap = buildLookupMap(store.projets, 'Project réf')
 
-    // First pass: identify projects with at least 1 "A Approuver" COGS
-    const projetsWithToApprove = new Set<string>()
-    for (const r of store.cogs.records) {
-      const statut = str(r.fields['Statut de la dépense'])
-      if (!statut || !APPROUVER_STATUTS.has(statut)) continue
-      const projets = r.fields['Projet'] as string[] | undefined
-      const projetId = projets?.[0]
-      if (projetId) projetsWithToApprove.add(projetId)
-    }
+    // First pass: extract minimal COGS info per record to identify qualifying projects.
+    const allCogs: {
+      record: { id: string; fields: Record<string, unknown> }
+      projetId: string
+      statut?: string
+      montantBudgeteSales?: number
+      montantEngageProd?: number
+      autorisationVanessa?: number
+    }[] = []
 
-    // Second pass: build rows with ALL their COGS
-    const rowsById = new Map<string, ProjetRow>()
     for (const r of store.cogs.records) {
       const f = r.fields
       const projets = f['Projet'] as string[] | undefined
       const projetId = projets?.[0]
-      if (!projetId || !projetsWithToApprove.has(projetId)) continue
+      if (!projetId) continue
+      allCogs.push({
+        record: r,
+        projetId,
+        statut: str(f['Statut de la dépense']),
+        montantBudgeteSales: num(f['Montant HT budgété (sales)']),
+        montantEngageProd: num(f['Montant HT engagé (prod)']),
+        autorisationVanessa: num(f['Autorisation Vanessa']),
+      })
+    }
 
-      const projetRecord = store.projets.byId.get(projetId)
+    const qualifyingProjets = new Set<string>()
+    for (const c of allCogs) {
+      if (needsAttention(c)) qualifyingProjets.add(c.projetId)
+    }
+
+    // Second pass: build rows with ALL their COGS
+    const rowsById = new Map<string, ProjetRow>()
+    for (const c of allCogs) {
+      if (!qualifyingProjets.has(c.projetId)) continue
+      const projetRecord = store.projets.byId.get(c.projetId)
       if (!projetRecord) continue
 
-      let row = rowsById.get(projetId)
+      let row = rowsById.get(c.projetId)
       if (!row) {
         const pf = projetRecord.fields
         const clientIds = pf['Client link'] as string[] | undefined
         const clientId = clientIds?.[0]
         row = {
-          id: projetId,
+          id: c.projetId,
           ref: str(pf['Project réf']),
           nom: str(pf['Projet']) || '',
           clientName: clientId ? clientMap.get(clientId) || '' : '',
@@ -102,49 +138,49 @@ export async function GET() {
           pm2: sel(pf['PM2 (manual)']),
           agence: sel(pf['Agence']),
           statut: str(pf['Statut']),
-          bdc: sel(pf['BDC']),
-          numeroCommande: str(pf['Numéro de commande']),
           cogsBudget: num(pf['COGS - budget (€)']),
           offreInitiale: num(pf['Offre - Valeur initiale']),
           offreFinale: num(pf['Offre - Valeur finale']),
           toApproveCount: 0,
           cogsList: [],
         }
-        rowsById.set(projetId, row)
+        rowsById.set(c.projetId, row)
       }
 
+      const r = c.record
+      const f = r.fields
       const ressourceIds = f['Ressource'] as string[] | undefined
       const ressourceId = ressourceIds?.[0]
-      const statut = str(f['Statut de la dépense'])
+      const flagged = needsAttention(c)
 
-      const cog: Cogs = {
+      row.cogsList.push({
         id: r.id,
+        // Numéro de commande on COGS is a formula field — read-only, sourced
+        // from the linked project — but we still display it here.
         numeroCommande: str(f['Numéro de commande']),
-        statut: statut as Cogs['statut'],
-        projetId,
-        projetName: projetNameMap.get(projetId) || '',
-        projetRef: projetRefMap.get(projetId) || '',
+        statut: c.statut as Cogs['statut'],
+        projetId: c.projetId,
+        projetName: projetNameMap.get(c.projetId) || '',
+        projetRef: projetRefMap.get(c.projetId) || '',
         categorie: str((f['Catégorie'] as unknown[])?.[0]),
         ressourceId,
         ressourceName: ressourceId ? resMap.get(ressourceId) || '' : '',
-        montantBudgeteSales: num(f['Montant HT budgété (sales)']),
-        montantEngageProd: num(f['Montant HT engagé (prod)']),
+        montantBudgeteSales: c.montantBudgeteSales,
+        montantEngageProd: c.montantEngageProd,
         tva: num(f['TVA']),
-        autorisationVanessa: num(f['Autorisation Vanessa']),
+        autorisationVanessa: c.autorisationVanessa,
         commentaire: str(f['Commentaire COGS']),
         createdAt: str(f['Date de création']),
-      }
-      row.cogsList.push(cog)
-      if (statut && APPROUVER_STATUTS.has(statut)) row.toApproveCount += 1
+        needsAttention: flagged,
+      })
+      if (flagged) row.toApproveCount += 1
     }
 
-    // Sort COGS within each project: "A Approuver" first, then by amount desc
+    // Sort COGS within each project: needs-attention first, then by amount desc
     const rows = Array.from(rowsById.values()).map((r) => ({
       ...r,
       cogsList: r.cogsList.sort((a, b) => {
-        const aTo = a.statut && APPROUVER_STATUTS.has(a.statut) ? 0 : 1
-        const bTo = b.statut && APPROUVER_STATUTS.has(b.statut) ? 0 : 1
-        if (aTo !== bTo) return aTo - bTo
+        if (a.needsAttention !== b.needsAttention) return a.needsAttention ? -1 : 1
         const am = a.montantBudgeteSales || a.montantEngageProd || 0
         const bm = b.montantBudgeteSales || b.montantEngageProd || 0
         return bm - am
@@ -165,9 +201,7 @@ export async function GET() {
           r.cogsList.reduce(
             (c, x) =>
               c +
-              (x.statut && APPROUVER_STATUTS.has(x.statut)
-                ? x.montantBudgeteSales || x.montantEngageProd || 0
-                : 0),
+              (x.needsAttention ? x.montantBudgeteSales || x.montantEngageProd || 0 : 0),
             0,
           ),
         0,

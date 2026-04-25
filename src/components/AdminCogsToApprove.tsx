@@ -7,12 +7,15 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  FileSignature,
   Loader2,
   Search,
+  Trash2,
   Wallet,
 } from 'lucide-react'
+import ContextMenu from './ContextMenu'
 import type { Cogs, StatutCogs } from '@/types'
+
+type CogsWithFlag = Cogs & { needsAttention: boolean }
 
 interface ProjetRow {
   id: string
@@ -23,13 +26,11 @@ interface ProjetRow {
   pm2?: string
   agence?: string
   statut?: string
-  bdc?: string
-  numeroCommande?: string
   cogsBudget?: number
   offreInitiale?: number
   offreFinale?: number
   toApproveCount: number
-  cogsList: Cogs[]
+  cogsList: CogsWithFlag[]
 }
 
 interface ApiResponse {
@@ -84,12 +85,6 @@ const STATUT_PROJET_BADGE: Record<string, string> = {
   'Done': 'bg-purple-300 text-purple-900',
 }
 
-const APPROUVER_STATUTS = new Set([
-  'A Approuver',
-  'A Approuver (CDP)',
-  'A Approuver (CSM)',
-])
-
 export default function AdminCogsToApprove() {
   const [rows, setRows] = useState<ProjetRow[]>([])
   const [counts, setCounts] = useState({ projets: 0, cogs: 0, total: 0 })
@@ -97,6 +92,13 @@ export default function AdminCogsToApprove() {
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [actingId, setActingId] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    cogId: string
+    projetId: string
+    label: string
+  } | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -144,6 +146,16 @@ export default function AdminCogsToApprove() {
     )
   }, [rows, search])
 
+  /** Recompute the local "needsAttention" + the toApproveCount for one COGS update. */
+  const recomputeNeedsAttention = (c: CogsWithFlag): boolean => {
+    if (c.statut && (c.statut === 'A Approuver' || c.statut === 'A Approuver (CDP)' || c.statut === 'A Approuver (CSM)')) {
+      return true
+    }
+    const amount = Math.max(c.montantBudgeteSales || 0, c.montantEngageProd || 0)
+    if (amount > 200 && c.autorisationVanessa == null) return true
+    return false
+  }
+
   const patchCog = async (cogId: string, projetId: string, body: Record<string, unknown>) => {
     setActingId(cogId)
     try {
@@ -156,7 +168,6 @@ export default function AdminCogsToApprove() {
         alert('Erreur')
         return
       }
-      // Update the COG locally
       setRows((prev) => {
         const next: ProjetRow[] = []
         for (const r of prev) {
@@ -164,41 +175,74 @@ export default function AdminCogsToApprove() {
             next.push(r)
             continue
           }
-          const updatedList = r.cogsList.map((c) =>
-            c.id === cogId
-              ? {
-                  ...c,
-                  ...(body.statut !== undefined ? { statut: body.statut as StatutCogs } : {}),
-                  ...(body.autorisationVanessa !== undefined
-                    ? { autorisationVanessa: (body.autorisationVanessa as number | null) ?? undefined }
-                    : {}),
-                }
-              : c,
-          )
-          const toApproveCount = updatedList.filter(
-            (c) => c.statut && APPROUVER_STATUTS.has(c.statut),
-          ).length
-          // If no more "A Approuver" lines remain on this project, drop the project
-          if (toApproveCount === 0) continue
+          const updatedList: CogsWithFlag[] = r.cogsList.map((c) => {
+            if (c.id !== cogId) return c
+            const merged: CogsWithFlag = {
+              ...c,
+              ...(body.statut !== undefined ? { statut: body.statut as StatutCogs } : {}),
+              ...(body.autorisationVanessa !== undefined
+                ? { autorisationVanessa: (body.autorisationVanessa as number | null) ?? undefined }
+                : {}),
+              ...(body.commentaire !== undefined
+                ? { commentaire: (body.commentaire as string | null) ?? undefined }
+                : {}),
+              needsAttention: c.needsAttention,
+            }
+            merged.needsAttention = recomputeNeedsAttention(merged)
+            return merged
+          })
+          const toApproveCount = updatedList.filter((c) => c.needsAttention).length
+          if (toApproveCount === 0) continue // project no longer qualifies
           next.push({ ...r, cogsList: updatedList, toApproveCount })
         }
         return next
-      })
-      // Recompute counts client-side
-      setCounts((c) => {
-        if (body.statut && !APPROUVER_STATUTS.has(body.statut as string)) {
-          return { ...c, cogs: Math.max(0, c.cogs - 1) }
-        }
-        return c
       })
     } finally {
       setActingId(null)
     }
   }
 
+  const deleteCog = async (cogId: string, projetId: string) => {
+    if (!confirm('Supprimer cette dépense ? Cette action est irréversible.')) return
+    setActingId(cogId)
+    try {
+      const res = await fetch(`/api/cogs/${cogId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        alert('Erreur lors de la suppression')
+        return
+      }
+      setRows((prev) => {
+        const next: ProjetRow[] = []
+        for (const r of prev) {
+          if (r.id !== projetId) {
+            next.push(r)
+            continue
+          }
+          const updatedList = r.cogsList.filter((c) => c.id !== cogId)
+          const toApproveCount = updatedList.filter((c) => c.needsAttention).length
+          if (toApproveCount === 0) continue
+          next.push({ ...r, cogsList: updatedList, toApproveCount })
+        }
+        return next
+      })
+    } finally {
+      setActingId(null)
+    }
+  }
+
+  const handleContextMenu = (
+    e: React.MouseEvent,
+    cogId: string,
+    projetId: string,
+    label: string,
+  ) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, cogId, projetId, label })
+  }
+
   return (
     <div>
-      {/* Header — same shape as Saisie COGS */}
+      {/* Header */}
       <div className="flex items-start md:items-center justify-between flex-col md:flex-row gap-4 mb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -238,7 +282,7 @@ export default function AdminCogsToApprove() {
         <div className="bg-white rounded-xl border border-gray-100 py-16 text-center text-gray-400">
           <CheckCircle2 className="w-10 h-10 mx-auto mb-3 text-green-300" />
           <p className="text-sm font-medium text-gray-600">
-            {rows.length === 0 ? 'Tous les COGS sont validés 🎉' : 'Aucun résultat.'}
+            {rows.length === 0 ? 'Tous les COGS sont autorisés 🎉' : 'Aucun résultat.'}
           </p>
         </div>
       ) : (
@@ -250,10 +294,34 @@ export default function AdminCogsToApprove() {
               expanded={expanded.has(r.id)}
               onToggle={() => toggleExpand(r.id)}
               onPatchCog={(cogId, body) => patchCog(cogId, r.id, body)}
+              onContextMenu={(e, cog) =>
+                handleContextMenu(
+                  e,
+                  cog.id,
+                  r.id,
+                  cog.ressourceName || cog.categorie || 'cette dépense',
+                )
+              }
               actingId={actingId}
             />
           ))}
         </div>
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          items={[
+            {
+              label: `Supprimer "${contextMenu.label}"`,
+              icon: <Trash2 className="w-4 h-4" />,
+              danger: true,
+              onClick: () => deleteCog(contextMenu.cogId, contextMenu.projetId),
+            },
+          ]}
+        />
       )}
     </div>
   )
@@ -266,20 +334,19 @@ function ProjetCard({
   expanded,
   onToggle,
   onPatchCog,
+  onContextMenu,
   actingId,
 }: {
   row: ProjetRow
   expanded: boolean
   onToggle: () => void
   onPatchCog: (cogId: string, body: Record<string, unknown>) => void
+  onContextMenu: (e: React.MouseEvent, cog: CogsWithFlag) => void
   actingId: string | null
 }) {
   const cogsSumToApprove = row.cogsList.reduce(
     (s, c) =>
-      s +
-      (c.statut && APPROUVER_STATUTS.has(c.statut)
-        ? c.montantBudgeteSales || c.montantEngageProd || 0
-        : 0),
+      s + (c.needsAttention ? c.montantBudgeteSales || c.montantEngageProd || 0 : 0),
     0,
   )
   const cogsSumAll = row.cogsList.reduce(
@@ -327,14 +394,6 @@ function ProjetCard({
                 {row.statut}
               </span>
             )}
-            {row.bdc && (
-              <span
-                className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200"
-                title={row.numeroCommande ? `N° commande : ${row.numeroCommande}` : undefined}
-              >
-                <FileSignature className="w-3 h-3" /> BDC: {row.bdc}
-              </span>
-            )}
             {row.pm && (
               <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">
                 PM {row.pm}
@@ -370,32 +429,19 @@ function ProjetCard({
             />
           </div>
 
-          {/* BDC info bar */}
-          {(row.bdc || row.numeroCommande) && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span className="inline-flex items-center gap-1.5 font-medium">
-                <FileSignature className="w-3.5 h-3.5" /> BDC : {row.bdc || '—'}
-              </span>
-              {row.numeroCommande && (
-                <span>
-                  N° commande : <span className="font-mono">{row.numeroCommande}</span>
-                </span>
-              )}
-            </div>
-          )}
-
           {/* COGS table */}
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden overflow-x-auto">
+            <table className="w-full text-sm min-w-[1000px]">
               <thead>
                 <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
                   <th className="px-3 py-2 text-left font-medium">Catégorie</th>
                   <th className="px-3 py-2 text-left font-medium">Ressource</th>
                   <th className="px-3 py-2 text-right font-medium">HT Sales</th>
                   <th className="px-3 py-2 text-right font-medium">HT Prod</th>
-                  <th className="px-3 py-2 text-left font-medium w-[160px]">Statut</th>
-                  <th className="px-3 py-2 text-left font-medium w-[180px]">Autorisation Vanessa</th>
-                  <th className="px-3 py-2 text-left font-medium">Commentaire</th>
+                  <th className="px-3 py-2 text-left font-medium w-[140px]">Statut</th>
+                  <th className="px-3 py-2 text-left font-medium w-[110px]">N° commande</th>
+                  <th className="px-3 py-2 text-left font-medium w-[170px]">Autorisation Vanessa</th>
+                  <th className="px-3 py-2 text-left font-medium w-[260px]">Commentaire</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -405,39 +451,52 @@ function ProjetCard({
                     cog={c}
                     acting={actingId === c.id}
                     onPatch={(body) => onPatchCog(c.id, body)}
+                    onContextMenu={(e) => onContextMenu(e, c)}
                   />
                 ))}
               </tbody>
             </table>
           </div>
+          <p className="text-[11px] text-gray-400">
+            Astuce : clic droit sur une ligne pour supprimer.
+          </p>
         </div>
       )}
     </div>
   )
 }
 
-/* ─── CogsRow with editable statut + autorisation Vanessa ─── */
+/* ─── CogsRow with editable statut + autorisation Vanessa + commentaire ─── */
 
 function CogsRow({
   cog,
   acting,
   onPatch,
+  onContextMenu,
 }: {
-  cog: Cogs
+  cog: CogsWithFlag
   acting: boolean
   onPatch: (body: Record<string, unknown>) => void
+  onContextMenu: (e: React.MouseEvent) => void
 }) {
   const [autorValue, setAutorValue] = useState<string>(
     cog.autorisationVanessa != null ? String(cog.autorisationVanessa) : '',
   )
   const [autorDirty, setAutorDirty] = useState(false)
 
-  // Sync external updates (after PATCH success)
+  const [commentValue, setCommentValue] = useState<string>(cog.commentaire || '')
+  const [commentDirty, setCommentDirty] = useState(false)
+
+  // Sync external updates (after PATCH success / parent refresh)
   useEffect(() => {
     if (!autorDirty) {
       setAutorValue(cog.autorisationVanessa != null ? String(cog.autorisationVanessa) : '')
     }
   }, [cog.autorisationVanessa, autorDirty])
+
+  useEffect(() => {
+    if (!commentDirty) setCommentValue(cog.commentaire || '')
+  }, [cog.commentaire, commentDirty])
 
   const saveAutor = () => {
     const trimmed = autorValue.trim()
@@ -447,18 +506,24 @@ function CogsRow({
     setAutorDirty(false)
   }
 
+  const saveComment = () => {
+    const next = commentValue.trim() === '' ? null : commentValue
+    onPatch({ commentaire: next })
+    setCommentDirty(false)
+  }
+
   const fillSuggested = () => {
     const suggested = cog.montantBudgeteSales ?? cog.montantEngageProd ?? 0
     setAutorValue(String(suggested))
-    setAutorDirty(true)
     onPatch({ autorisationVanessa: suggested })
     setAutorDirty(false)
   }
 
-  const isToApprove = cog.statut && APPROUVER_STATUTS.has(cog.statut)
-
   return (
-    <tr className={`hover:bg-gray-50/50 ${isToApprove ? '' : 'opacity-80'}`}>
+    <tr
+      onContextMenu={onContextMenu}
+      className={`hover:bg-gray-50/50 ${cog.needsAttention ? '' : 'opacity-70'}`}
+    >
       <td className="px-3 py-2 text-gray-700">
         {cog.categorie ? (
           <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
@@ -491,6 +556,9 @@ function CogsRow({
           ))}
         </select>
       </td>
+      <td className="px-3 py-2 text-gray-600 text-xs font-mono">
+        {cog.numeroCommande || <span className="text-gray-300">—</span>}
+      </td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-1">
           <div className="relative flex-1">
@@ -512,9 +580,11 @@ function CogsRow({
               disabled={acting}
               className="w-full text-xs border border-gray-200 rounded-md pl-2 pr-5 py-1 tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
             />
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">€</span>
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">
+              €
+            </span>
           </div>
-          {isToApprove && (
+          {cog.needsAttention && (
             <button
               type="button"
               onClick={fillSuggested}
@@ -527,11 +597,26 @@ function CogsRow({
           )}
         </div>
       </td>
-      <td
-        className="px-3 py-2 text-gray-500 text-xs truncate max-w-[200px]"
-        title={cog.commentaire}
-      >
-        {cog.commentaire || '—'}
+      <td className="px-3 py-2">
+        <textarea
+          value={commentValue}
+          onChange={(e) => {
+            setCommentValue(e.target.value)
+            setCommentDirty(true)
+          }}
+          onBlur={() => {
+            if (commentDirty) saveComment()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              ;(e.target as HTMLTextAreaElement).blur()
+            }
+          }}
+          placeholder="Ajouter un commentaire…"
+          rows={1}
+          disabled={acting}
+          className="w-full text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y disabled:opacity-50"
+        />
       </td>
     </tr>
   )
