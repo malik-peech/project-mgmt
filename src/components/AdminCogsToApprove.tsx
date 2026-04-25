@@ -7,12 +7,12 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  FileSignature,
   Loader2,
   Search,
   Wallet,
-  X,
 } from 'lucide-react'
-import type { Cogs } from '@/types'
+import type { Cogs, StatutCogs } from '@/types'
 
 interface ProjetRow {
   id: string
@@ -23,9 +23,12 @@ interface ProjetRow {
   pm2?: string
   agence?: string
   statut?: string
+  bdc?: string
+  numeroCommande?: string
   cogsBudget?: number
   offreInitiale?: number
   offreFinale?: number
+  toApproveCount: number
   cogsList: Cogs[]
 }
 
@@ -44,11 +47,48 @@ const fmtPct = (n?: number | null) =>
     ? `${(n * 100).toFixed(1).replace('.', ',')} %`
     : '—'
 
-const STATUT_BADGE: Record<string, string> = {
+const STATUT_COGS_OPTIONS: StatutCogs[] = [
+  'A Approuver',
+  'A Approuver (CDP)',
+  'A Approuver (CSM)',
+  'Estimée',
+  'Engagée',
+  'A payer',
+  'Autorisée via flash',
+  'Payée',
+  'Annulée',
+  'Refusée',
+  'Stand-by',
+]
+
+const STATUT_COGS_BADGE: Record<string, string> = {
   'A Approuver': 'bg-pink-100 text-pink-800',
   'A Approuver (CDP)': 'bg-pink-100 text-pink-800',
   'A Approuver (CSM)': 'bg-teal-100 text-teal-800',
+  'Estimée': 'bg-blue-100 text-blue-800',
+  'Engagée': 'bg-yellow-100 text-yellow-800',
+  'A payer': 'bg-orange-100 text-orange-800',
+  'Autorisée via flash': 'bg-indigo-100 text-indigo-800',
+  'Payée': 'bg-green-100 text-green-800',
+  'Annulée': 'bg-red-100 text-red-800',
+  'Refusée': 'bg-red-100 text-red-800',
+  'Stand-by': 'bg-gray-100 text-gray-800',
 }
+
+const STATUT_PROJET_BADGE: Record<string, string> = {
+  'En cours': 'bg-yellow-300 text-yellow-900',
+  'Finalisation': 'bg-orange-300 text-orange-900',
+  'Stand-by': 'bg-pink-300 text-pink-900',
+  'Tentative': 'bg-cyan-300 text-cyan-900',
+  'Intention': 'bg-violet-300 text-violet-900',
+  'Done': 'bg-purple-300 text-purple-900',
+}
+
+const APPROUVER_STATUTS = new Set([
+  'A Approuver',
+  'A Approuver (CDP)',
+  'A Approuver (CSM)',
+])
 
 export default function AdminCogsToApprove() {
   const [rows, setRows] = useState<ProjetRow[]>([])
@@ -104,19 +144,19 @@ export default function AdminCogsToApprove() {
     )
   }, [rows, search])
 
-  const patchStatut = async (cogId: string, projetId: string, statut: string) => {
+  const patchCog = async (cogId: string, projetId: string, body: Record<string, unknown>) => {
     setActingId(cogId)
     try {
       const res = await fetch(`/api/cogs/${cogId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ statut }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         alert('Erreur')
         return
       }
-      // Optimistically remove the COG from the row.
+      // Update the COG locally
       setRows((prev) => {
         const next: ProjetRow[] = []
         for (const r of prev) {
@@ -124,12 +164,33 @@ export default function AdminCogsToApprove() {
             next.push(r)
             continue
           }
-          const remaining = r.cogsList.filter((c) => c.id !== cogId)
-          if (remaining.length > 0) next.push({ ...r, cogsList: remaining })
+          const updatedList = r.cogsList.map((c) =>
+            c.id === cogId
+              ? {
+                  ...c,
+                  ...(body.statut !== undefined ? { statut: body.statut as StatutCogs } : {}),
+                  ...(body.autorisationVanessa !== undefined
+                    ? { autorisationVanessa: (body.autorisationVanessa as number | null) ?? undefined }
+                    : {}),
+                }
+              : c,
+          )
+          const toApproveCount = updatedList.filter(
+            (c) => c.statut && APPROUVER_STATUTS.has(c.statut),
+          ).length
+          // If no more "A Approuver" lines remain on this project, drop the project
+          if (toApproveCount === 0) continue
+          next.push({ ...r, cogsList: updatedList, toApproveCount })
         }
         return next
       })
-      setCounts((c) => ({ ...c, cogs: Math.max(0, c.cogs - 1) }))
+      // Recompute counts client-side
+      setCounts((c) => {
+        if (body.statut && !APPROUVER_STATUTS.has(body.statut as string)) {
+          return { ...c, cogs: Math.max(0, c.cogs - 1) }
+        }
+        return c
+      })
     } finally {
       setActingId(null)
     }
@@ -144,7 +205,7 @@ export default function AdminCogsToApprove() {
             <div className="w-8 h-8 rounded-lg bg-pink-100 flex items-center justify-center">
               <Wallet className="w-4 h-4 text-pink-600" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">COGS à autoriser</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Autorisation COGS</h2>
           </div>
           <p className="text-sm text-gray-500">
             {counts.cogs === 0
@@ -188,10 +249,7 @@ export default function AdminCogsToApprove() {
               row={r}
               expanded={expanded.has(r.id)}
               onToggle={() => toggleExpand(r.id)}
-              onApprove={(cogId) => patchStatut(cogId, r.id, 'Engagée')}
-              onReject={(cogId) => {
-                if (confirm('Refuser cette dépense ?')) patchStatut(cogId, r.id, 'Refusée')
-              }}
+              onPatchCog={(cogId, body) => patchCog(cogId, r.id, body)}
               actingId={actingId}
             />
           ))}
@@ -201,24 +259,30 @@ export default function AdminCogsToApprove() {
   )
 }
 
-/* ─── ProjetCard (mirrors cogs-sales/page.tsx ProjetCard) ─── */
+/* ─── ProjetCard ─── */
 
 function ProjetCard({
   row,
   expanded,
   onToggle,
-  onApprove,
-  onReject,
+  onPatchCog,
   actingId,
 }: {
   row: ProjetRow
   expanded: boolean
   onToggle: () => void
-  onApprove: (cogId: string) => void
-  onReject: (cogId: string) => void
+  onPatchCog: (cogId: string, body: Record<string, unknown>) => void
   actingId: string | null
 }) {
-  const cogsSum = row.cogsList.reduce(
+  const cogsSumToApprove = row.cogsList.reduce(
+    (s, c) =>
+      s +
+      (c.statut && APPROUVER_STATUTS.has(c.statut)
+        ? c.montantBudgeteSales || c.montantEngageProd || 0
+        : 0),
+    0,
+  )
+  const cogsSumAll = row.cogsList.reduce(
     (s, c) => s + (c.montantBudgeteSales || c.montantEngageProd || 0),
     0,
   )
@@ -254,40 +318,51 @@ function ProjetCard({
             {row.agence && (
               <span className="text-[10px] uppercase tracking-wider text-gray-400">{row.agence}</span>
             )}
+            {row.statut && (
+              <span
+                className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                  STATUT_PROJET_BADGE[row.statut] || 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                {row.statut}
+              </span>
+            )}
+            {row.bdc && (
+              <span
+                className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200"
+                title={row.numeroCommande ? `N° commande : ${row.numeroCommande}` : undefined}
+              >
+                <FileSignature className="w-3 h-3" /> BDC: {row.bdc}
+              </span>
+            )}
             {row.pm && (
               <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">
                 PM {row.pm}
               </span>
             )}
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-pink-700 bg-pink-100 px-1.5 py-0.5 rounded-full">
-              <AlertTriangle className="w-3 h-3" /> {row.cogsList.length} à valider
+              <AlertTriangle className="w-3 h-3" /> {row.toApproveCount} à valider
             </span>
           </div>
         </div>
-        {/* Metrics — same set as Saisie COGS summary */}
         <div className="hidden sm:flex items-center gap-5 shrink-0 text-[11px]">
           <Metric label="Offre HT" value={fmt(offreHT || null)} />
           <Metric label="Budget COGS" value={fmt(row.cogsBudget)} />
-          <Metric label="Saisi" value={fmt(cogsSum)} />
+          <Metric label="Saisi" value={fmt(cogsSumAll)} />
+          <Metric label="À approuver" value={fmt(cogsSumToApprove)} />
           <Metric label="Taux" value={fmtPct(tauxCogs)} valueClass={tauxColor} />
-          <span className="text-xs text-gray-400">
-            {row.cogsList.length} dépense{row.cogsList.length !== 1 ? 's' : ''}
-          </span>
         </div>
       </button>
 
       {/* Expanded body */}
       {expanded && (
         <div className="border-t border-gray-100 px-4 py-4 bg-gray-50/30 space-y-4">
-          {/* Metric blocks — same row as Saisie COGS */}
+          {/* Metric blocks */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
             <MetricBlock label="Offre HT" value={fmt(offreHT || null)} />
             <MetricBlock label="Budget COGS" value={fmt(row.cogsBudget)} />
-            <MetricBlock label="Somme à approuver" value={fmt(cogsSum)} />
-            <MetricBlock
-              label="Reste budget"
-              value={fmt((row.cogsBudget || 0) - cogsSum)}
-            />
+            <MetricBlock label="Total saisi" value={fmt(cogsSumAll)} />
+            <MetricBlock label="À approuver" value={fmt(cogsSumToApprove)} />
             <MetricBlock
               label="Taux COGS"
               value={<span className={tauxColor}>{fmtPct(tauxCogs)}</span>}
@@ -295,7 +370,21 @@ function ProjetCard({
             />
           </div>
 
-          {/* Existing COGS list (same shape as Saisie COGS table) */}
+          {/* BDC info bar */}
+          {(row.bdc || row.numeroCommande) && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span className="inline-flex items-center gap-1.5 font-medium">
+                <FileSignature className="w-3.5 h-3.5" /> BDC : {row.bdc || '—'}
+              </span>
+              {row.numeroCommande && (
+                <span>
+                  N° commande : <span className="font-mono">{row.numeroCommande}</span>
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* COGS table */}
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
@@ -304,78 +393,20 @@ function ProjetCard({
                   <th className="px-3 py-2 text-left font-medium">Ressource</th>
                   <th className="px-3 py-2 text-right font-medium">HT Sales</th>
                   <th className="px-3 py-2 text-right font-medium">HT Prod</th>
-                  <th className="px-3 py-2 text-left font-medium">Statut</th>
+                  <th className="px-3 py-2 text-left font-medium w-[160px]">Statut</th>
+                  <th className="px-3 py-2 text-left font-medium w-[180px]">Autorisation Vanessa</th>
                   <th className="px-3 py-2 text-left font-medium">Commentaire</th>
-                  <th className="px-3 py-2 text-right font-medium w-[210px]">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {row.cogsList.map((c) => {
-                  const acting = actingId === c.id
-                  return (
-                    <tr key={c.id} className="hover:bg-gray-50/50">
-                      <td className="px-3 py-2 text-gray-700">
-                        {c.categorie ? (
-                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                            {c.categorie}
-                          </span>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-gray-600 text-xs">{c.ressourceName || '—'}</td>
-                      <td className="px-3 py-2 text-right font-medium text-gray-900 tabular-nums">
-                        {fmt(c.montantBudgeteSales)}
-                      </td>
-                      <td className="px-3 py-2 text-right text-gray-700 tabular-nums">
-                        {fmt(c.montantEngageProd)}
-                      </td>
-                      <td className="px-3 py-2">
-                        {c.statut && (
-                          <span
-                            className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                              STATUT_BADGE[c.statut] || 'bg-gray-100 text-gray-600'
-                            }`}
-                          >
-                            {c.statut}
-                          </span>
-                        )}
-                      </td>
-                      <td
-                        className="px-3 py-2 text-gray-500 text-xs truncate max-w-[200px]"
-                        title={c.commentaire}
-                      >
-                        {c.commentaire || '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="inline-flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => onApprove(c.id)}
-                            disabled={acting}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
-                          >
-                            {acting ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Check className="w-3.5 h-3.5" />
-                            )}
-                            Valider
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onReject(c.id)}
-                            disabled={acting}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                            title="Refuser"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
+                {row.cogsList.map((c) => (
+                  <CogsRow
+                    key={c.id}
+                    cog={c}
+                    acting={actingId === c.id}
+                    onPatch={(body) => onPatchCog(c.id, body)}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
@@ -385,7 +416,128 @@ function ProjetCard({
   )
 }
 
-/* ─── Metric helpers (mirror cogs-sales) ─── */
+/* ─── CogsRow with editable statut + autorisation Vanessa ─── */
+
+function CogsRow({
+  cog,
+  acting,
+  onPatch,
+}: {
+  cog: Cogs
+  acting: boolean
+  onPatch: (body: Record<string, unknown>) => void
+}) {
+  const [autorValue, setAutorValue] = useState<string>(
+    cog.autorisationVanessa != null ? String(cog.autorisationVanessa) : '',
+  )
+  const [autorDirty, setAutorDirty] = useState(false)
+
+  // Sync external updates (after PATCH success)
+  useEffect(() => {
+    if (!autorDirty) {
+      setAutorValue(cog.autorisationVanessa != null ? String(cog.autorisationVanessa) : '')
+    }
+  }, [cog.autorisationVanessa, autorDirty])
+
+  const saveAutor = () => {
+    const trimmed = autorValue.trim()
+    const parsed = trimmed === '' ? null : Number(trimmed)
+    if (parsed != null && (typeof parsed !== 'number' || isNaN(parsed))) return
+    onPatch({ autorisationVanessa: parsed })
+    setAutorDirty(false)
+  }
+
+  const fillSuggested = () => {
+    const suggested = cog.montantBudgeteSales ?? cog.montantEngageProd ?? 0
+    setAutorValue(String(suggested))
+    setAutorDirty(true)
+    onPatch({ autorisationVanessa: suggested })
+    setAutorDirty(false)
+  }
+
+  const isToApprove = cog.statut && APPROUVER_STATUTS.has(cog.statut)
+
+  return (
+    <tr className={`hover:bg-gray-50/50 ${isToApprove ? '' : 'opacity-80'}`}>
+      <td className="px-3 py-2 text-gray-700">
+        {cog.categorie ? (
+          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+            {cog.categorie}
+          </span>
+        ) : (
+          '—'
+        )}
+      </td>
+      <td className="px-3 py-2 text-gray-600 text-xs">{cog.ressourceName || '—'}</td>
+      <td className="px-3 py-2 text-right font-medium text-gray-900 tabular-nums">
+        {fmt(cog.montantBudgeteSales)}
+      </td>
+      <td className="px-3 py-2 text-right text-gray-700 tabular-nums">
+        {fmt(cog.montantEngageProd)}
+      </td>
+      <td className="px-3 py-2">
+        <select
+          value={cog.statut || ''}
+          onChange={(e) => onPatch({ statut: e.target.value })}
+          disabled={acting}
+          className={`w-full text-[10px] font-medium rounded-full px-2 py-1 border-0 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer disabled:opacity-50 ${
+            STATUT_COGS_BADGE[cog.statut || ''] || 'bg-gray-100 text-gray-600'
+          }`}
+        >
+          {STATUT_COGS_OPTIONS.map((s) => (
+            <option key={s} value={s} className="bg-white text-gray-900">
+              {s}
+            </option>
+          ))}
+        </select>
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1">
+          <div className="relative flex-1">
+            <input
+              type="number"
+              inputMode="decimal"
+              value={autorValue}
+              onChange={(e) => {
+                setAutorValue(e.target.value)
+                setAutorDirty(true)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveAutor()
+              }}
+              onBlur={() => {
+                if (autorDirty) saveAutor()
+              }}
+              placeholder="—"
+              disabled={acting}
+              className="w-full text-xs border border-gray-200 rounded-md pl-2 pr-5 py-1 tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">€</span>
+          </div>
+          {isToApprove && (
+            <button
+              type="button"
+              onClick={fillSuggested}
+              disabled={acting}
+              title={`Autoriser ${fmt(cog.montantBudgeteSales ?? cog.montantEngageProd ?? 0)}`}
+              className="inline-flex items-center px-1.5 py-1 rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              {acting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+            </button>
+          )}
+        </div>
+      </td>
+      <td
+        className="px-3 py-2 text-gray-500 text-xs truncate max-w-[200px]"
+        title={cog.commentaire}
+      >
+        {cog.commentaire || '—'}
+      </td>
+    </tr>
+  )
+}
+
+/* ─── Metric helpers ─── */
 
 function Metric({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
   return (

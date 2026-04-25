@@ -43,17 +43,21 @@ type ProjetRow = {
   pm2?: string
   agence?: string
   statut?: string
+  bdc?: string
+  numeroCommande?: string
   cogsBudget?: number
   offreInitiale?: number
   offreFinale?: number
+  toApproveCount: number
   cogsList: Cogs[]
 }
 
 /**
  * GET /api/admin/cogs-to-approve
  *
- * Returns all projects that have at least one COGS in an "A Approuver" status,
- * grouped by project, ready for fast Admin validation.
+ * Returns all projects that have at least one COGS in an "A Approuver" status.
+ * For each such project, returns ALL its COGS (any status) so the admin can
+ * see the full picture and edit individual rows.
  */
 export async function GET() {
   try {
@@ -63,17 +67,23 @@ export async function GET() {
     const projetNameMap = buildLookupMap(store.projets, 'Projet')
     const projetRefMap = buildLookupMap(store.projets, 'Project réf')
 
-    // Build a map of project rows so we can attach COGS to them.
-    const rowsById = new Map<string, ProjetRow>()
+    // First pass: identify projects with at least 1 "A Approuver" COGS
+    const projetsWithToApprove = new Set<string>()
+    for (const r of store.cogs.records) {
+      const statut = str(r.fields['Statut de la dépense'])
+      if (!statut || !APPROUVER_STATUTS.has(statut)) continue
+      const projets = r.fields['Projet'] as string[] | undefined
+      const projetId = projets?.[0]
+      if (projetId) projetsWithToApprove.add(projetId)
+    }
 
-    // Index COGS by project, keep only "A Approuver" ones
+    // Second pass: build rows with ALL their COGS
+    const rowsById = new Map<string, ProjetRow>()
     for (const r of store.cogs.records) {
       const f = r.fields
-      const statut = str(f['Statut de la dépense'])
-      if (!statut || !APPROUVER_STATUTS.has(statut)) continue
       const projets = f['Projet'] as string[] | undefined
       const projetId = projets?.[0]
-      if (!projetId) continue
+      if (!projetId || !projetsWithToApprove.has(projetId)) continue
 
       const projetRecord = store.projets.byId.get(projetId)
       if (!projetRecord) continue
@@ -92,9 +102,12 @@ export async function GET() {
           pm2: sel(pf['PM2 (manual)']),
           agence: sel(pf['Agence']),
           statut: str(pf['Statut']),
+          bdc: sel(pf['BDC']),
+          numeroCommande: str(pf['Numéro de commande']),
           cogsBudget: num(pf['COGS - budget (€)']),
           offreInitiale: num(pf['Offre - Valeur initiale']),
           offreFinale: num(pf['Offre - Valeur finale']),
+          toApproveCount: 0,
           cogsList: [],
         }
         rowsById.set(projetId, row)
@@ -102,6 +115,7 @@ export async function GET() {
 
       const ressourceIds = f['Ressource'] as string[] | undefined
       const ressourceId = ressourceIds?.[0]
+      const statut = str(f['Statut de la dépense'])
 
       const cog: Cogs = {
         id: r.id,
@@ -116,34 +130,46 @@ export async function GET() {
         montantBudgeteSales: num(f['Montant HT budgété (sales)']),
         montantEngageProd: num(f['Montant HT engagé (prod)']),
         tva: num(f['TVA']),
+        autorisationVanessa: num(f['Autorisation Vanessa']),
         commentaire: str(f['Commentaire COGS']),
         createdAt: str(f['Date de création']),
       }
       row.cogsList.push(cog)
+      if (statut && APPROUVER_STATUTS.has(statut)) row.toApproveCount += 1
     }
 
-    // Sort COGS within each project by amount desc
+    // Sort COGS within each project: "A Approuver" first, then by amount desc
     const rows = Array.from(rowsById.values()).map((r) => ({
       ...r,
-      cogsList: r.cogsList.sort(
-        (a, b) =>
-          (b.montantBudgeteSales || b.montantEngageProd || 0) -
-          (a.montantBudgeteSales || a.montantEngageProd || 0),
-      ),
+      cogsList: r.cogsList.sort((a, b) => {
+        const aTo = a.statut && APPROUVER_STATUTS.has(a.statut) ? 0 : 1
+        const bTo = b.statut && APPROUVER_STATUTS.has(b.statut) ? 0 : 1
+        if (aTo !== bTo) return aTo - bTo
+        const am = a.montantBudgeteSales || a.montantEngageProd || 0
+        const bm = b.montantBudgeteSales || b.montantEngageProd || 0
+        return bm - am
+      }),
     }))
 
-    // Sort projects by COGS count desc, then by name
     rows.sort((a, b) => {
-      if (a.cogsList.length !== b.cogsList.length) return b.cogsList.length - a.cogsList.length
+      if (a.toApproveCount !== b.toApproveCount) return b.toApproveCount - a.toApproveCount
       return (a.nom || '').localeCompare(b.nom || '')
     })
 
     const counts = {
       projets: rows.length,
-      cogs: rows.reduce((s, r) => s + r.cogsList.length, 0),
+      cogs: rows.reduce((s, r) => s + r.toApproveCount, 0),
       total: rows.reduce(
         (s, r) =>
-          s + r.cogsList.reduce((c, x) => c + (x.montantBudgeteSales || x.montantEngageProd || 0), 0),
+          s +
+          r.cogsList.reduce(
+            (c, x) =>
+              c +
+              (x.statut && APPROUVER_STATUTS.has(x.statut)
+                ? x.montantBudgeteSales || x.montantEngageProd || 0
+                : 0),
+            0,
+          ),
         0,
       ),
     }
