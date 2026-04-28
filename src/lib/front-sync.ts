@@ -52,20 +52,6 @@ type FrontConversation = {
   _links?: { related?: { messages?: string; inbox?: string; inboxes?: string } }
 }
 
-/**
- * Match a conversation's inbox(es) link against the wanted inbox ID. Front's
- * search response exposes the inbox via _links.related.inbox (URL ending in
- * /inboxes/inb_xxx) — older API versions used `inboxes` (plural). Match on
- * either to be safe.
- */
-function matchesInbox(conv: FrontConversation, inboxId: string): boolean {
-  const links = [
-    conv._links?.related?.inbox,
-    conv._links?.related?.inboxes,
-  ].filter(Boolean) as string[]
-  return links.some((u) => u.includes(`/inboxes/${inboxId}`))
-}
-
 type FrontSearchResponse = {
   _pagination?: { next?: string | null }
   _results?: FrontConversation[]
@@ -74,6 +60,33 @@ type FrontSearchResponse = {
 type FrontMessagesResponse = {
   _pagination?: { next?: string | null }
   _results?: FrontMessage[]
+}
+
+type FrontInboxesResponse = {
+  _results?: { id: string }[]
+}
+
+/**
+ * Resolve the inbox IDs of a conversation by fetching its `inboxes` related
+ * link. The search response only exposes `_links.related.inboxes` as a *list
+ * endpoint URL* (e.g. `/conversations/cnv_xxx/inboxes`), NOT a URL pointing at
+ * a specific inbox — so we have to make an extra GET to know which inbox(es)
+ * the conversation belongs to. Caller is responsible for pacing.
+ */
+async function fetchConversationInboxIds(
+  conv: FrontConversation,
+  token: string,
+): Promise<string[]> {
+  const url = conv._links?.related?.inboxes
+  if (!url) return []
+  try {
+    const res = await fetch(url, { headers: authHeaders(token), cache: 'no-store' })
+    if (!res.ok) return []
+    const body = (await res.json()) as FrontInboxesResponse
+    return (body._results || []).map((i) => i.id).filter((x): x is string => !!x)
+  } catch {
+    return []
+  }
 }
 
 function authHeaders(token: string) {
@@ -287,14 +300,20 @@ export function getSyncJobState(): SyncJobState {
 }
 
 /**
- * Default scope: only the #Hello - Peech inbox, only conversations from 2025
- * onwards. Caller can override via opts (e.g. to widen for a one-off backfill).
+ * Default scope: any inbox (no filter), conversations from 2025 onwards.
+ *
+ * Inbox filter is OFF by default: Front's search response only exposes the
+ * conversation's inboxes as a *list endpoint URL* (`/conversations/cnv_xxx/inboxes`),
+ * not the actual inbox ID — so filtering by inbox would require an extra GET
+ * per conversation. With content="vimeo.com", almost every match is a sales
+ * email anyway, so the filter buys very little. Caller can pass
+ * `inboxId: 'inb_vsl'` to re-enable it (it costs +1 request per conversation).
  *
  * Front's content search endpoint (`GET /conversations/search/:q`) does NOT
- * accept `inbox:` or `after:` modifiers (returns 400 "Unsupported search
- * modifier"), so we apply both filters in-code post-fetch.
+ * accept `inbox:` or `after:` modifiers, so the inbox + date filters are
+ * applied post-fetch in code.
  */
-const DEFAULT_INBOX_ID = 'inb_vsl' // #Hello - Peech (per CLAUDE.md)
+const DEFAULT_INBOX_ID = '' // empty = no inbox filter
 const DEFAULT_AFTER = '2025-01-01'
 
 /**
@@ -369,13 +388,13 @@ export async function syncFromFront(opts?: {
       conversationsScanned += 1
       liveProgress.conversationsScanned = conversationsScanned
 
-      // Capture the first conversation's _links shape to debug inbox filtering.
-      if (conversationsScanned === 1) {
-        errors.push(`debug first conv links: ${JSON.stringify(conv._links?.related ?? null)}`)
+      // In-code inbox filter (Front search doesn't accept inbox: modifier).
+      // Costs +1 request per conversation, so only run when explicitly requested.
+      if (inboxId) {
+        await delay(REQUEST_INTERVAL_MS)
+        const ids = await fetchConversationInboxIds(conv, token)
+        if (!ids.includes(inboxId)) continue
       }
-
-      // In-code inbox filter (Front search doesn't accept inbox: modifier)
-      if (inboxId && !matchesInbox(conv, inboxId)) continue
       conversationsKept += 1
       liveProgress.conversationsKept = conversationsKept
 

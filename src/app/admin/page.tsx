@@ -365,9 +365,11 @@ export default function AdminPage() {
           {frontJob.status === 'complete' && (
             <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 flex-1">
               ✓ {frontJob.stats.vimeoIdsFound} Vimeo IDs agrégés ·{' '}
-              {frontJob.stats.conversationsKept}/{frontJob.stats.conversationsScanned} conv.
-              (filtrées sur {frontJob.stats.inboxId} after={frontJob.stats.afterDate}) ·{' '}
-              {frontJob.stats.messagesScanned} messages ·{' '}
+              {frontJob.stats.conversationsKept}/{frontJob.stats.conversationsScanned} conv.{' '}
+              {frontJob.stats.inboxId
+                ? `(filtrées sur ${frontJob.stats.inboxId} after=${frontJob.stats.afterDate})`
+                : `(after=${frontJob.stats.afterDate})`}{' '}
+              · {frontJob.stats.messagesScanned} messages ·{' '}
               {Math.round(frontJob.stats.durationMs / 1000)}s
               {frontJob.stats.errors.length > 0 &&
                 ` · ${frontJob.stats.errors.length} erreurs`}
