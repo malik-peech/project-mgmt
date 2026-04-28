@@ -1,6 +1,17 @@
-import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
+import { NextRequest, NextResponse } from 'next/server'
+import { getToken } from 'next-auth/jwt'
 import { syncFromFront } from '@/lib/front-sync'
+
+async function requireAdmin(request: NextRequest): Promise<NextResponse | null> {
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET })
+  if (!token) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if ((token as { role?: string }).role !== 'Admin') {
+    return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 })
+  }
+  return null
+}
 
 /**
  * POST /api/admin/sync-front
@@ -17,16 +28,10 @@ import { syncFromFront } from '@/lib/front-sync'
  * After the sync, the references store is refreshed in-place so /api/references
  * and /api/assistant/chat see the new sent_via_front_count signal immediately.
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession()
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    const role = (session.user as { role?: string } | undefined)?.role
-    if (role !== 'Admin') {
-      return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 })
-    }
+    const denied = await requireAdmin(request)
+    if (denied) return denied
 
     let body: {
       content?: string
@@ -65,15 +70,9 @@ export async function POST(request: Request) {
  * Health-check / readiness — does NOT trigger a sync (avoid accidental
  * long-running calls from a browser). Useful to confirm the env var is set.
  */
-export async function GET() {
-  const session = await getServerSession()
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-  const role = (session.user as { role?: string } | undefined)?.role
-  if (role !== 'Admin') {
-    return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 })
-  }
+export async function GET(request: NextRequest) {
+  const denied = await requireAdmin(request)
+  if (denied) return denied
   return NextResponse.json({
     ok: true,
     tokenConfigured: !!process.env.FRONT_API_TOKEN,
