@@ -408,7 +408,15 @@ export function filterReferences(all: Reference[], filters: ReferenceFilters): R
       if ((r.creativeQuality ?? 0) < filters.minCreativeQuality) return false
     }
     if (filters.diffusableOnly) {
-      if (!r.diffusable || !r.diffusable.toLowerCase().startsWith('ok')) return false
+      // A Canva-pitched ref is implicitly considered diffusable: the Sales
+      // team already curated it for the Canva commercial deck, so it's been
+      // approved for client-facing use even if the Belle Base "Diffusable ?"
+      // checkbox isn't (yet) ticked. Without this bypass, ~half of the
+      // curated refs are dropped by the assistant's default filter.
+      const isExplicitlyDiffusable =
+        r.diffusable && r.diffusable.toLowerCase().startsWith('ok')
+      const isCuratedInCanva = !!r.pitch
+      if (!isExplicitlyDiffusable && !isCuratedInCanva) return false
     }
     if (filters.yearFrom != null) {
       if (!r.year || r.year < filters.yearFrom) return false
