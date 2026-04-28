@@ -221,6 +221,9 @@ export async function syncFromFront(opts?: {
   let conversationsScanned = 0
   let messagesScanned = 0
 
+  // Trace the actual query so the admin UI can show what was sent.
+  errors.push(`debug query: ${query}`)
+
   // ── 1. Paginate through search results ──
   let nextUrl: string | null =
     `${FRONT_BASE}/conversations/search/${encodeURIComponent(query)}?limit=100`
@@ -251,7 +254,7 @@ export async function syncFromFront(opts?: {
         await delay(REQUEST_INTERVAL_MS)
         const mres = await fetch(messagesUrl, { headers: authHeaders(token), cache: 'no-store' })
         if (!mres.ok) {
-          errors.push(`messages ${conv.id} ${mres.status}`)
+          errors.push(`messages ${conv.id} ${mres.status}: ${(await mres.text()).slice(0, 150)}`)
           continue
         }
         const mbody = (await mres.json()) as FrontMessagesResponse

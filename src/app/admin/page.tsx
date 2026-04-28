@@ -319,6 +319,19 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+        {frontSyncResult && frontSyncResult.ok && frontSyncResult.stats.errors.length > 0 && (
+          <details className="mt-3 text-xs">
+            <summary className="cursor-pointer text-red-600 hover:text-red-800">
+              Voir les {frontSyncResult.stats.errors.length} erreur
+              {frontSyncResult.stats.errors.length > 1 ? 's' : ''}
+            </summary>
+            <ul className="mt-2 space-y-1 bg-red-50 border border-red-200 rounded p-2 font-mono text-[11px] text-red-800 max-h-60 overflow-y-auto">
+              {frontSyncResult.stats.errors.map((err, i) => (
+                <li key={i} className="break-all">{err}</li>
+              ))}
+            </ul>
+          </details>
+        )}
       </div>
 
       {/* ── Users ── */}
