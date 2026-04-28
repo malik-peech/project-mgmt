@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
-import { syncFromFront } from '@/lib/front-sync'
+import { startSyncFromFront, getSyncJobState } from '@/lib/front-sync'
 
 async function requireAdmin(request: NextRequest): Promise<NextResponse | null> {
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET })
@@ -46,7 +46,10 @@ export async function POST(request: NextRequest) {
       // empty body is fine
     }
 
-    const stats = await syncFromFront({
+    // Fire-and-forget: kick off the sync as a background job and return
+    // immediately. The sync runs ~10-15 min, far past any reverse-proxy
+    // timeout. Poll GET /api/admin/sync-front for live status + final stats.
+    const job = startSyncFromFront({
       content: body.content,
       inboxId: body.inboxId,
       after: body.after,
@@ -55,7 +58,7 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json(
-      { ok: true, stats },
+      { ok: true, job },
       { headers: { 'Cache-Control': 'no-store' } },
     )
   } catch (error) {
@@ -73,9 +76,12 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const denied = await requireAdmin(request)
   if (denied) return denied
-  return NextResponse.json({
-    ok: true,
-    tokenConfigured: !!process.env.FRONT_API_TOKEN,
-    hint: 'POST to this endpoint to trigger a sync',
-  })
+  return NextResponse.json(
+    {
+      ok: true,
+      tokenConfigured: !!process.env.FRONT_API_TOKEN,
+      job: getSyncJobState(),
+    },
+    { headers: { 'Cache-Control': 'no-store' } },
+  )
 }

@@ -60,11 +60,23 @@ export default function AdminPage() {
   const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([])
   const [feedbackLoading, setFeedbackLoading] = useState(true)
 
-  // Front sync state
-  const [frontSyncing, setFrontSyncing] = useState(false)
-  const [frontSyncResult, setFrontSyncResult] = useState<
+  // Front sync — background job state, polled via GET /api/admin/sync-front
+  type FrontJob =
+    | { status: 'idle' }
     | {
-        ok: true
+        status: 'running'
+        startedAt: string
+        progress: {
+          conversationsScanned: number
+          conversationsKept: number
+          messagesScanned: number
+          vimeoIdsFound: number
+        }
+      }
+    | {
+        status: 'complete'
+        startedAt: string
+        finishedAt: string
         stats: {
           conversationsScanned: number
           conversationsKept: number
@@ -77,10 +89,10 @@ export default function AdminPage() {
           errors: string[]
         }
       }
-    | { ok: false; error: string }
-    | null
-  >(null)
+    | { status: 'failed'; startedAt: string; finishedAt: string; error: string }
+  const [frontJob, setFrontJob] = useState<FrontJob>({ status: 'idle' })
   const [frontTokenConfigured, setFrontTokenConfigured] = useState<boolean | null>(null)
+  const [frontStartError, setFrontStartError] = useState<string | null>(null)
 
   // Edit / create state
   const [editingUser, setEditingUser] = useState<string | null>(null)
@@ -101,31 +113,52 @@ export default function AdminPage() {
     if (stored) setSimulatedPm(stored)
   }, [])
 
-  // Probe Front sync readiness (does NOT trigger a sync)
+  // Probe Front sync state every 5s while running. Initial fetch + reactive
+  // polling once a job is in flight, so the UI shows live progress without
+  // depending on the (long) POST response.
   useEffect(() => {
     if (userRole !== 'Admin') return
-    fetch('/api/admin/sync-front')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setFrontTokenConfigured(!!d.tokenConfigured))
-      .catch(() => setFrontTokenConfigured(false))
-  }, [userRole])
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const tick = async () => {
+      try {
+        const r = await fetch('/api/admin/sync-front', { cache: 'no-store' })
+        if (!r.ok) return
+        const d = await r.json()
+        if (cancelled) return
+        setFrontTokenConfigured(!!d.tokenConfigured)
+        if (d.job) setFrontJob(d.job as FrontJob)
+        // Re-poll every 5s while a sync is running.
+        if (d.job?.status === 'running' && !cancelled) {
+          timer = setTimeout(tick, 5000)
+        }
+      } catch {
+        // ignore transient network errors
+        if (!cancelled) timer = setTimeout(tick, 5000)
+      }
+    }
+
+    tick()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [userRole, frontJob.status])
 
   const triggerFrontSync = async () => {
-    if (frontSyncing) return
-    setFrontSyncing(true)
-    setFrontSyncResult(null)
+    if (frontJob.status === 'running') return
+    setFrontStartError(null)
     try {
       const res = await fetch('/api/admin/sync-front', { method: 'POST' })
       const data = await res.json()
-      if (res.ok) {
-        setFrontSyncResult({ ok: true, stats: data.stats })
+      if (res.ok && data.job) {
+        setFrontJob(data.job as FrontJob)
       } else {
-        setFrontSyncResult({ ok: false, error: data.error || 'Sync failed' })
+        setFrontStartError(data.error || 'Failed to start sync')
       }
     } catch (e) {
-      setFrontSyncResult({ ok: false, error: e instanceof Error ? e.message : 'Network error' })
-    } finally {
-      setFrontSyncing(false)
+      setFrontStartError(e instanceof Error ? e.message : 'Network error')
     }
   }
 
@@ -299,13 +332,13 @@ export default function AdminPage() {
             sync échouera tant que la variable n&apos;est pas ajoutée.
           </div>
         )}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={triggerFrontSync}
-            disabled={frontSyncing || frontTokenConfigured === false}
+            disabled={frontJob.status === 'running' || frontTokenConfigured === false}
             className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-sm font-medium rounded-lg transition"
           >
-            {frontSyncing ? (
+            {frontJob.status === 'running' ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Sync en cours…
@@ -317,31 +350,50 @@ export default function AdminPage() {
               </>
             )}
           </button>
-          {frontSyncResult && frontSyncResult.ok && (
-            <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
-              ✓ {frontSyncResult.stats.vimeoIdsFound} Vimeo IDs agrégés ·{' '}
-              {frontSyncResult.stats.conversationsKept}/{frontSyncResult.stats.conversationsScanned}{' '}
-              conv. (filtrées sur {frontSyncResult.stats.inboxId} after={frontSyncResult.stats.afterDate}) ·{' '}
-              {frontSyncResult.stats.messagesScanned} messages ·{' '}
-              {Math.round(frontSyncResult.stats.durationMs / 1000)}s
-              {frontSyncResult.stats.errors.length > 0 &&
-                ` · ${frontSyncResult.stats.errors.length} erreurs`}
+
+          {frontJob.status === 'running' && (
+            <div className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-3 py-2 flex-1">
+              ⏳ Démarrée à {new Date(frontJob.startedAt).toLocaleTimeString('fr-FR')} ·{' '}
+              {frontJob.progress.conversationsScanned} conv. scannées (
+              {frontJob.progress.conversationsKept} retenues) ·{' '}
+              {frontJob.progress.messagesScanned} messages ·{' '}
+              {frontJob.progress.vimeoIdsFound} Vimeo IDs trouvés. Ferme la page si tu veux —
+              la sync continue côté serveur, le résultat s&apos;affichera au prochain refresh.
             </div>
           )}
-          {frontSyncResult && !frontSyncResult.ok && (
+
+          {frontJob.status === 'complete' && (
+            <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 flex-1">
+              ✓ {frontJob.stats.vimeoIdsFound} Vimeo IDs agrégés ·{' '}
+              {frontJob.stats.conversationsKept}/{frontJob.stats.conversationsScanned} conv.
+              (filtrées sur {frontJob.stats.inboxId} after={frontJob.stats.afterDate}) ·{' '}
+              {frontJob.stats.messagesScanned} messages ·{' '}
+              {Math.round(frontJob.stats.durationMs / 1000)}s
+              {frontJob.stats.errors.length > 0 &&
+                ` · ${frontJob.stats.errors.length} erreurs`}
+            </div>
+          )}
+
+          {frontJob.status === 'failed' && (
+            <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 flex-1">
+              ✗ Sync échouée : {frontJob.error}
+            </div>
+          )}
+
+          {frontStartError && (
             <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
-              ✗ {frontSyncResult.error}
+              ✗ {frontStartError}
             </div>
           )}
         </div>
-        {frontSyncResult && frontSyncResult.ok && frontSyncResult.stats.errors.length > 0 && (
+        {frontJob.status === 'complete' && frontJob.stats.errors.length > 0 && (
           <details className="mt-3 text-xs">
             <summary className="cursor-pointer text-red-600 hover:text-red-800">
-              Voir les {frontSyncResult.stats.errors.length} erreur
-              {frontSyncResult.stats.errors.length > 1 ? 's' : ''}
+              Voir les {frontJob.stats.errors.length} erreur
+              {frontJob.stats.errors.length > 1 ? 's' : ''}
             </summary>
             <ul className="mt-2 space-y-1 bg-red-50 border border-red-200 rounded p-2 font-mono text-[11px] text-red-800 max-h-60 overflow-y-auto">
-              {frontSyncResult.stats.errors.map((err, i) => (
+              {frontJob.stats.errors.map((err, i) => (
                 <li key={i} className="break-all">{err}</li>
               ))}
             </ul>

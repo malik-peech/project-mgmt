@@ -245,6 +245,35 @@ export type SyncFrontStats = {
   errors: string[]
 }
 
+// ── Background job state ─────────────────────────────────────────────────
+//
+// The sync runs for minutes — far longer than typical proxy timeouts (30-60s
+// on Coolify). We run it as a fire-and-forget background job and let the UI
+// poll for status. This module-level singleton survives across HTTP requests
+// in the same Node process.
+
+export type SyncJobState =
+  | { status: 'idle' }
+  | { status: 'running'; startedAt: string; progress: { conversationsScanned: number; conversationsKept: number; messagesScanned: number; vimeoIdsFound: number } }
+  | { status: 'complete'; startedAt: string; finishedAt: string; stats: SyncFrontStats }
+  | { status: 'failed'; startedAt: string; finishedAt: string; error: string }
+
+let jobState: SyncJobState = { status: 'idle' }
+// Mutable progress counter; the sync writes to it as it advances.
+const liveProgress = {
+  conversationsScanned: 0,
+  conversationsKept: 0,
+  messagesScanned: 0,
+  vimeoIdsFound: 0,
+}
+
+export function getSyncJobState(): SyncJobState {
+  if (jobState.status === 'running') {
+    return { ...jobState, progress: { ...liveProgress } }
+  }
+  return jobState
+}
+
 /**
  * Default scope: only the #Hello - Peech inbox, only conversations from 2025
  * onwards. Caller can override via opts (e.g. to widen for a one-off backfill).
@@ -298,6 +327,11 @@ export async function syncFromFront(opts?: {
   let conversationsScanned = 0
   let conversationsKept = 0
   let messagesScanned = 0
+  // Reset live progress counter for this run
+  liveProgress.conversationsScanned = 0
+  liveProgress.conversationsKept = 0
+  liveProgress.messagesScanned = 0
+  liveProgress.vimeoIdsFound = 0
 
   // ── 1. Paginate through search results ──
   let nextUrl: string | null =
@@ -321,10 +355,12 @@ export async function syncFromFront(opts?: {
     for (const conv of conversations) {
       if (conversationsScanned >= maxConv) break
       conversationsScanned += 1
+      liveProgress.conversationsScanned = conversationsScanned
 
       // In-code inbox filter (Front search doesn't accept inbox: modifier)
       if (inboxId && !matchesInbox(conv, inboxId)) continue
       conversationsKept += 1
+      liveProgress.conversationsKept = conversationsKept
 
       const messagesUrl = conv._links?.related?.messages
         || `${FRONT_BASE}/conversations/${conv.id}/messages`
@@ -340,6 +376,7 @@ export async function syncFromFront(opts?: {
         const msgs = mbody._results || []
         for (const m of msgs) {
           messagesScanned += 1
+          liveProgress.messagesScanned = messagesScanned
           if (m.is_inbound) continue // only count outbound (sales → prospect)
           if (afterTs && m.created_at < afterTs) continue // date filter (in-code)
           const content = m.body || m.text || ''
@@ -347,6 +384,7 @@ export async function syncFromFront(opts?: {
           const plainText = stripHtml(content)
           const ids = extractVimeoIds(content)
           for (const id of ids) bumpAggregator(aggregator, id, m, conv.id, plainText)
+          liveProgress.vimeoIdsFound = aggregator.size
         }
       } catch (e) {
         errors.push(`messages ${conv.id}: ${e instanceof Error ? e.message : String(e)}`)
@@ -374,4 +412,49 @@ export async function syncFromFront(opts?: {
     afterDate,
     errors,
   }
+}
+
+/**
+ * Kick off a sync in the background (fire-and-forget). Returns immediately
+ * with the new job state. Subsequent calls while a sync is running return
+ * `{ status: 'running' }` without starting a second one (single concurrent job).
+ *
+ * Use this from HTTP routes — the proxy timeout would otherwise abort a long
+ * sync (~10-15 min) well before completion.
+ */
+export function startSyncFromFront(
+  opts?: Parameters<typeof syncFromFront>[0],
+): SyncJobState {
+  if (jobState.status === 'running') {
+    return getSyncJobState()
+  }
+  const startedAt = new Date().toISOString()
+  jobState = {
+    status: 'running',
+    startedAt,
+    progress: { ...liveProgress },
+  }
+
+  // Background execution — explicitly NOT awaited. Errors are caught and
+  // recorded onto jobState so the UI poll can surface them.
+  void (async () => {
+    try {
+      const stats = await syncFromFront(opts)
+      jobState = {
+        status: 'complete',
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        stats,
+      }
+    } catch (err) {
+      jobState = {
+        status: 'failed',
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        error: err instanceof Error ? err.message : String(err),
+      }
+    }
+  })()
+
+  return getSyncJobState()
 }
