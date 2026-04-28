@@ -28,6 +28,7 @@ import {
   Sparkles,
   Wallet,
   ShieldCheck,
+  Film,
 } from 'lucide-react'
 import UnassignedModal from './UnassignedModal'
 import PMWelcomeModal from './PMWelcomeModal'
@@ -46,6 +47,7 @@ const salesOnlyNavItems = [
   { href: '/intentions', label: 'Intentions', icon: Lightbulb },
   { href: '/cogs', label: 'COGS', icon: Receipt },
   { href: '/assistant', label: 'Assistant', icon: Sparkles },
+  { href: '/refs', label: 'Belle Base', icon: Film },
 ]
 
 export default function Sidebar() {
@@ -257,6 +259,7 @@ export default function Sidebar() {
     ...baseItems,
     ...(showCogsSales ? [{ href: '/cogs-sales', label: 'Saisie COGS', icon: Wallet }] : []),
     ...(showAssistantInCommon ? [{ href: '/assistant', label: 'Assistant', icon: Sparkles }] : []),
+    ...(showAssistantInCommon ? [{ href: '/refs', label: 'Belle Base', icon: Film }] : []),
     ...(showABriefer ? [{ href: '/a-briefer', label: 'Brief client à planifier', icon: ClipboardCheck, badge: aBrieferCount }] : []),
     ...(showOnboarding && !isSalesOnly ? [{ href: '/intentions', label: 'Intentions', icon: Lightbulb, badge: intentionsToOnboardCount }] : []),
     ...(showOnboarding ? [{ href: '/onboarding', label: 'Onboarding', icon: Rocket, badge: onboardingCount?.toOnboard || 0 }] : []),
