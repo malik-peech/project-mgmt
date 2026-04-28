@@ -50,18 +50,29 @@ export function vimeoShareUrl(url?: string | null): string | null {
 }
 
 /**
+ * Heuristic: an unlisted Vimeo video is one whose URL either carries a privacy
+ * hash, or is the back-office form (`manage/videos/...`) — that form is only
+ * shown for non-public videos. vumbnail.com returns a placeholder for unlisted
+ * videos so we must route through our oEmbed proxy in those cases.
+ */
+function isLikelyUnlisted(url?: string | null): boolean {
+  if (!url) return false
+  if (vimeoHash(url)) return true
+  return /vimeo\.com\/manage\/videos\//.test(url)
+}
+
+/**
  * Build a thumbnail URL.
  *
  * For PUBLIC videos we hit `vumbnail.com` directly — it's instant and doesn't
- * need any roundtrip. For UNLISTED videos (`vimeo.com/{ID}/{HASH}`) vumbnail
- * returns a placeholder, so we route through our own `/api/vimeo/thumbnail`
- * endpoint which resolves the real i.vimeocdn.com URL via oEmbed (works with
- * the privacy hash) and caches it in memory for 24h.
+ * need any roundtrip. For UNLISTED videos vumbnail returns a placeholder, so
+ * we route through our own `/api/vimeo/thumbnail` endpoint which resolves the
+ * real i.vimeocdn.com URL via oEmbed and caches it in memory for 24h.
  */
 export function vimeoThumb(url?: string | null, size: 'small' | 'large' = 'large'): string | null {
   const id = vimeoId(url)
   if (!id) return null
-  if (vimeoHash(url)) {
+  if (isLikelyUnlisted(url)) {
     return `/api/vimeo/thumbnail?url=${encodeURIComponent(url!)}`
   }
   return size === 'large'
