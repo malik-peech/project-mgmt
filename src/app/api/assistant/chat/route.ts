@@ -31,6 +31,7 @@ const SYSTEM_PROMPT = `Tu es l'assistant de référence vidéo de Peech Studio, 
 Tu as accès à une base de 3466+ livrables vidéo (Belle Base) via l'outil search_references. Certaines refs sont enrichies :
 - \`pitch\` + \`testimonial\` + \`canva_page_url\` : extraits des Canvas "Références - Newic" et "RÉFÉRENCES PEECH" (contenu curated, prêt à envoyer)
 - \`sent_via_front_count\` + \`last_sent_at\` + \`recipient_domains\` : signal d'usage réel — combien de fois cette ref a été envoyée par l'équipe Sales via Front, à qui, quand.
+- \`front_excerpts\` : extraits réels d'emails (jusqu'à 5) où l'équipe Sales a partagé cette vidéo à un prospect. Chaque excerpt contient sentAt / sender / recipientDomain / subject / snippet (~250 chars autour du lien Vimeo). C'est de l'or pour comprendre comment l'équipe pitche cette ref dans la vraie vie.
 
 RÈGLES :
 - Réponds toujours en français (équipe francophone).
@@ -45,6 +46,7 @@ RÈGLES :
   - **OBLIGATOIRE si la ref a un \`pitch\`** : reprends-le tel quel ou paraphrase léger (1-2 phrases). Le pitch est rédigé par le Sales pour le client final, ne le résume pas en 1 mot. Sinon, 1 ligne maison sur pourquoi elle matche.
   - Si la ref a un \`testimonial\` → cite-le entre guillemets, très utile comme preuve sociale.
   - Si \`sent_via_front_count\` ≥ 3 → mentionne "📤 envoyée N fois par l'équipe (dernière : MM/YYYY)" ou "envoyée récemment dans [domain]" — c'est un argument fort pour le sales.
+  - Si \`front_excerpts\` contient des extraits utiles → cite littéralement 1-2 phrases de la pitch réelle utilisée par l'équipe entre guillemets, avec contexte ("envoyée par Laurine à un prospect bpce.fr le 12 mars : *« … »*"). Choisis l'extract le plus pertinent par rapport à la demande de l'utilisateur (pas forcément le plus récent). Ces extraits sont une mine d'or pour réutiliser un pitch éprouvé.
   - **OBLIGATOIRE si la ref a un \`canva_page_url\`** : termine la ref avec une ligne séparée "📎 [Page Canva à envoyer au prospect](url)" — c'est la page Canva curated prête à partager. Ne PAS l'omettre.
   - Année, format, durée uniquement si pertinent pour la demande.
 - Si la recherche ne renvoie rien, élargis les filtres et re-essaie (ex. retire minRating, change industry). Ne dis pas juste "rien trouvé".
@@ -148,6 +150,14 @@ type SlimRef = {
   last_sent_at?: string
   recipient_domains?: string[]
   senders?: string[]
+  /** Real email excerpts of the team citing this video (most recent first) */
+  front_excerpts?: {
+    sentAt: string
+    sender?: string
+    recipientDomain?: string
+    subject?: string
+    snippet: string
+  }[]
 }
 
 function slim(r: Reference): SlimRef {
@@ -177,6 +187,13 @@ function slim(r: Reference): SlimRef {
     last_sent_at: r.frontEvidence?.lastSentAt,
     recipient_domains: r.frontEvidence?.recipientDomains,
     senders: r.frontEvidence?.senders,
+    front_excerpts: r.frontEvidence?.excerpts?.map((e) => ({
+      sentAt: e.sentAt,
+      sender: e.sender,
+      recipientDomain: e.recipientDomain,
+      subject: e.subject,
+      snippet: e.snippet,
+    })),
   }
 }
 

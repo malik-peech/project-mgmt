@@ -239,11 +239,21 @@ export interface Reference {
 
   // Front evidence (joined by Vimeo ID from src/data/front-evidence.json)
   // — signals real-world sales usage: who sent it, how often, to whom.
+  // `excerpts` are short text snippets of the actual emails citing this Vimeo
+  // URL, so the AI assistant can quote real sales pitch phrasing.
   frontEvidence?: {
     sentCount: number
     firstSentAt?: string
     lastSentAt?: string
     recipientDomains?: string[]
     senders?: string[]
+    excerpts?: {
+      sentAt: string
+      sender?: string
+      recipientDomain?: string
+      subject?: string
+      snippet: string
+      conversationId?: string
+    }[]
   }
 }

@@ -220,6 +220,7 @@ function mapLivrable(
           lastSentAt: front.lastSentAt,
           recipientDomains: front.recipientDomains,
           senders: front.senders,
+          excerpts: front.excerpts,
         }
       : undefined,
   }

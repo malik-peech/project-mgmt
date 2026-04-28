@@ -11,6 +11,21 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+export interface FrontExcerpt {
+  /** Send date (ISO 8601) */
+  sentAt: string
+  /** Sender display name (e.g. "Laurine Angelini") */
+  sender?: string
+  /** Recipient domain (e.g. "bpce.fr") — only the first non-internal one */
+  recipientDomain?: string
+  /** Email subject (trimmed) */
+  subject?: string
+  /** Plain-text snippet around the Vimeo URL (~250 chars centered) */
+  snippet: string
+  /** Front conversation ID for traceability */
+  conversationId?: string
+}
+
 export interface FrontEvidenceEntry {
   vimeoId: string
   vimeoUrl?: string
@@ -19,6 +34,8 @@ export interface FrontEvidenceEntry {
   lastSentAt?: string
   recipientDomains?: string[]
   senders?: string[]
+  /** Up to ~5 representative excerpts of mails citing this Vimeo URL */
+  excerpts?: FrontExcerpt[]
 }
 
 interface FrontEvidenceFile {

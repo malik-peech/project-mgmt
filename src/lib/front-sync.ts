@@ -16,7 +16,11 @@
  * container restart — meant to be re-run via a daily Coolify cron.
  */
 
-import { setFrontEvidence, type FrontEvidenceEntry } from './front-evidence'
+import {
+  setFrontEvidence,
+  type FrontEvidenceEntry,
+  type FrontExcerpt,
+} from './front-evidence'
 import { refreshReferences } from './references-store'
 import { normalizeVimeoId } from './canva-enrichment'
 
@@ -35,6 +39,7 @@ type FrontMessage = {
   type: string
   is_inbound: boolean
   created_at: number // unix seconds
+  subject?: string
   body?: string
   text?: string
   author?: { email?: string; first_name?: string; last_name?: string }
@@ -91,6 +96,9 @@ function stripHtml(html: string): string {
     .replace(/\s+/g, ' ')
 }
 
+/** Internal-domain detection — used to pick the "real" recipient domain. */
+const INTERNAL_DOMAINS = new Set(['peech.studio', 'peech-studio.com', 'newic.fr'])
+
 function extractVimeoIds(content: string): string[] {
   const text = stripHtml(content)
   const ids = new Set<string>()
@@ -100,6 +108,36 @@ function extractVimeoIds(content: string): string[] {
     if (id) ids.add(id)
   }
   return Array.from(ids)
+}
+
+/**
+ * Extract a ~250-char excerpt centered on the first occurrence of any Vimeo
+ * URL in the plain-text body. Used so the LLM can quote the actual sales pitch
+ * the team used in real outbound emails.
+ */
+function buildExcerpt(plainText: string, halfWidth = 125): string {
+  const m = plainText.match(VIMEO_URL_RE)
+  if (!m || m.index == null) {
+    // Fallback: just take the head of the message
+    return plainText.slice(0, halfWidth * 2).trim()
+  }
+  const start = Math.max(0, m.index - halfWidth)
+  const end = Math.min(plainText.length, m.index + halfWidth)
+  let snippet = plainText.slice(start, end).trim()
+  if (start > 0) snippet = '… ' + snippet
+  if (end < plainText.length) snippet = snippet + ' …'
+  return snippet
+}
+
+function pickRecipientDomain(m: FrontMessage): string | null {
+  for (const r of m.recipients || []) {
+    if (r.role !== 'to' && r.role !== 'cc') continue
+    const at = r.handle.indexOf('@')
+    if (at < 0) continue
+    const dom = r.handle.slice(at + 1).toLowerCase()
+    if (!INTERNAL_DOMAINS.has(dom)) return dom
+  }
+  return null
 }
 
 function domainOf(handle: string | undefined): string | null {
@@ -115,6 +153,9 @@ function authorLabel(a: FrontMessage['author']): string | null {
   return a.email || null
 }
 
+/** Max excerpts kept per Vimeo ID. The LLM gets only top-N most recent. */
+const MAX_EXCERPTS_PER_VIMEO = 5
+
 type Aggregator = Map<
   string,
   {
@@ -123,6 +164,7 @@ type Aggregator = Map<
     lastSentAt?: number
     recipientDomains: Set<string>
     senders: Set<string>
+    excerpts: Array<FrontExcerpt & { _ts: number }>
   }
 >
 
@@ -130,11 +172,14 @@ function bumpAggregator(
   agg: Aggregator,
   vimeoId: string,
   m: FrontMessage,
+  conversationId: string,
+  plainText: string,
 ): void {
   const cur = agg.get(vimeoId) || {
     sentCount: 0,
     recipientDomains: new Set<string>(),
     senders: new Set<string>(),
+    excerpts: [],
   }
   cur.sentCount += 1
   if (!cur.firstSentAt || m.created_at < cur.firstSentAt) cur.firstSentAt = m.created_at
@@ -147,12 +192,32 @@ function bumpAggregator(
   }
   const sender = authorLabel(m.author)
   if (sender) cur.senders.add(sender)
+
+  // Capture an excerpt of this email centered on the Vimeo URL.
+  cur.excerpts.push({
+    _ts: m.created_at,
+    sentAt: new Date(m.created_at * 1000).toISOString(),
+    sender: sender || undefined,
+    recipientDomain: pickRecipientDomain(m) || undefined,
+    subject: m.subject?.trim() || undefined,
+    snippet: buildExcerpt(plainText),
+    conversationId,
+  })
+
   agg.set(vimeoId, cur)
 }
 
 function finalize(agg: Aggregator): FrontEvidenceEntry[] {
   const out: FrontEvidenceEntry[] = []
   for (const [vimeoId, v] of agg) {
+    // Keep top-N excerpts by recency (most recent first).
+    const excerpts = v.excerpts
+      .sort((a, b) => b._ts - a._ts)
+      .slice(0, MAX_EXCERPTS_PER_VIMEO)
+      .map(({ _ts: _ignored, ...rest }) => {
+        void _ignored
+        return rest
+      })
     out.push({
       vimeoId,
       sentCount: v.sentCount,
@@ -160,6 +225,7 @@ function finalize(agg: Aggregator): FrontEvidenceEntry[] {
       lastSentAt: v.lastSentAt ? new Date(v.lastSentAt * 1000).toISOString() : undefined,
       recipientDomains: Array.from(v.recipientDomains).sort(),
       senders: Array.from(v.senders).sort(),
+      excerpts: excerpts.length > 0 ? excerpts : undefined,
     })
   }
   // Sort by sentCount desc for stable inspection
@@ -278,8 +344,9 @@ export async function syncFromFront(opts?: {
           if (afterTs && m.created_at < afterTs) continue // date filter (in-code)
           const content = m.body || m.text || ''
           if (!content) continue
+          const plainText = stripHtml(content)
           const ids = extractVimeoIds(content)
-          for (const id of ids) bumpAggregator(aggregator, id, m)
+          for (const id of ids) bumpAggregator(aggregator, id, m, conv.id, plainText)
         }
       } catch (e) {
         errors.push(`messages ${conv.id}: ${e instanceof Error ? e.message : String(e)}`)
