@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     let body: {
       content?: string
-      inbox?: string
+      inboxId?: string
       after?: string
       query?: string
       maxConversations?: number
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     const stats = await syncFromFront({
       content: body.content,
-      inbox: body.inbox,
+      inboxId: body.inboxId,
       after: body.after,
       query: body.query,
       maxConversations: body.maxConversations,

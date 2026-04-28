@@ -44,7 +44,21 @@ type FrontMessage = {
 type FrontConversation = {
   id: string
   subject?: string
-  _links?: { related?: { messages?: string } }
+  _links?: { related?: { messages?: string; inbox?: string; inboxes?: string } }
+}
+
+/**
+ * Match a conversation's inbox(es) link against the wanted inbox ID. Front's
+ * search response exposes the inbox via _links.related.inbox (URL ending in
+ * /inboxes/inb_xxx) — older API versions used `inboxes` (plural). Match on
+ * either to be safe.
+ */
+function matchesInbox(conv: FrontConversation, inboxId: string): boolean {
+  const links = [
+    conv._links?.related?.inbox,
+    conv._links?.related?.inboxes,
+  ].filter(Boolean) as string[]
+  return links.some((u) => u.includes(`/inboxes/${inboxId}`))
 }
 
 type FrontSearchResponse = {
@@ -155,29 +169,26 @@ function finalize(agg: Aggregator): FrontEvidenceEntry[] {
 
 export type SyncFrontStats = {
   conversationsScanned: number
+  conversationsKept: number
   messagesScanned: number
   vimeoIdsFound: number
   durationMs: number
+  query: string
+  inboxId: string
+  afterDate: string
   errors: string[]
 }
 
 /**
  * Default scope: only the #Hello - Peech inbox, only conversations from 2025
  * onwards. Caller can override via opts (e.g. to widen for a one-off backfill).
+ *
+ * Front's content search endpoint (`GET /conversations/search/:q`) does NOT
+ * accept `inbox:` or `after:` modifiers (returns 400 "Unsupported search
+ * modifier"), so we apply both filters in-code post-fetch.
  */
-const DEFAULT_INBOX = '#Hello - Peech'
+const DEFAULT_INBOX_ID = 'inb_vsl' // #Hello - Peech (per CLAUDE.md)
 const DEFAULT_AFTER = '2025-01-01'
-
-/**
- * Build a Front search query from the explicit content match + scope filters.
- * Front's search query language: `vimeo.com inbox:"name" after:YYYY-MM-DD`.
- */
-function buildQuery(content: string, inbox?: string, after?: string): string {
-  const parts: string[] = [content]
-  if (inbox) parts.push(`inbox:"${inbox}"`)
-  if (after) parts.push(`after:${after}`)
-  return parts.join(' ')
-}
 
 /**
  * Run a full sync: scan Front for outbound messages mentioning Vimeo URLs,
@@ -185,18 +196,21 @@ function buildQuery(content: string, inbox?: string, after?: string): string {
  * map, and refresh the references store so the new evidence is joined onto
  * each Reference.
  *
- * Default scope: inbox=#Hello - Peech, after=2025-01-01, content=vimeo.com.
+ * Default scope: inbox=inb_vsl (#Hello - Peech), after=2025-01-01, content=vimeo.com.
+ *
+ * Front's search endpoint doesn't support `inbox:` / `after:` modifiers, so
+ * the inbox + date filters are applied post-fetch in code.
  *
  * Called from /api/admin/sync-front (manual) or from a Coolify cron.
  */
 export async function syncFromFront(opts?: {
   /** Free-text content match. Default "vimeo.com" matches any Vimeo URL. */
   content?: string
-  /** Inbox name filter. Default "#Hello - Peech". Pass "" to disable. */
-  inbox?: string
+  /** Inbox ID filter (e.g. "inb_vsl"). Default DEFAULT_INBOX_ID. Pass "" to disable. */
+  inboxId?: string
   /** Date filter (YYYY-MM-DD). Default "2025-01-01". Pass "" to disable. */
   after?: string
-  /** Pre-built Front query string — overrides content/inbox/after if set. */
+  /** Pre-built Front search query string — overrides `content` if set. */
   query?: string
   /** Cap on conversations to scan (safety net). Default 5000. */
   maxConversations?: number
@@ -206,23 +220,18 @@ export async function syncFromFront(opts?: {
     throw new Error('FRONT_API_TOKEN env var is not set')
   }
 
-  const query =
-    opts?.query
-    ?? buildQuery(
-      opts?.content || 'vimeo.com',
-      opts?.inbox ?? DEFAULT_INBOX,
-      opts?.after ?? DEFAULT_AFTER,
-    )
+  const query = opts?.query ?? (opts?.content || 'vimeo.com')
+  const inboxId = opts?.inboxId ?? DEFAULT_INBOX_ID
+  const afterDate = opts?.after ?? DEFAULT_AFTER
+  const afterTs = afterDate ? Math.floor(new Date(afterDate).getTime() / 1000) : 0
   const maxConv = opts?.maxConversations ?? 5000
   const startedAt = Date.now()
   const errors: string[] = []
   const aggregator: Aggregator = new Map()
 
   let conversationsScanned = 0
+  let conversationsKept = 0
   let messagesScanned = 0
-
-  // Trace the actual query so the admin UI can show what was sent.
-  errors.push(`debug query: ${query}`)
 
   // ── 1. Paginate through search results ──
   let nextUrl: string | null =
@@ -247,6 +256,10 @@ export async function syncFromFront(opts?: {
       if (conversationsScanned >= maxConv) break
       conversationsScanned += 1
 
+      // In-code inbox filter (Front search doesn't accept inbox: modifier)
+      if (inboxId && !matchesInbox(conv, inboxId)) continue
+      conversationsKept += 1
+
       const messagesUrl = conv._links?.related?.messages
         || `${FRONT_BASE}/conversations/${conv.id}/messages`
 
@@ -262,6 +275,7 @@ export async function syncFromFront(opts?: {
         for (const m of msgs) {
           messagesScanned += 1
           if (m.is_inbound) continue // only count outbound (sales → prospect)
+          if (afterTs && m.created_at < afterTs) continue // date filter (in-code)
           const content = m.body || m.text || ''
           if (!content) continue
           const ids = extractVimeoIds(content)
@@ -284,9 +298,13 @@ export async function syncFromFront(opts?: {
 
   return {
     conversationsScanned,
+    conversationsKept,
     messagesScanned,
     vimeoIdsFound: entries.length,
     durationMs: Date.now() - startedAt,
+    query,
+    inboxId,
+    afterDate,
     errors,
   }
 }

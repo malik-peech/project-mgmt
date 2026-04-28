@@ -63,7 +63,20 @@ export default function AdminPage() {
   // Front sync state
   const [frontSyncing, setFrontSyncing] = useState(false)
   const [frontSyncResult, setFrontSyncResult] = useState<
-    | { ok: true; stats: { conversationsScanned: number; messagesScanned: number; vimeoIdsFound: number; durationMs: number; errors: string[] } }
+    | {
+        ok: true
+        stats: {
+          conversationsScanned: number
+          conversationsKept: number
+          messagesScanned: number
+          vimeoIdsFound: number
+          durationMs: number
+          query: string
+          inboxId: string
+          afterDate: string
+          errors: string[]
+        }
+      }
     | { ok: false; error: string }
     | null
   >(null)
@@ -306,9 +319,11 @@ export default function AdminPage() {
           </button>
           {frontSyncResult && frontSyncResult.ok && (
             <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
-              ✓ {frontSyncResult.stats.vimeoIdsFound} Vimeo IDs agrégés depuis{' '}
-              {frontSyncResult.stats.conversationsScanned} conversations (
-              {frontSyncResult.stats.messagesScanned} messages, {Math.round(frontSyncResult.stats.durationMs / 1000)}s)
+              ✓ {frontSyncResult.stats.vimeoIdsFound} Vimeo IDs agrégés ·{' '}
+              {frontSyncResult.stats.conversationsKept}/{frontSyncResult.stats.conversationsScanned}{' '}
+              conv. (filtrées sur {frontSyncResult.stats.inboxId} after={frontSyncResult.stats.afterDate}) ·{' '}
+              {frontSyncResult.stats.messagesScanned} messages ·{' '}
+              {Math.round(frontSyncResult.stats.durationMs / 1000)}s
               {frontSyncResult.stats.errors.length > 0 &&
                 ` · ${frontSyncResult.stats.errors.length} erreurs`}
             </div>
