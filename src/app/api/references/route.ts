@@ -121,6 +121,10 @@ export async function GET(request: Request) {
     const filtered = filterReferences(references, filters)
     const page = filtered.slice(offset, offset + pageSize)
 
+    // Debug stats — surfaces data-shape issues (e.g. lookup field returning
+    // nothing) without needing server access.
+    const withYear = references.reduce((n, r) => (r.year ? n + 1 : n), 0)
+
     return NextResponse.json(
       sanitize({
         references: page,
@@ -128,6 +132,7 @@ export async function GET(request: Request) {
         offset,
         limit: pageSize,
         facets,
+        debug: { totalRefs: references.length, withYear },
       }),
       { headers: { 'Cache-Control': 'no-store' } },
     )

@@ -185,7 +185,9 @@ function mapLivrable(
     vimeoUrl,
     clientName: str(f['Client lookup']) || projet?.clientName || canva?.client,
     projetRef: projet?.projetRef,
-    year: num(f['Year']),
+    // Year: prefer the direct `Year` lookup, fall back to `Year (from Projets)`
+    // (some records may only have one populated depending on lookup config).
+    year: num(f['Year']) ?? num(f['Year (from Projets)']),
     industry,
     industries,
     useCase,

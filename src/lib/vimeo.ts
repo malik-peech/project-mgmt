@@ -34,10 +34,21 @@ export function vimeoHash(url?: string | null): string | null {
   }
 }
 
-// vumbnail.com is a free thumbnail proxy for Vimeo (no API key, instant).
+/**
+ * Build a thumbnail URL.
+ *
+ * For PUBLIC videos we hit `vumbnail.com` directly — it's instant and doesn't
+ * need any roundtrip. For UNLISTED videos (`vimeo.com/{ID}/{HASH}`) vumbnail
+ * returns a placeholder, so we route through our own `/api/vimeo/thumbnail`
+ * endpoint which resolves the real i.vimeocdn.com URL via oEmbed (works with
+ * the privacy hash) and caches it in memory for 24h.
+ */
 export function vimeoThumb(url?: string | null, size: 'small' | 'large' = 'large'): string | null {
   const id = vimeoId(url)
   if (!id) return null
+  if (vimeoHash(url)) {
+    return `/api/vimeo/thumbnail?url=${encodeURIComponent(url!)}`
+  }
   return size === 'large'
     ? `https://vumbnail.com/${id}_large.jpg`
     : `https://vumbnail.com/${id}.jpg`
