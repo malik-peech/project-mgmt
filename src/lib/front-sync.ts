@@ -83,9 +83,21 @@ function authHeaders(token: string) {
   }
 }
 
-/** Strip HTML tags, decode common entities, return plain text for URL extraction. */
+/**
+ * Strip HTML tags, decode common entities, return plain text for URL extraction.
+ *
+ * IMPORTANT: emails often hyperlink the Vimeo URL on text (e.g. <a href="vimeo.com/123">Netatmo</a>).
+ * If we just strip tags we lose the URL → no Vimeo ID found. So we first
+ * inline href attributes as plain text, then strip everything else.
+ */
 function stripHtml(html: string): string {
-  return html
+  // Step 1: replace <a href="URL">text</a> with "text URL" — preserve the URL.
+  // Also catch <a> tags with the URL as text already.
+  const withInlinedHrefs = html.replace(
+    /<a\b[^>]*?\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
+    (_, url, text) => `${text} ${url} `,
+  )
+  return withInlinedHrefs
     .replace(/<[^>]+>/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
@@ -356,6 +368,11 @@ export async function syncFromFront(opts?: {
       if (conversationsScanned >= maxConv) break
       conversationsScanned += 1
       liveProgress.conversationsScanned = conversationsScanned
+
+      // Capture the first conversation's _links shape to debug inbox filtering.
+      if (conversationsScanned === 1) {
+        errors.push(`debug first conv links: ${JSON.stringify(conv._links?.related ?? null)}`)
+      }
 
       // In-code inbox filter (Front search doesn't accept inbox: modifier)
       if (inboxId && !matchesInbox(conv, inboxId)) continue
