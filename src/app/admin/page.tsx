@@ -16,6 +16,7 @@ import {
   Bug,
   Lightbulb,
   MessageCircle,
+  Mail,
 } from 'lucide-react'
 
 type UserRole = 'PM' | 'DA' | 'Admin' | 'Sales'
@@ -59,6 +60,15 @@ export default function AdminPage() {
   const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([])
   const [feedbackLoading, setFeedbackLoading] = useState(true)
 
+  // Front sync state
+  const [frontSyncing, setFrontSyncing] = useState(false)
+  const [frontSyncResult, setFrontSyncResult] = useState<
+    | { ok: true; stats: { conversationsScanned: number; messagesScanned: number; vimeoIdsFound: number; durationMs: number; errors: string[] } }
+    | { ok: false; error: string }
+    | null
+  >(null)
+  const [frontTokenConfigured, setFrontTokenConfigured] = useState<boolean | null>(null)
+
   // Edit / create state
   const [editingUser, setEditingUser] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ name: '', login: '', password: '', role: 'PM' as UserRole, matching: '' })
@@ -77,6 +87,34 @@ export default function AdminPage() {
     const stored = localStorage.getItem('peechpm_simulate_pm')
     if (stored) setSimulatedPm(stored)
   }, [])
+
+  // Probe Front sync readiness (does NOT trigger a sync)
+  useEffect(() => {
+    if (userRole !== 'Admin') return
+    fetch('/api/admin/sync-front')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setFrontTokenConfigured(!!d.tokenConfigured))
+      .catch(() => setFrontTokenConfigured(false))
+  }, [userRole])
+
+  const triggerFrontSync = async () => {
+    if (frontSyncing) return
+    setFrontSyncing(true)
+    setFrontSyncResult(null)
+    try {
+      const res = await fetch('/api/admin/sync-front', { method: 'POST' })
+      const data = await res.json()
+      if (res.ok) {
+        setFrontSyncResult({ ok: true, stats: data.stats })
+      } else {
+        setFrontSyncResult({ ok: false, error: data.error || 'Sync failed' })
+      }
+    } catch (e) {
+      setFrontSyncResult({ ok: false, error: e instanceof Error ? e.message : 'Network error' })
+    } finally {
+      setFrontSyncing(false)
+    }
+  }
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -227,6 +265,58 @@ export default function AdminPage() {
             >
               Arrêter la simulation
             </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Front sync (Belle Base evidence) ── */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-8">
+        <div className="flex items-center gap-3 mb-3">
+          <Mail className="w-5 h-5 text-indigo-600" />
+          <h2 className="text-lg font-semibold text-gray-900">Sync Front (signal d&apos;envoi)</h2>
+        </div>
+        <p className="text-sm text-gray-500 mb-3">
+          Scanne les conversations Front mentionnant un lien Vimeo, agrège le nombre d&apos;envois par
+          référence (par sales / domaine prospect / date) puis recharge la Belle Base. Long
+          (~10-15 min selon le volume). À déclencher manuellement ou via cron.
+        </p>
+        {frontTokenConfigured === false && (
+          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-3">
+            ⚠️ <code className="font-mono">FRONT_API_TOKEN</code> non configuré côté Coolify — la
+            sync échouera tant que la variable n&apos;est pas ajoutée.
+          </div>
+        )}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={triggerFrontSync}
+            disabled={frontSyncing || frontTokenConfigured === false}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-sm font-medium rounded-lg transition"
+          >
+            {frontSyncing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Sync en cours…
+              </>
+            ) : (
+              <>
+                <Mail className="w-4 h-4" />
+                Lancer la sync Front
+              </>
+            )}
+          </button>
+          {frontSyncResult && frontSyncResult.ok && (
+            <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+              ✓ {frontSyncResult.stats.vimeoIdsFound} Vimeo IDs agrégés depuis{' '}
+              {frontSyncResult.stats.conversationsScanned} conversations (
+              {frontSyncResult.stats.messagesScanned} messages, {Math.round(frontSyncResult.stats.durationMs / 1000)}s)
+              {frontSyncResult.stats.errors.length > 0 &&
+                ` · ${frontSyncResult.stats.errors.length} erreurs`}
+            </div>
+          )}
+          {frontSyncResult && !frontSyncResult.ok && (
+            <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+              ✗ {frontSyncResult.error}
+            </div>
           )}
         </div>
       </div>

@@ -72,3 +72,21 @@ export function getFrontEvidenceMeta(): { lastExtractedAt?: string; entryCount: 
   loadOnce()
   return meta || { entryCount: 0 }
 }
+
+/**
+ * Replace the in-memory evidence map with freshly-synced data (typically from
+ * the Front REST API via /api/admin/sync-front). Call this BEFORE triggering
+ * a references-store refresh so the new data gets joined onto each Reference.
+ */
+export function setFrontEvidence(entries: FrontEvidenceEntry[]): void {
+  const next = new Map<string, FrontEvidenceEntry>()
+  for (const e of entries) {
+    if (!e.vimeoId || !e.sentCount || e.sentCount < 1) continue
+    const existing = next.get(e.vimeoId)
+    if (existing && existing.sentCount >= e.sentCount) continue
+    next.set(e.vimeoId, e)
+  }
+  cached = next
+  meta = { lastExtractedAt: new Date().toISOString(), entryCount: next.size }
+  console.log(`[FrontEvidence] Replaced in-memory map: ${next.size} entries`)
+}

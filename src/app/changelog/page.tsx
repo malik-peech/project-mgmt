@@ -10,6 +10,17 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.24',
+    date: '28/04/2026',
+    changes: [
+      'Assistant Sales IA : les refs curatées dans le Canva (avec pitch) sont maintenant traitées comme implicitement diffusables — fix du bug où SNCF (et 50% des refs Canva) étaient filtrées avant que Claude les voie',
+      'Assistant : prompt durci pour forcer l\'inclusion du pitch + lien Canva dans la réponse',
+      'Belle Base / Vimeo : support des URLs back-office vimeo.com/manage/videos/{ID}[/{HASH}], proxy oEmbed pour les thumbnails de vidéos non répertoriées',
+      'refs : "Diffusable uniquement" décoché par défaut',
+      'Admin : nouveau bouton "Sync Front" — scanne les conversations Front mentionnant un lien Vimeo, agrège le compteur d\'envois par référence',
+    ],
+  },
+  {
     version: '1.23',
     date: '28/04/2026',
     changes: [
