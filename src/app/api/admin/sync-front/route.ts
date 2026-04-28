@@ -28,7 +28,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 })
     }
 
-    let body: { query?: string; maxConversations?: number } = {}
+    let body: {
+      content?: string
+      inbox?: string
+      after?: string
+      query?: string
+      maxConversations?: number
+    } = {}
     try {
       body = await request.json()
     } catch {
@@ -36,6 +42,9 @@ export async function POST(request: Request) {
     }
 
     const stats = await syncFromFront({
+      content: body.content,
+      inbox: body.inbox,
+      after: body.after,
       query: body.query,
       maxConversations: body.maxConversations,
     })

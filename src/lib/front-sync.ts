@@ -162,17 +162,43 @@ export type SyncFrontStats = {
 }
 
 /**
+ * Default scope: only the #Hello - Peech inbox, only conversations from 2025
+ * onwards. Caller can override via opts (e.g. to widen for a one-off backfill).
+ */
+const DEFAULT_INBOX = '#Hello - Peech'
+const DEFAULT_AFTER = '2025-01-01'
+
+/**
+ * Build a Front search query from the explicit content match + scope filters.
+ * Front's search query language: `vimeo.com inbox:"name" after:YYYY-MM-DD`.
+ */
+function buildQuery(content: string, inbox?: string, after?: string): string {
+  const parts: string[] = [content]
+  if (inbox) parts.push(`inbox:"${inbox}"`)
+  if (after) parts.push(`after:${after}`)
+  return parts.join(' ')
+}
+
+/**
  * Run a full sync: scan Front for outbound messages mentioning Vimeo URLs,
  * aggregate per Vimeo ID, push the result into the in-memory front-evidence
  * map, and refresh the references store so the new evidence is joined onto
  * each Reference.
  *
+ * Default scope: inbox=#Hello - Peech, after=2025-01-01, content=vimeo.com.
+ *
  * Called from /api/admin/sync-front (manual) or from a Coolify cron.
  */
 export async function syncFromFront(opts?: {
-  /** Front search query. Default "vimeo.com" matches any Vimeo URL in the body. */
+  /** Free-text content match. Default "vimeo.com" matches any Vimeo URL. */
+  content?: string
+  /** Inbox name filter. Default "#Hello - Peech". Pass "" to disable. */
+  inbox?: string
+  /** Date filter (YYYY-MM-DD). Default "2025-01-01". Pass "" to disable. */
+  after?: string
+  /** Pre-built Front query string — overrides content/inbox/after if set. */
   query?: string
-  /** Cap on conversations to scan (safety net). Default 2000. */
+  /** Cap on conversations to scan (safety net). Default 5000. */
   maxConversations?: number
 }): Promise<SyncFrontStats> {
   const token = process.env.FRONT_API_TOKEN
@@ -180,8 +206,14 @@ export async function syncFromFront(opts?: {
     throw new Error('FRONT_API_TOKEN env var is not set')
   }
 
-  const query = opts?.query || 'vimeo.com'
-  const maxConv = opts?.maxConversations ?? 2000
+  const query =
+    opts?.query
+    ?? buildQuery(
+      opts?.content || 'vimeo.com',
+      opts?.inbox ?? DEFAULT_INBOX,
+      opts?.after ?? DEFAULT_AFTER,
+    )
+  const maxConv = opts?.maxConversations ?? 5000
   const startedAt = Date.now()
   const errors: string[] = []
   const aggregator: Aggregator = new Map()
