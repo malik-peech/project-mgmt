@@ -61,6 +61,9 @@ export const INTENTIONS_SALES = [
   'Solene',
 ] as const
 
+// Sales allowed when creating a new intention (subset of INTENTIONS_SALES).
+export const INTENTIONS_NEW_SALES = ['Malik', 'Laurine', 'Rodolphe'] as const
+
 export type Attachment = {
   id?: string
   url: string

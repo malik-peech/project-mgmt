@@ -30,11 +30,29 @@ import {
   INTENTIONS_ORIGINES,
   INTENTIONS_CONTEXTES,
   INTENTIONS_SALES,
+  INTENTIONS_NEW_SALES,
   matchIntentionsSales,
   type Intention,
   type IntentionMonth,
   type IntentionStatut,
 } from '@/lib/intentions'
+
+const CLOSED_STATUTS: ReadonlySet<string> = new Set(['Gagné', 'Perdu', 'Abandonné'])
+
+const briefMonthKey = (i: Intention): string => {
+  const d = i.date || i.createdTime
+  return d ? d.substring(0, 7) : ''
+}
+
+const briefMonthLabel = (key: string): string => {
+  if (!key) return ''
+  const [y, m] = key.split('-').map(Number)
+  if (!y || !m) return key
+  return new Date(y, m - 1, 1).toLocaleDateString('fr-FR', {
+    month: 'short',
+    year: 'numeric',
+  })
+}
 
 type Tab = 'toOnboard' | 'enProduction' | 'attenteDecision' | 'all'
 
@@ -75,13 +93,8 @@ export default function IntentionsPage() {
   const [salesFilter, setSalesFilter] = useState<string>('') // empty = all (admin); auto-set on mount
   const [tab, setTab] = useState<Tab>('toOnboard')
   const [search, setSearch] = useState('')
+  const [monthFilter, setMonthFilter] = useState<string>('') // '' = toutes, else 'YYYY-MM'
   const [intentions, setIntentions] = useState<Intention[]>([])
-  const [counts, setCounts] = useState({
-    total: 0,
-    toOnboard: 0,
-    enProduction: 0,
-    attenteDecision: 0,
-  })
   const [loading, setLoading] = useState(true)
   const [months, setMonths] = useState<IntentionMonth[]>([])
   const [selected, setSelected] = useState<Intention | null>(null)
@@ -105,17 +118,16 @@ export default function IntentionsPage() {
     if (!userName) return
     setLoading(true)
     try {
-      const qs = isAdmin && !salesFilter ? 'all=1' : `sales=${encodeURIComponent(salesFilter || userName)}`
+      const qs = salesFilter ? `sales=${encodeURIComponent(salesFilter)}` : 'all=1'
       const res = await fetch(`/api/intentions?${qs}`, { cache: 'no-store' })
       if (res.ok) {
         const data = await res.json()
         setIntentions(data.intentions || [])
-        setCounts(data.counts || { total: 0, toOnboard: 0, enProduction: 0, attenteDecision: 0 })
       }
     } finally {
       setLoading(false)
     }
-  }, [userName, isAdmin, salesFilter])
+  }, [userName, salesFilter])
 
   useEffect(() => {
     fetchData()
@@ -129,9 +141,44 @@ export default function IntentionsPage() {
       .catch(() => {})
   }, [])
 
+  // Months available in the current dataset (based on brief month).
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>()
+    for (const i of intentions) {
+      const k = briefMonthKey(i)
+      if (k) set.add(k)
+    }
+    return Array.from(set).sort().reverse()
+  }, [intentions])
+
+  // Apply month filter on top of the dataset before computing counts.
+  const monthScoped = useMemo(() => {
+    if (!monthFilter) return intentions
+    return intentions.filter((i) => briefMonthKey(i) === monthFilter)
+  }, [intentions, monthFilter])
+
+  const counts = useMemo(
+    () => ({
+      total: monthScoped.length,
+      toOnboard: monthScoped.filter(
+        (i) => !i.onboardingOk && !CLOSED_STATUTS.has(i.statut || ''),
+      ).length,
+      enProduction: monthScoped.filter(
+        (i) => i.onboardingOk && i.statut === 'En production',
+      ).length,
+      attenteDecision: monthScoped.filter(
+        (i) => i.onboardingOk && i.statut === 'Attente décision',
+      ).length,
+    }),
+    [monthScoped],
+  )
+
   const filtered = useMemo(() => {
-    let list = intentions
-    if (tab === 'toOnboard') list = list.filter((i) => !i.onboardingOk)
+    let list = monthScoped
+    if (tab === 'toOnboard')
+      list = list.filter(
+        (i) => !i.onboardingOk && !CLOSED_STATUTS.has(i.statut || ''),
+      )
     else if (tab === 'enProduction')
       list = list.filter((i) => i.onboardingOk && i.statut === 'En production')
     else if (tab === 'attenteDecision')
@@ -146,7 +193,7 @@ export default function IntentionsPage() {
       )
     }
     return list
-  }, [intentions, tab, search])
+  }, [monthScoped, tab, search])
 
   if (status === 'loading' || !userName) {
     return (
@@ -234,20 +281,33 @@ export default function IntentionsPage() {
             </TabButton>
 
             <div className="ml-auto flex items-center gap-2">
-              {isAdmin && (
-                <div className="w-44">
-                  <ComboSelect
-                    options={[
-                      { value: '', label: 'Tous les sales' },
-                      ...INTENTIONS_SALES.map((s) => ({ value: s, label: s })),
-                    ]}
-                    value={salesFilter}
-                    onChange={setSalesFilter}
-                    placeholder="Sales"
-                    size="sm"
-                  />
-                </div>
-              )}
+              <div className="w-40">
+                <ComboSelect
+                  options={[
+                    { value: '', label: 'Tous les mois' },
+                    ...availableMonths.map((m) => ({
+                      value: m,
+                      label: briefMonthLabel(m),
+                    })),
+                  ]}
+                  value={monthFilter}
+                  onChange={setMonthFilter}
+                  placeholder="Mois de brief"
+                  size="sm"
+                />
+              </div>
+              <div className="w-44">
+                <ComboSelect
+                  options={[
+                    { value: '', label: 'Tous les sales' },
+                    ...INTENTIONS_SALES.map((s) => ({ value: s, label: s })),
+                  ]}
+                  value={salesFilter}
+                  onChange={setSalesFilter}
+                  placeholder="Sales"
+                  size="sm"
+                />
+              </div>
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
@@ -329,10 +389,10 @@ export default function IntentionsPage() {
                             {i.headcount} pers.
                           </span>
                         )}
-                        {i.monthNames && i.monthNames.length > 0 && (
+                        {briefMonthKey(i) && (
                           <span className="inline-flex items-center gap-1">
                             <CalendarIcon className="w-3 h-3" />
-                            {i.monthNames.join(', ')}
+                            Brief {briefMonthLabel(briefMonthKey(i))}
                           </span>
                         )}
                         {i.budgetEstime != null && (
@@ -908,7 +968,9 @@ function NewIntentionModal({
   onCreated: () => void
 }) {
   const [form, setForm] = useState<Partial<Intention>>({
-    sales: defaultSales || undefined,
+    sales: (INTENTIONS_NEW_SALES as readonly string[]).includes(defaultSales)
+      ? defaultSales
+      : undefined,
     statut: 'Attente décision',
   })
   const [submitting, setSubmitting] = useState(false)
@@ -970,7 +1032,7 @@ function NewIntentionModal({
           <div className="grid grid-cols-2 gap-3">
             <Field label="Sales">
               <ComboSelect
-                options={INTENTIONS_SALES.map((s) => ({ value: s, label: s }))}
+                options={INTENTIONS_NEW_SALES.map((s) => ({ value: s, label: s }))}
                 value={form.sales || ''}
                 onChange={(v) => setForm((f) => ({ ...f, sales: v }))}
                 placeholder="Sales"
