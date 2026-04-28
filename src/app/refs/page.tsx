@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import {
@@ -20,12 +20,9 @@ import {
   Calendar as CalendarIcon,
   Layers,
   RotateCcw,
+  Play,
 } from 'lucide-react'
-import {
-  vimeoThumb,
-  vimeoEmbedBackground,
-  vimeoEmbedFull,
-} from '@/lib/vimeo'
+import { vimeoThumb, vimeoEmbedFull } from '@/lib/vimeo'
 import type { Reference } from '@/types'
 
 type Facet = { value: string; count: number }
@@ -385,39 +382,15 @@ function RefCard({
   reference: Reference
   onClick: () => void
 }) {
-  const [hover, setHover] = useState(false)
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const thumb = vimeoThumb(reference.vimeoUrl)
-  const embed = vimeoEmbedBackground(reference.vimeoUrl)
-
-  // Small delay before swapping to iframe — avoids spamming embeds when sweeping
-  // the cursor across the grid.
-  const onEnter = () => {
-    if (!embed) return
-    hoverTimer.current = setTimeout(() => setHover(true), 250)
-  }
-  const onLeave = () => {
-    if (hoverTimer.current) clearTimeout(hoverTimer.current)
-    hoverTimer.current = null
-    setHover(false)
-  }
 
   return (
     <div
       onClick={onClick}
-      onMouseEnter={onEnter}
-      onMouseLeave={onLeave}
       className="group bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 overflow-hidden cursor-pointer transition"
     >
       <div className="aspect-video relative bg-gray-900 overflow-hidden">
-        {hover && embed ? (
-          <iframe
-            src={embed}
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            allow="autoplay; fullscreen"
-            frameBorder={0}
-          />
-        ) : thumb ? (
+        {thumb ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={thumb}
@@ -428,6 +401,15 @@ function RefCard({
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-gray-500">
             <Film className="w-8 h-8" />
+          </div>
+        )}
+
+        {/* Play overlay (visible on hover) */}
+        {reference.vimeoUrl && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+            <div className="w-12 h-12 rounded-full bg-white/95 shadow-lg flex items-center justify-center opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-all">
+              <Play className="w-5 h-5 text-gray-900 fill-gray-900 ml-0.5" />
+            </div>
           </div>
         )}
 

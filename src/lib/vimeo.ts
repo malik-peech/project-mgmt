@@ -15,16 +15,11 @@ export function vimeoThumb(url?: string | null, size: 'small' | 'large' = 'large
     : `https://vumbnail.com/${id}.jpg`
 }
 
-// Background-mode embed: muted autoplay loop, no controls — perfect for hover preview.
-export function vimeoEmbedBackground(url?: string | null): string | null {
-  const id = vimeoId(url)
-  return id
-    ? `https://player.vimeo.com/video/${id}?background=1&autoplay=1&muted=1&loop=1&autopause=0`
-    : null
-}
-
-// Full embed with controls — for the detail panel.
+// Full embed with controls — for the detail panel. Autoplay is muted so the
+// browser allows it; the user can unmute via player controls.
 export function vimeoEmbedFull(url?: string | null): string | null {
   const id = vimeoId(url)
-  return id ? `https://player.vimeo.com/video/${id}?title=0&byline=0&portrait=0` : null
+  return id
+    ? `https://player.vimeo.com/video/${id}?title=0&byline=0&portrait=0&autoplay=1&muted=1`
+    : null
 }
