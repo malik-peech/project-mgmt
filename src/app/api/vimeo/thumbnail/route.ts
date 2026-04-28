@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { vimeoShareUrl } from '@/lib/vimeo'
 
 /**
  * GET /api/vimeo/thumbnail?url=<full-vimeo-url-with-hash>
@@ -8,6 +9,9 @@ import { NextResponse } from 'next/server'
  * because vumbnail.com only handles public videos and returns a placeholder
  * for unlisted ones.
  *
+ * Also normalizes back-office URLs (`vimeo.com/manage/videos/...`) to the
+ * canonical share form before calling oEmbed, since oEmbed rejects manage URLs.
+ *
  * The resolved URL is cached in-memory for 24h to avoid hammering oEmbed.
  */
 
@@ -15,25 +19,27 @@ type CacheEntry = { url: string | null; fetchedAt: number }
 const cache = new Map<string, CacheEntry>()
 const TTL = 24 * 60 * 60 * 1000 // 24h
 
-async function resolveThumbnail(vimeoUrl: string): Promise<string | null> {
-  const cached = cache.get(vimeoUrl)
+async function resolveThumbnail(rawUrl: string): Promise<string | null> {
+  // Normalize: oEmbed only accepts canonical share URLs, not manage/videos/…
+  const canonical = vimeoShareUrl(rawUrl) || rawUrl
+  const cached = cache.get(canonical)
   if (cached && Date.now() - cached.fetchedAt < TTL) {
     return cached.url
   }
 
   try {
-    const oembed = `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(vimeoUrl)}&width=640`
+    const oembed = `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(canonical)}&width=640`
     const res = await fetch(oembed, { cache: 'no-store' })
     if (!res.ok) {
-      cache.set(vimeoUrl, { url: null, fetchedAt: Date.now() })
+      cache.set(canonical, { url: null, fetchedAt: Date.now() })
       return null
     }
     const data = (await res.json()) as { thumbnail_url?: string }
     const thumb = data.thumbnail_url || null
-    cache.set(vimeoUrl, { url: thumb, fetchedAt: Date.now() })
+    cache.set(canonical, { url: thumb, fetchedAt: Date.now() })
     return thumb
   } catch {
-    cache.set(vimeoUrl, { url: null, fetchedAt: Date.now() })
+    cache.set(canonical, { url: null, fetchedAt: Date.now() })
     return null
   }
 }

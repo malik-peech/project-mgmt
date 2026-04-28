@@ -1,30 +1,33 @@
 // Vimeo URL helpers — extract video ID, build thumbnail / embed URLs.
 //
 // Vimeo URL forms we need to handle:
-//   - https://vimeo.com/123456789                    (public video)
-//   - https://vimeo.com/123456789/abc123def4         (unlisted/private — hash required)
+//   - https://vimeo.com/123456789                              (public)
+//   - https://vimeo.com/123456789/abc123def4                   (unlisted, hash required)
 //   - https://vimeo.com/123456789/abc123def4?share=copy
-//   - https://vimeo.com/video/123456789              (embed-style)
+//   - https://vimeo.com/video/123456789                        (embed-style)
+//   - https://vimeo.com/manage/videos/123456789                (back-office)
+//   - https://vimeo.com/manage/videos/123456789/abc123def4
 //   - https://player.vimeo.com/video/123456789?h=abc123def4
+
+const PATH_PREFIX = '(?:video\\/|manage\\/videos\\/)?'
 
 export function vimeoId(url?: string | null): string | null {
   if (!url) return null
-  const m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)
+  const m = url.match(new RegExp(`vimeo\\.com\\/${PATH_PREFIX}(\\d+)`))
   return m ? m[1] : null
 }
 
 /**
  * Extract the privacy hash from an unlisted Vimeo URL.
- * Returns the hash for `vimeo.com/{ID}/{HASH}` form, or `?h={HASH}` query
- * param if the URL is already in player.vimeo.com format. Returns null for
- * fully public videos.
+ * Returns the hash for `vimeo.com/{ID}/{HASH}` (or `vimeo.com/manage/videos/{ID}/{HASH}`),
+ * or the `?h={HASH}` query param if present. Returns null for public videos.
  */
 export function vimeoHash(url?: string | null): string | null {
   if (!url) return null
-  // /{id}/{hash} form (10-char hash typical, but accept any alphanumeric)
-  const path = url.match(/vimeo\.com\/(?:video\/)?\d+\/([A-Za-z0-9]+)/)
+  const path = url.match(
+    new RegExp(`vimeo\\.com\\/${PATH_PREFIX}\\d+\\/([A-Za-z0-9]+)`),
+  )
   if (path) return path[1]
-  // ?h=xxx query param (player URL form)
   try {
     const u = new URL(url)
     const h = u.searchParams.get('h')
@@ -32,6 +35,18 @@ export function vimeoHash(url?: string | null): string | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Normalize any Vimeo URL form to the canonical share URL `vimeo.com/{ID}` or
+ * `vimeo.com/{ID}/{HASH}` for unlisted videos. Used for oEmbed lookups (the
+ * `manage/videos/...` back-office form is rejected by oEmbed).
+ */
+export function vimeoShareUrl(url?: string | null): string | null {
+  const id = vimeoId(url)
+  if (!id) return null
+  const hash = vimeoHash(url)
+  return hash ? `https://vimeo.com/${id}/${hash}` : `https://vimeo.com/${id}`
 }
 
 /**
