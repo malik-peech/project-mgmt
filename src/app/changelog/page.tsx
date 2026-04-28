@@ -10,6 +10,18 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.23',
+    date: '28/04/2026',
+    changes: [
+      'Nouveau menu Intentions (sales / admin) — dashboard de suivi des intentions commerciales',
+      'Onglets À onboarder / En production / Attente décision / Toutes — KPI cards en haut',
+      'Nouvelle intention : Client, Projet, Sales, Statut, Headcount, Origine, Contexte, Mois de signature, Brief',
+      'Panneau latéral édition : étapes (Client OK pour présentation, Budget communiqué, Onboarding OK), pièces jointes',
+      'Source : base Airtable séparée (app6K1rgFNjgEMVdP, table Réponse) — Type=Intention uniquement',
+      'ForceNewTaskModal : autorise la date du jour (au lieu de demain), la task est bien assignée au user connecté',
+    ],
+  },
+  {
     version: '1.22',
     date: '18/04/2026',
     changes: [

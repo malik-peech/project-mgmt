@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { X, Loader2, AlertCircle } from 'lucide-react'
 import type { Projet } from '@/types'
 import ComboSelect from '@/components/ComboSelect'
@@ -28,6 +29,8 @@ type Props = {
 }
 
 export default function ForceNewTaskModal({ projetId, projetName, projetRef, clientName, projets, onClose, onCreated }: Props) {
+  const { data: session } = useSession()
+  const userName = session?.user?.name || ''
   const [name, setName] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [type, setType] = useState('')
@@ -35,10 +38,9 @@ export default function ForceNewTaskModal({ projetId, projetName, projetRef, cli
   const [selectedProjetId, setSelectedProjetId] = useState(projetId || '')
   const [submitting, setSubmitting] = useState(false)
 
-  // Tomorrow as min date
-  const tomorrow = new Date()
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const minDate = tomorrow.toISOString().split('T')[0]
+  // Today as min date (timezone-safe local formatting)
+  const today = new Date()
+  const minDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
 
   const typeOptions = TYPE_OPTIONS.map((t) => ({ value: t, label: t }))
   const priorityOptions = PRIORITY_OPTIONS.map((p) => ({ value: p, label: p }))
@@ -57,6 +59,7 @@ export default function ForceNewTaskModal({ projetId, projetName, projetRef, cli
       if (selectedProjetId) body.projetId = selectedProjetId
       if (type) body.type = type
       if (priority) body.priority = priority
+      if (userName) body.assigneManuel = userName
 
       const res = await fetch('/api/tasks', {
         method: 'POST',

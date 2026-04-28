@@ -43,6 +43,7 @@ const navItems = [
 
 // Sales-only users (primary role = Sales, no PM/DA/Admin) see a reduced menu.
 const salesOnlyNavItems = [
+  { href: '/intentions', label: 'Intentions', icon: Lightbulb },
   { href: '/cogs', label: 'COGS', icon: Receipt },
   { href: '/assistant', label: 'Assistant', icon: Sparkles },
 ]
@@ -74,6 +75,7 @@ export default function Sidebar() {
   const [cogsACompleterCount, setCogsACompleterCount] = useState(0)
   const [cogsAAutoriserCount, setCogsAAutoriserCount] = useState(0)
   const [tasksOverdueCount, setTasksOverdueCount] = useState(0)
+  const [intentionsToOnboardCount, setIntentionsToOnboardCount] = useState(0)
   const [showUnassigned, setShowUnassigned] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
 
@@ -88,7 +90,7 @@ export default function Sidebar() {
           : userRole === 'DA'
             ? `da=${encodeURIComponent(userName)}`
             : `pm=${encodeURIComponent(userName)}`
-        const [onRes, offRes, unRes, abRes, cogsRes, tasksRes, autorRes] = await Promise.all([
+        const [onRes, offRes, unRes, abRes, cogsRes, tasksRes, autorRes, intRes] = await Promise.all([
           fetch(`/api/onboarding?sales=${encodeURIComponent(userName)}`),
           fetch(`/api/offboarding?pm=${encodeURIComponent(userName)}`),
           fetch('/api/projets/unassigned'),
@@ -96,6 +98,11 @@ export default function Sidebar() {
           fetch(`/api/cogs${cogsParam ? '?' + cogsParam : ''}`),
           fetch(`/api/tasks?pm=${encodeURIComponent(userName)}`),
           userRole === 'Admin' ? fetch('/api/admin/cogs-to-approve') : Promise.resolve(null),
+          fetch(
+            userRole === 'Admin'
+              ? '/api/intentions?all=1'
+              : `/api/intentions?sales=${encodeURIComponent(userName)}`,
+          ),
         ])
         if (onRes.ok) {
           const data = await onRes.json()
@@ -136,6 +143,10 @@ export default function Sidebar() {
         if (autorRes && autorRes.ok) {
           const data = await autorRes.json()
           if (!cancelled) setCogsAAutoriserCount(data.counts?.cogs || 0)
+        }
+        if (intRes.ok) {
+          const data = await intRes.json()
+          if (!cancelled) setIntentionsToOnboardCount(data.counts?.toOnboard || 0)
         }
       } catch {}
     }
@@ -223,8 +234,11 @@ export default function Sidebar() {
   // role and are ALSO sales keep their full PM/DA menu.
   const isSalesOnly = userRole === 'Sales' && !isAdmin
   const rawBase = isSalesOnly ? salesOnlyNavItems : navItems
-  // Enrich nav items with inline badges (sales-only users don't see these).
+  // Enrich nav items with inline badges.
   const baseItems: NavItem[] = rawBase.map((item) => {
+    if (item.href === '/intentions' && intentionsToOnboardCount > 0) {
+      return { ...item, badge: intentionsToOnboardCount }
+    }
     if (isSalesOnly) return item
     if (item.href === '/cogs' && cogsACompleterCount > 0) {
       return { ...item, badge: cogsACompleterCount, badgeColor: 'yellow' }
@@ -244,6 +258,7 @@ export default function Sidebar() {
     ...(showCogsSales ? [{ href: '/cogs-sales', label: 'Saisie COGS', icon: Wallet }] : []),
     ...(showAssistantInCommon ? [{ href: '/assistant', label: 'Assistant', icon: Sparkles }] : []),
     ...(showABriefer ? [{ href: '/a-briefer', label: 'Brief client à planifier', icon: ClipboardCheck, badge: aBrieferCount }] : []),
+    ...(showOnboarding && !isSalesOnly ? [{ href: '/intentions', label: 'Intentions', icon: Lightbulb, badge: intentionsToOnboardCount }] : []),
     ...(showOnboarding ? [{ href: '/onboarding', label: 'Onboarding', icon: Rocket, badge: onboardingCount?.toOnboard || 0 }] : []),
     ...(showOffboarding ? [{ href: '/offboarding', label: 'Offboarding', icon: PackageCheck, badge: offboardingCount?.toOffboard || 0 }] : []),
     ...(isAdmin
