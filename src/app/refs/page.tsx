@@ -64,7 +64,7 @@ const EMPTY_FILTERS: Filters = {
   yearFrom: '',
   yearTo: '',
   minRating: '',
-  diffusableOnly: true,
+  diffusableOnly: false,
   hasVimeo: true,
 }
 
@@ -174,7 +174,7 @@ export default function RefsPage() {
     if (f.bu) n++
     if (f.yearFrom || f.yearTo) n++
     if (f.minRating) n++
-    if (!f.diffusableOnly) n++
+    if (f.diffusableOnly) n++
     if (!f.hasVimeo) n++
     return n
   }, [filters])
