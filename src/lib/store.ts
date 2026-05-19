@@ -31,6 +31,7 @@ type Store = {
   ressources: StoreTable
   clients: StoreTable
   mensuel: StoreTable
+  categoriesCogs: StoreTable
 }
 
 // ── Singleton ──
@@ -87,10 +88,11 @@ async function syncAll() {
     // Small delay between batches
     await new Promise((r) => setTimeout(r, 300))
 
-    const [ressources, clients, mensuel] = await Promise.all([
+    const [ressources, clients, mensuel, categoriesCogs] = await Promise.all([
       fetchTable(TABLES.RESSOURCES),
       fetchTable(TABLES.CLIENTS),
       fetchTable(TABLES.MENSUEL),
+      fetchTable(TABLES.CATEGORIES_COGS),
     ])
 
     // Only update tables that returned data (preserve stale if fetch failed)
@@ -102,6 +104,7 @@ async function syncAll() {
         ressources: emptyTable(),
         clients: emptyTable(),
         mensuel: emptyTable(),
+        categoriesCogs: emptyTable(),
       }
     }
 
@@ -111,9 +114,10 @@ async function syncAll() {
     if (ressources.length > 0 || !store.ressources.lastSync) store.ressources = buildTable(ressources)
     if (clients.length > 0 || !store.clients.lastSync) store.clients = buildTable(clients)
     if (mensuel.length > 0 || !store.mensuel.lastSync) store.mensuel = buildTable(mensuel)
+    if (categoriesCogs.length > 0 || !store.categoriesCogs.lastSync) store.categoriesCogs = buildTable(categoriesCogs)
 
     console.log(
-      `[Store] Synced: ${projets.length} projets, ${tasks.length} tasks, ${cogs.length} cogs, ${ressources.length} ressources, ${clients.length} clients, ${mensuel.length} mensuel`
+      `[Store] Synced: ${projets.length} projets, ${tasks.length} tasks, ${cogs.length} cogs, ${ressources.length} ressources, ${clients.length} clients, ${mensuel.length} mensuel, ${categoriesCogs.length} cat.cogs`
     )
   } catch (err: unknown) {
     console.error('[Store] Sync error:', err)
@@ -187,6 +191,7 @@ function tableNameToKey(tableName: string): keyof Store | null {
     case TABLES.RESSOURCES: return 'ressources'
     case TABLES.CLIENTS: return 'clients'
     case TABLES.MENSUEL: return 'mensuel'
+    case TABLES.CATEGORIES_COGS: return 'categoriesCogs'
     default: return null
   }
 }

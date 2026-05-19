@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { ensureStore, buildLookupMap } from '@/lib/store'
 import { sanitize } from '@/lib/sanitize'
+import { buildCategoriesCogsMaps, resolveCategorieName } from '@/lib/categories-cogs'
 import type { Cogs } from '@/types'
 
 const APPROUVER_STATUTS = new Set([
@@ -86,6 +87,7 @@ export async function GET() {
     const resMap = buildLookupMap(store.ressources, 'Name')
     const projetNameMap = buildLookupMap(store.projets, 'Projet')
     const projetRefMap = buildLookupMap(store.projets, 'Project réf')
+    const { idToName: categorieIdToName } = buildCategoriesCogsMaps(store)
 
     // First pass: extract minimal COGS info per record to identify qualifying projects.
     const allCogs: {
@@ -162,7 +164,7 @@ export async function GET() {
         projetId: c.projetId,
         projetName: projetNameMap.get(c.projetId) || '',
         projetRef: projetRefMap.get(c.projetId) || '',
-        categorie: str((f['Catégorie'] as unknown[])?.[0]),
+        categorie: resolveCategorieName((f['Catégorie'] as unknown[])?.[0], categorieIdToName),
         ressourceId,
         ressourceName: ressourceId ? resMap.get(ressourceId) || '' : '',
         montantBudgeteSales: c.montantBudgeteSales,

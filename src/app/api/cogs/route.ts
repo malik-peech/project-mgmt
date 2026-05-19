@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { TABLES } from '@/lib/airtable'
 import { ensureStore, buildLookupMap, upsertRecord } from '@/lib/store'
 import { sanitize } from '@/lib/sanitize'
+import { buildCategoriesCogsMaps, resolveCategorieName, resolveCategorieId } from '@/lib/categories-cogs'
 import type { Cogs } from '@/types'
 
 const BASE_ID = process.env.AIRTABLE_BASE_ID || 'appYFl5MvR7VeL0uB'
@@ -30,8 +31,9 @@ function mapRecord(
   resMap: Map<string, string>,
   projetNameMap: Map<string, string>,
   projetRefMap: Map<string, string>,
-  clientMap?: Map<string, string>,
-  projetsById?: Map<string, { id: string; fields: Record<string, unknown> }>
+  clientMap: Map<string, string> | undefined,
+  projetsById: Map<string, { id: string; fields: Record<string, unknown> }> | undefined,
+  categorieIdToName: Map<string, string>,
 ): Cogs {
   const f = r.fields
   const ressourceIds = f['Ressource'] as string[] | undefined
@@ -52,7 +54,7 @@ function mapRecord(
     projetName: projetId ? projetNameMap.get(projetId) || '' : '',
     projetRef: projetId ? projetRefMap.get(projetId) || '' : '',
     clientName,
-    categorie: str((f['Catégorie'] as unknown[])?.[0]),
+    categorie: resolveCategorieName((f['Catégorie'] as unknown[])?.[0], categorieIdToName),
     ressourceId,
     ressourceName: ressourceId ? resMap.get(ressourceId) || '' : '',
     montantBudgeteSales: num(f['Montant HT budgété (sales)']),
@@ -92,6 +94,7 @@ export async function GET(request: Request) {
     const projetNameMap = buildLookupMap(store.projets, 'Projet')
     const projetRefMap = buildLookupMap(store.projets, 'Project réf')
     const clientMap = buildLookupMap(store.clients, 'Client')
+    const { idToName: categorieIdToName } = buildCategoriesCogsMaps(store)
 
     // Helper: extract singleSelect value (may be string or {id,name})
     const extractSelect = (raw: unknown): string | undefined => {
@@ -169,7 +172,7 @@ export async function GET(request: Request) {
         if (!projets || !projets.includes(projetId)) continue
       }
 
-      cogs.push(mapRecord(r, resMap, projetNameMap, projetRefMap, clientMap, store.projets.byId))
+      cogs.push(mapRecord(r, resMap, projetNameMap, projetRefMap, clientMap, store.projets.byId, categorieIdToName))
     }
 
     // Sort by creation date desc
@@ -209,7 +212,19 @@ export async function POST(request: Request) {
       'Montant HT budgété (sales)': body.montantBudgeteSales,
       'Statut de la dépense': statut,
     }
-    if (body.categorie) fields['Catégorie'] = [body.categorie]
+
+    // Catégorie is a link field → resolve the human-readable name from the form
+    // to the actual record ID in the linked Catégories COGS table.
+    if (body.categorie) {
+      const store = await ensureStore()
+      const { nameToId } = buildCategoriesCogsMaps(store)
+      const recId = resolveCategorieId(String(body.categorie), nameToId)
+      if (recId) {
+        fields['Catégorie'] = [recId]
+      } else {
+        console.warn('[COGS POST] No Catégorie record matches', JSON.stringify(body.categorie), '— COGS will be created without category')
+      }
+    }
     if (body.commentaire) fields['Commentaire COGS'] = body.commentaire
 
     Object.keys(fields).forEach((k) => fields[k] === undefined && delete fields[k])
@@ -217,31 +232,15 @@ export async function POST(request: Request) {
     const apiKey = process.env.AIRTABLE_API_KEY
     if (!apiKey) return NextResponse.json({ error: 'AIRTABLE_API_KEY not set' }, { status: 500 })
 
-    // Direct fetch with typecast so unknown singleSelect/multipleSelects options
-    // (e.g. Catégorie) get created automatically instead of 422'ing.
-    // If Catégorie is a lookup field, we retry without it rather than failing.
-    const doCreate = async (payload: Record<string, unknown>) =>
-      fetch(`https://api.airtable.com/v0/${BASE_ID}/${COGS_TABLE_ID}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ fields: payload, typecast: true }),
-      })
+    const res = await fetch(`https://api.airtable.com/v0/${BASE_ID}/${COGS_TABLE_ID}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fields, typecast: true }),
+    })
 
-    let res = await doCreate(fields)
-    if (!res.ok && 'Catégorie' in fields) {
-      const errTxt = await res.text()
-      if (errTxt.includes('Catégorie') || errTxt.includes('computed')) {
-        const retry: Record<string, unknown> = { ...fields }
-        delete retry['Catégorie']
-        res = await doCreate(retry)
-      } else {
-        console.error('[COGS POST] Airtable error:', res.status, errTxt)
-        return NextResponse.json({ error: errTxt }, { status: res.status })
-      }
-    }
     if (!res.ok) {
       const errTxt = await res.text()
       console.error('[COGS POST] Airtable error:', res.status, errTxt)
