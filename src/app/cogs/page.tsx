@@ -146,6 +146,11 @@ function CogsPage() {
     { key: 'ressources-all', enabled: ready, staleTime: 60_000 }
   )
 
+  const { data: categoriesCogs } = useData<string[]>(
+    ready ? '/api/categories-cogs' : null,
+    { key: 'categories-cogs', enabled: ready, staleTime: 300_000 }
+  )
+
   const cogsList = cogs ?? []
   const projetList = projets ?? []
   const ressourceList = ressources ?? []
@@ -456,20 +461,25 @@ function CogsPage() {
     return list
   }, [cogsList, activeTab, projetFilter, ressourceFilter, categorieFilter, search, sortField, sortDir])
 
-  // All unique categories from resources (for the modal category picker)
-  const allRessourceCategories = useMemo(() => {
-    const set = new Set<string>()
-    for (const r of ressourceList) {
-      if (r.categorie) r.categorie.forEach((c) => set.add(c))
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'))
-  }, [ressourceList])
+  // Modal category options come from the linked Catégories COGS table,
+  // so the value we save matches an existing Airtable record.
+  const allRessourceCategories = useMemo(
+    () => categoriesCogs ?? [],
+    [categoriesCogs]
+  )
 
-  // Resources filtered by selected category in the modal
+  // Resources filtered by selected category in the modal.
+  // Catégories COGS names and Ressources.Catégorie tags are managed separately
+  // in Airtable, so we accept either-direction substring match (case-insensitive)
+  // — e.g. "Cadreur/Monteur" matches a resource tagged "Cadreur".
   const filteredRessources = useMemo(() => {
     if (!formCategorie) return ressourceList
-    return ressourceList.filter(
-      (r) => r.categorie?.some((c) => c === formCategorie)
+    const target = formCategorie.toLowerCase()
+    return ressourceList.filter((r) =>
+      r.categorie?.some((c) => {
+        const tag = c.toLowerCase()
+        return tag === target || tag.includes(target) || target.includes(tag)
+      })
     )
   }, [ressourceList, formCategorie])
 

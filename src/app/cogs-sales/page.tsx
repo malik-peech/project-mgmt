@@ -18,7 +18,7 @@ import {
   Pencil,
   Check,
 } from 'lucide-react'
-import type { Cogs, Projet, Ressource } from '@/types'
+import type { Cogs, Projet } from '@/types'
 
 type View = 'todo' | 'all'
 
@@ -65,7 +65,7 @@ export default function CogsSalesPage() {
 
   const [projets, setProjets] = useState<Projet[]>([])
   const [cogs, setCogs] = useState<Cogs[]>([])
-  const [ressources, setRessources] = useState<Ressource[]>([])
+  const [categoriesCogs, setCategoriesCogs] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
@@ -78,14 +78,14 @@ export default function CogsSalesPage() {
     if (!effectiveSales) return
     setLoading(true)
     try {
-      const [projRes, cogsRes, resRes] = await Promise.all([
+      const [projRes, cogsRes, catRes] = await Promise.all([
         fetch(`/api/projets?sales=${encodeURIComponent(effectiveSales)}&all=1`, { cache: 'no-store' }),
         fetch(`/api/cogs?sales=${encodeURIComponent(effectiveSales)}`, { cache: 'no-store' }),
-        fetch('/api/ressources', { cache: 'no-store' }),
+        fetch('/api/categories-cogs', { cache: 'no-store' }),
       ])
       if (projRes.ok) setProjets(await projRes.json())
       if (cogsRes.ok) setCogs(await cogsRes.json())
-      if (resRes.ok) setRessources(await resRes.json())
+      if (catRes.ok) setCategoriesCogs(await catRes.json())
     } finally {
       setLoading(false)
     }
@@ -107,12 +107,9 @@ export default function CogsSalesPage() {
     return map
   }, [cogs])
 
-  // Unique categories (from Ressources table)
-  const categories = useMemo(() => {
-    const set = new Set<string>()
-    for (const r of ressources) for (const c of r.categorie || []) set.add(c)
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'))
-  }, [ressources])
+  // Categories from the linked Catégories COGS table — these are the exact
+  // names that the Airtable link field expects, so the value will save correctly.
+  const categories = categoriesCogs
 
   const rows = useMemo<ProjetRow[]>(() => {
     return projets
