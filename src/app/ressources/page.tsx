@@ -2,9 +2,10 @@
 
 import { useState, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
-import { Search, Users, Mail, Phone, CreditCard, FileText, ChevronDown, ChevronUp } from 'lucide-react'
+import { Search, Users, Mail, Phone, CreditCard, FileText, ChevronDown, ChevronUp, Plus } from 'lucide-react'
 import { useData } from '@/hooks/useData'
 import type { Ressource } from '@/types'
+import AddPrestataireModal from '@/components/AddPrestataireModal'
 
 const PRIORITY_CATEGORIES = [
   'Cadreur', 'Cadreur/Monteur', 'Concepteur-Rédacteur', 'Droniste',
@@ -48,8 +49,9 @@ export default function RessourcesPage() {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [selected, setSelected] = useState<Ressource | null>(null)
   const [showOtherCategories, setShowOtherCategories] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
 
-  const { data: ressources, loading } = useData<Ressource[]>(
+  const { data: ressources, loading, revalidate } = useData<Ressource[]>(
     ready ? '/api/ressources' : null,
     { key: 'ressources-all', enabled: ready, staleTime: 60_000 }
   )
@@ -102,6 +104,14 @@ export default function RessourcesPage() {
               <h1 className="text-2xl font-bold text-gray-900">Ressources</h1>
               <p className="text-sm text-gray-500 mt-0.5">{list.length} ressource{list.length !== 1 ? 's' : ''} validées</p>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition"
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter une ressource
+            </button>
           </div>
 
           {/* Search */}
@@ -232,6 +242,13 @@ export default function RessourcesPage() {
           )}
         </div>
       </div>
+
+      {/* Add resource modal */}
+      <AddPrestataireModal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onCreated={() => revalidate()}
+      />
 
       {/* Side panel */}
       {selected && (
