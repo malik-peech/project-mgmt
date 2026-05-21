@@ -143,6 +143,16 @@ export async function GET(request: Request) {
               size: a.size,
             }))
           : undefined,
+        bdc: sel(f['BDC']) as Projet['bdc'],
+        numeroCommande: str(f['Numéro de commande']),
+        bonDeCommande: Array.isArray(f['Bon de commande'])
+          ? (f['Bon de commande'] as { url: string; filename: string; type?: string; size?: number }[]).map((a) => ({
+              url: a.url,
+              filename: a.filename,
+              type: a.type,
+              size: a.size,
+            }))
+          : undefined,
         taskIds: f['Task'] as string[] | undefined,
         cogsIds: f['Dépenses (COGS)'] as string[] | undefined,
       })
@@ -168,7 +178,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json()
-    const { id, pm, pm2, daOfficial, pasDeDa, phase, dateFinalisationPrevue, facturable100, briefEffectue, dateBrief, cogsBudget } = body as {
+    const { id, pm, pm2, daOfficial, pasDeDa, phase, dateFinalisationPrevue, facturable100, briefEffectue, dateBrief, cogsBudget, bdc, numeroCommande } = body as {
       id?: string
       pm?: string
       pm2?: string
@@ -180,6 +190,8 @@ export async function PATCH(request: Request) {
       briefEffectue?: boolean
       dateBrief?: string | null
       cogsBudget?: number | null
+      bdc?: string | null
+      numeroCommande?: string | null
     }
 
     if (!id) {
@@ -197,6 +209,8 @@ export async function PATCH(request: Request) {
     if (briefEffectue !== undefined) fields['Brief effectué'] = !!briefEffectue
     if (dateBrief !== undefined) fields['Date de brief (si non)'] = dateBrief || null
     if (cogsBudget !== undefined) fields['COGS - budget (€)'] = typeof cogsBudget === 'number' ? cogsBudget : null
+    if (bdc !== undefined) fields['BDC'] = bdc || null
+    if (numeroCommande !== undefined) fields['Numéro de commande'] = numeroCommande || null
 
     const updated = await updateRecord(TABLES.PROJETS, id, fields as Record<string, string>)
     // Patch store directly with Airtable's response — no full re-fetch.

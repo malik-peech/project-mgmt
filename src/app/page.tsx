@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { Search, Calendar, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, AlertTriangle, TrendingUp, Plus, FileText, Loader2, CheckCircle2, Circle, Clock, MessageSquare, Send } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -11,7 +11,7 @@ import ComboSelect from '@/components/ComboSelect'
 import DatePicker from '@/components/DatePicker'
 import ResizeHandle from '@/components/ResizeHandle'
 import { useColumnWidths } from '@/hooks/useColumnWidths'
-import type { Projet, StatutProjet, Cogs, Task } from '@/types'
+import type { Projet, StatutProjet, Cogs, Task, Attachment, Bdc } from '@/types'
 
 const phaseColors: Record<string, string> = {
   'Démarrage': 'bg-amber-300 text-amber-900',
@@ -53,7 +53,13 @@ const fmt = (n?: number) =>
     ? new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
     : '—'
 
-const statutTabs: (StatutProjet | 'Tous')[] = ['Tous', 'En cours', 'Finalisation', 'Stand-by']
+type StatutTab = StatutProjet | 'Tous' | 'Terminés'
+const statutTabs: StatutTab[] = ['Tous', 'En cours', 'Finalisation', 'Stand-by', 'Terminés']
+
+/** Match the "Terminés" tab: statut Done OR phase Done/Archivé. */
+function isTermine(p: Projet): boolean {
+  return p.statut === 'Done' || p.phase === 'Done' || p.phase === 'Archivé'
+}
 
 /** Parse a YYYY-MM-DD date string as local time (avoids UTC timezone shift) */
 function parseLocalDate(dateStr: string): Date {
@@ -93,7 +99,7 @@ type SortDir = 'asc' | 'desc'
 
 export default function DashboardPage() {
   const { data: session } = useSession()
-  const [activeTab, setActiveTab] = useState<StatutProjet | 'Tous'>('Tous')
+  const [activeTab, setActiveTab] = useState<StatutTab>('Tous')
   const [selectedProjet, setSelectedProjet] = useState<Projet | null>(null)
   const [search, setSearch] = useState('')
   const [agenceFilter, setAgenceFilter] = useState<string>('')
@@ -150,9 +156,10 @@ export default function DashboardPage() {
     ? `pm=${encodeURIComponent(effectivePm)}`
     : ''
 
+  const projetsQuery = [pmParam, 'all=1'].filter(Boolean).join('&')
   const { data: projets, loading, error, revalidate } = useData<Projet[]>(
-    session?.user?.name ? `/api/projets?${pmParam}` : null,
-    { key: `projets-${pmParam}`, enabled: !!session?.user?.name }
+    session?.user?.name ? `/api/projets?${projetsQuery}` : null,
+    { key: `projets-${projetsQuery}`, enabled: !!session?.user?.name }
   )
 
   // Fetch users for PM/DA dropdowns in panel
@@ -199,7 +206,9 @@ export default function DashboardPage() {
 
   const filtered = useMemo(() => {
     let list = allProjets
-    if (activeTab !== 'Tous') list = list.filter((p) => p.statut === activeTab)
+    if (activeTab === 'Terminés') list = list.filter(isTermine)
+    else if (activeTab === 'Tous') list = list.filter((p) => !isTermine(p))
+    else list = list.filter((p) => p.statut === activeTab && !isTermine(p))
     if (agenceFilter) list = list.filter((p) => p.agence === agenceFilter)
     if (pmFilter) list = list.filter((p) => p.pm === pmFilter || p.pm2 === pmFilter)
     if (daFilter) list = list.filter((p) => p.daOfficial === daFilter)
@@ -359,7 +368,12 @@ export default function DashboardPage() {
           {/* Tabs */}
           <div className="flex gap-2 mb-5 overflow-x-auto">
             {statutTabs.map((tab) => {
-              const count = tab === 'Tous' ? allProjets.length : allProjets.filter((p) => p.statut === tab).length
+              const count =
+                tab === 'Terminés'
+                  ? allProjets.filter(isTermine).length
+                  : tab === 'Tous'
+                  ? allProjets.filter((p) => !isTermine(p)).length
+                  : allProjets.filter((p) => p.statut === tab && !isTermine(p)).length
               return (
                 <button
                   key={tab}
@@ -689,6 +703,16 @@ function SidePanel({
   const [localDateFin, setLocalDateFin] = useState(projet.dateFinalisationPrevue || '')
   const [localFacturable, setLocalFacturable] = useState(!!projet.facturable100)
 
+  // Commande section: BDC select, Numéro de commande text, Bon de commande attachments
+  const [localBdc, setLocalBdc] = useState<string>(projet.bdc || '')
+  const [editingBdc, setEditingBdc] = useState(false)
+  const [localNumeroCommande, setLocalNumeroCommande] = useState(projet.numeroCommande || '')
+  const [bonDeCommandeFiles, setBonDeCommandeFiles] = useState<(Attachment & { id?: string })[]>(
+    (projet.bonDeCommande as (Attachment & { id?: string })[] | undefined) || []
+  )
+  const [uploadingBdc, setUploadingBdc] = useState(false)
+  const bdcFileInputRef = useRef<HTMLInputElement | null>(null)
+
   // Reset when project changes
   useEffect(() => {
     setLocalPm(projet.pm || '')
@@ -698,11 +722,15 @@ function SidePanel({
     setLocalPhase(projet.phase || '')
     setLocalDateFin(projet.dateFinalisationPrevue || '')
     setLocalFacturable(!!projet.facturable100)
+    setLocalBdc(projet.bdc || '')
+    setLocalNumeroCommande(projet.numeroCommande || '')
+    setBonDeCommandeFiles((projet.bonDeCommande as (Attachment & { id?: string })[] | undefined) || [])
     setEditingPm(false)
     setEditingPm2(false)
     setEditingDa(false)
     setEditingPhase(false)
-  }, [projet.id, projet.pm, projet.pm2, projet.daOfficial, projet.pasDeDa, projet.phase, projet.dateFinalisationPrevue, projet.facturable100])
+    setEditingBdc(false)
+  }, [projet.id, projet.pm, projet.pm2, projet.daOfficial, projet.pasDeDa, projet.phase, projet.dateFinalisationPrevue, projet.facturable100, projet.bdc, projet.numeroCommande, projet.bonDeCommande])
 
   // Fetch tasks for this project (open + done, so we can show today's completed tasks)
   const { data: projectTasks, revalidate: revalidateProjectTasks } = useData<Task[]>(
@@ -782,7 +810,7 @@ function SidePanel({
   }
 
   const updateProjetField = async (
-    field: 'pm' | 'pm2' | 'daOfficial' | 'pasDeDa' | 'phase' | 'dateFinalisationPrevue' | 'facturable100',
+    field: 'pm' | 'pm2' | 'daOfficial' | 'pasDeDa' | 'phase' | 'dateFinalisationPrevue' | 'facturable100' | 'bdc' | 'numeroCommande',
     value: string | boolean,
   ) => {
     try {
@@ -807,6 +835,42 @@ function SidePanel({
       onTasksChanged()
     } catch {
       // silent
+    }
+  }
+
+  // Upload a "Bon de commande" attachment. Reuses the projets attachment endpoint
+  // exposed via /api/onboarding/[id]/upload (whitelist allows the "Bon de commande" field).
+  const uploadBonDeCommande = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setUploadingBdc(true)
+    try {
+      const fd = new FormData()
+      for (const f of Array.from(files)) fd.append('files', f)
+      const res = await fetch(
+        `/api/onboarding/${projet.id}/upload?field=${encodeURIComponent('Bon de commande')}`,
+        { method: 'POST', body: fd },
+      )
+      if (res.ok) {
+        const json = await res.json()
+        const updated = (json.fields?.['Bon de commande'] as (Attachment & { id?: string })[]) || []
+        setBonDeCommandeFiles(updated)
+        onTasksChanged()
+      }
+    } finally {
+      setUploadingBdc(false)
+      if (bdcFileInputRef.current) bdcFileInputRef.current.value = ''
+    }
+  }
+
+  const deleteBonDeCommande = async (att: Attachment & { id?: string }) => {
+    const params = new URLSearchParams()
+    if (att.id) params.set('attachmentId', att.id)
+    else params.set('attachmentUrl', att.url)
+    params.set('field', 'Bon de commande')
+    const res = await fetch(`/api/onboarding/${projet.id}/upload?${params.toString()}`, { method: 'DELETE' })
+    if (res.ok) {
+      setBonDeCommandeFiles((curr) => curr.filter((a) => a.url !== att.url))
+      onTasksChanged()
     }
   }
 
@@ -1042,6 +1106,118 @@ function SidePanel({
           </div>
         </div>
       )}
+
+      {/* Commande */}
+      <div className="mb-6">
+        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Commande</h3>
+        <div className="space-y-3">
+          {/* BDC select */}
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">BDC</label>
+            {editingBdc ? (
+              <select
+                value={localBdc}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setLocalBdc(v)
+                  updateProjetField('bdc', v)
+                  setEditingBdc(false)
+                }}
+                onBlur={() => setEditingBdc(false)}
+                autoFocus
+                className="w-full text-sm border border-indigo-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              >
+                <option value="">—</option>
+                {(['Numéro à référencer', 'Déposer sur Chorus', 'Pas de bon de commande'] as Bdc[]).map((b) => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditingBdc(true)}
+                className="w-full text-left text-sm px-2.5 py-1.5 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 hover:border-gray-300 transition"
+              >
+                {localBdc || <span className="text-gray-400">Choisir…</span>}
+              </button>
+            )}
+          </div>
+
+          {/* Numéro de commande */}
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">Numéro de commande</label>
+            <input
+              type="text"
+              value={localNumeroCommande}
+              onChange={(e) => setLocalNumeroCommande(e.target.value)}
+              onBlur={() => {
+                if ((localNumeroCommande || '') !== (projet.numeroCommande || '')) {
+                  updateProjetField('numeroCommande', localNumeroCommande)
+                }
+              }}
+              placeholder="Numéro…"
+              className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300"
+            />
+          </div>
+
+          {/* Bon de commande (attachments) */}
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">Bon de commande</label>
+            <div className="space-y-1.5 mb-2">
+              {bonDeCommandeFiles.length === 0 && (
+                <p className="text-xs text-gray-400 italic">Aucun fichier</p>
+              )}
+              {bonDeCommandeFiles.map((doc) => (
+                <div
+                  key={doc.id || doc.url}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg group"
+                >
+                  <FileText className="w-4 h-4 text-gray-400 shrink-0" />
+                  <button
+                    type="button"
+                    onClick={() => setViewer({ url: doc.url, filename: doc.filename })}
+                    className="text-sm text-gray-700 hover:text-indigo-700 truncate flex-1 text-left"
+                  >
+                    {doc.filename}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteBonDeCommande(doc)}
+                    className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition shrink-0"
+                    title="Supprimer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <input
+              ref={bdcFileInputRef}
+              type="file"
+              multiple
+              onChange={(e) => uploadBonDeCommande(e.target.files)}
+              className="hidden"
+              id={`bdc-upload-${projet.id}`}
+            />
+            <label
+              htmlFor={`bdc-upload-${projet.id}`}
+              className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 cursor-pointer transition"
+            >
+              {uploadingBdc ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Envoi…
+                </>
+              ) : (
+                <>
+                  <Plus className="w-3.5 h-3.5" />
+                  Ajouter un fichier
+                </>
+              )}
+            </label>
+          </div>
+        </div>
+      </div>
 
       {/* Tasks */}
       <div className="mb-6">
