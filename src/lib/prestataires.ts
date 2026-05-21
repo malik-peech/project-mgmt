@@ -32,12 +32,13 @@ const CATEGORIES_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
 export async function fetchPrestataireCategories(): Promise<{ id: string; name: string }[]> {
   const now = Date.now()
-  if (categoriesCache && now - categoriesCache.ts < CATEGORIES_TTL_MS) {
+  if (categoriesCache && now - categoriesCache.ts < CATEGORIES_TTL_MS && categoriesCache.items.length > 0) {
     return categoriesCache.items
   }
 
   const items: { id: string; name: string }[] = []
   let offset: string | undefined
+  let firstRecordLogged = false
 
   do {
     const url = new URL(`${API_BASE}/${PRESTATAIRES_BASE_ID}/${CATEGORIES_TABLE_ID}`)
@@ -52,23 +53,44 @@ export async function fetchPrestataireCategories(): Promise<{ id: string; name: 
     const json = (await res.json()) as { records: AirtableRecord[]; offset?: string }
 
     for (const r of json.records) {
-      // Primary field on the Categories table — try common candidates.
       const f = r.fields
-      const name =
-        (typeof f['Name'] === 'string' && f['Name']) ||
-        (typeof f['Catégorie'] === 'string' && f['Catégorie']) ||
-        (typeof f['Categorie'] === 'string' && f['Categorie']) ||
-        (typeof f['Title'] === 'string' && f['Title']) ||
-        ''
-      if (name) items.push({ id: r.id, name: String(name) })
+
+      // Log the first record's field names so we can debug in Coolify logs if
+      // the primary field is named something unexpected.
+      if (!firstRecordLogged) {
+        console.log('[prestataires/categories] first record field keys:', Object.keys(f))
+        firstRecordLogged = true
+      }
+
+      const name = extractPrimaryName(f)
+      if (name) items.push({ id: r.id, name })
     }
 
     offset = json.offset
   } while (offset)
 
   items.sort((a, b) => a.name.localeCompare(b.name))
-  categoriesCache = { items, ts: now }
+  // Don't cache empty results — they're almost always a misconfiguration we want
+  // the next call to retry once the issue is fixed.
+  if (items.length > 0) categoriesCache = { items, ts: now }
   return items
+}
+
+/**
+ * Find the primary-field-like value of a record. Tries known names first,
+ * then falls back to the first non-empty string field in the record so the
+ * dropdown still works regardless of the table's primary-field name.
+ */
+function extractPrimaryName(fields: Record<string, unknown>): string {
+  const candidates = ['Name', 'Catégorie', 'Categorie', 'Category', 'Title', 'Titre', 'Nom']
+  for (const k of candidates) {
+    const v = fields[k]
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  }
+  for (const v of Object.values(fields)) {
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  }
+  return ''
 }
 
 // ── Create a Prestataire record ──
