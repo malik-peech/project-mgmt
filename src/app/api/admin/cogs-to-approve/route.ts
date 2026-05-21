@@ -164,7 +164,7 @@ export async function GET() {
         projetId: c.projetId,
         projetName: projetNameMap.get(c.projetId) || '',
         projetRef: projetRefMap.get(c.projetId) || '',
-        categorie: resolveCategorieName((f['Catégorie'] as unknown[])?.[0], categorieIdToName),
+        categorie: resolveCategorieName((f['Catégorie officielle'] as unknown[])?.[0], categorieIdToName),
         ressourceId,
         ressourceName: ressourceId ? resMap.get(ressourceId) || '' : '',
         montantBudgeteSales: c.montantBudgeteSales,

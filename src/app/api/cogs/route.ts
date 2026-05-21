@@ -54,7 +54,7 @@ function mapRecord(
     projetName: projetId ? projetNameMap.get(projetId) || '' : '',
     projetRef: projetId ? projetRefMap.get(projetId) || '' : '',
     clientName,
-    categorie: resolveCategorieName((f['Catégorie'] as unknown[])?.[0], categorieIdToName),
+    categorie: resolveCategorieName((f['Catégorie officielle'] as unknown[])?.[0], categorieIdToName),
     ressourceId,
     ressourceName: ressourceId ? resMap.get(ressourceId) || '' : '',
     montantBudgeteSales: num(f['Montant HT budgété (sales)']),
@@ -220,7 +220,7 @@ export async function POST(request: Request) {
       const { nameToId } = buildCategoriesCogsMaps(store)
       const recId = resolveCategorieId(String(body.categorie), nameToId)
       if (recId) {
-        fields['Catégorie'] = [recId]
+        fields['Catégorie officielle'] = [recId]
       } else {
         console.warn('[COGS POST] No Catégorie record matches', JSON.stringify(body.categorie), '— COGS will be created without category')
       }
