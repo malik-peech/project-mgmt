@@ -17,9 +17,20 @@ import {
 } from 'lucide-react'
 import OnboardingPanel from '@/components/OnboardingPanel'
 import type { Projet } from '@/types'
-import { missingOnboardingFields } from '@/lib/onboarding'
+import {
+  missingOnboardingFields,
+  ONBOARDING_CATEGORIES,
+  missingCategoriesFor,
+  otherMissingFields,
+  type OnboardingCategoryId,
+  type OnboardingField,
+} from '@/lib/onboarding'
 
-type OnboardingProjet = Projet & { isOnboarded: boolean; missingCount: number }
+type OnboardingProjet = Projet & {
+  isOnboarded: boolean
+  missingCount: number
+  missing?: OnboardingField[]
+}
 
 type View = 'toOnboard' | 'archive'
 
@@ -125,15 +136,43 @@ export default function OnboardingPage() {
 
   const visibleProjets = useMemo(() => {
     const filtered = projets.filter((p) => (view === 'toOnboard' ? !p.isOnboarded : p.isOnboarded))
-    if (!search.trim()) return filtered
+    const withMissing = filtered.map((p) => ({
+      ...p,
+      missing: p.isOnboarded ? [] : missingOnboardingFields(p),
+    }))
+    if (!search.trim()) return withMissing
     const q = search.toLowerCase()
-    return filtered.filter(
+    return withMissing.filter(
       (p) =>
         p.nom?.toLowerCase().includes(q) ||
         p.ref?.toLowerCase().includes(q) ||
         p.clientName?.toLowerCase().includes(q)
     )
   }, [projets, view, search])
+
+  /**
+   * Group "à onboarder" projets by category. A projet appears in EVERY
+   * category where it has ≥1 missing field. Projets whose missing fields
+   * don't fall in any of the 4 user-defined buckets land in "Autres".
+   */
+  const groupedToOnboard = useMemo(() => {
+    if (view !== 'toOnboard') return null
+    const byCategory = new Map<OnboardingCategoryId | 'autres', OnboardingProjet[]>()
+    for (const cat of ONBOARDING_CATEGORIES) byCategory.set(cat.id, [])
+    byCategory.set('autres', [])
+
+    for (const p of visibleProjets) {
+      const missing = p.missing || []
+      const cats = missingCategoriesFor(missing)
+      const others = otherMissingFields(missing)
+      if (cats.length === 0 && others.length > 0) {
+        byCategory.get('autres')!.push(p)
+      } else {
+        for (const cat of cats) byCategory.get(cat)!.push(p)
+      }
+    }
+    return byCategory
+  }, [visibleProjets, view])
 
   if (status === 'loading' || (loading && projets.length === 0)) {
     return (
@@ -258,11 +297,51 @@ export default function OnboardingPage() {
             </>
           )}
         </div>
-      ) : (
+      ) : view === 'archive' ? (
         <div className="space-y-2">
           {visibleProjets.map((p) => (
             <ProjetCard key={p.id} projet={p} onClick={() => setSelected(p)} />
           ))}
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {ONBOARDING_CATEGORIES.map((cat) => {
+            const list = groupedToOnboard?.get(cat.id) || []
+            if (list.length === 0) return null
+            return (
+              <CategorySection
+                key={cat.id}
+                title={cat.label}
+                sublabel={cat.sublabel}
+                count={list.length}
+                color={cat.color}
+              >
+                {list.map((p) => (
+                  <ProjetCard
+                    key={`${cat.id}-${p.id}`}
+                    projet={p}
+                    onClick={() => setSelected(p)}
+                  />
+                ))}
+              </CategorySection>
+            )
+          })}
+          {(groupedToOnboard?.get('autres')?.length || 0) > 0 && (
+            <CategorySection
+              title="Autres infos manquantes"
+              sublabel="Mois de signature, client, agence, équipe…"
+              count={groupedToOnboard!.get('autres')!.length}
+              color="gray"
+            >
+              {groupedToOnboard!.get('autres')!.map((p) => (
+                <ProjetCard
+                  key={`autres-${p.id}`}
+                  projet={p}
+                  onClick={() => setSelected(p)}
+                />
+              ))}
+            </CategorySection>
+          )}
         </div>
       )}
 
@@ -368,6 +447,42 @@ function StatCard({
         <p className="text-2xl font-bold text-gray-900 leading-none mt-0.5">{value}</p>
       </div>
     </button>
+  )
+}
+
+function CategorySection({
+  title,
+  sublabel,
+  count,
+  color,
+  children,
+}: {
+  title: string
+  sublabel?: string
+  count: number
+  color: 'amber' | 'purple' | 'pink' | 'cyan' | 'gray'
+  children: React.ReactNode
+}) {
+  const colorMap = {
+    amber: { dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800' },
+    purple: { dot: 'bg-purple-500', badge: 'bg-purple-100 text-purple-800' },
+    pink: { dot: 'bg-pink-500', badge: 'bg-pink-100 text-pink-800' },
+    cyan: { dot: 'bg-cyan-500', badge: 'bg-cyan-100 text-cyan-800' },
+    gray: { dot: 'bg-gray-400', badge: 'bg-gray-100 text-gray-700' },
+  }
+  const c = colorMap[color]
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-2 px-1">
+        <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+        <h2 className="text-sm font-bold text-gray-900">{title}</h2>
+        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${c.badge}`}>
+          {count}
+        </span>
+        {sublabel && <span className="text-xs text-gray-400">· {sublabel}</span>}
+      </div>
+      <div className="space-y-2">{children}</div>
+    </section>
   )
 }
 

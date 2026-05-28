@@ -67,6 +67,65 @@ export function isOnboarded(p: Projet): boolean {
   return missingOnboardingFields(p).length === 0
 }
 
+/**
+ * Visual buckets shown on the "À onboarder" page to help Sales triage.
+ * A projet can belong to multiple buckets if it has missing fields in several.
+ * Fields not covered by any bucket fall into the implicit "Autres" group.
+ */
+export const ONBOARDING_CATEGORIES = [
+  {
+    id: 'devis',
+    label: 'Devis manquant',
+    sublabel: 'Numéro et/ou pièce jointe',
+    fields: ['numeroDevis', 'devisSigne'] as OnboardingField[],
+    color: 'amber',
+  },
+  {
+    id: 'commande',
+    label: 'Commande / BDC',
+    sublabel: 'Sélecteur BDC et/ou numéro de commande',
+    fields: ['bdc', 'numeroCommande'] as OnboardingField[],
+    color: 'purple',
+  },
+  {
+    id: 'brief',
+    label: 'Brief non effectué',
+    sublabel: '',
+    fields: ['briefEffectue'] as OnboardingField[],
+    color: 'pink',
+  },
+  {
+    id: 'budget',
+    label: 'Budget & date de finalisation',
+    sublabel: 'COGS, Time, Travel, date prévue',
+    fields: [
+      'cogsBudget',
+      'timeCreaBudget',
+      'travelBudget',
+      'timeProdBudget',
+      'timeDaBudget',
+      'dateFinalisationPrevue',
+    ] as OnboardingField[],
+    color: 'cyan',
+  },
+] as const
+
+export type OnboardingCategoryId = typeof ONBOARDING_CATEGORIES[number]['id']
+
+/** Returns the ids of categories where the projet has ≥1 missing field. */
+export function missingCategoriesFor(missing: OnboardingField[]): OnboardingCategoryId[] {
+  const set = new Set(missing)
+  return ONBOARDING_CATEGORIES.filter((cat) => cat.fields.some((f) => set.has(f))).map((c) => c.id)
+}
+
+/** Returns missing fields that don't belong to any of the visual categories. */
+export function otherMissingFields(missing: OnboardingField[]): OnboardingField[] {
+  const grouped = new Set<OnboardingField>(
+    ONBOARDING_CATEGORIES.flatMap((c) => c.fields)
+  )
+  return missing.filter((f) => !grouped.has(f))
+}
+
 export const ONBOARDING_FIELD_LABELS: Record<OnboardingField, string> = {
   moisSignature: 'Mois signature',
   currency: 'Currency',
