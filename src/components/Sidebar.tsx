@@ -166,6 +166,8 @@ export default function Sidebar() {
   const showABriefer = isPM
   // Assistant IA de références Belle Base — Sales (tous), Admin, PM+Sales.
   const showAssistant = isSales || isAdmin
+  // Belle Base (catalogue de références) — Sales, Admin et PM.
+  const showBelleBase = isSales || isAdmin || isPM
 
   // Show PM welcome modal once per session on first login for PMs only.
   useEffect(() => {
@@ -253,13 +255,14 @@ export default function Sidebar() {
   // Assistant shown in the common nav only for non-sales-only users
   // (sales-only already have it in salesOnlyNavItems above).
   const showAssistantInCommon = showAssistant && !isSalesOnly
+  const showBelleBaseInCommon = showBelleBase && !isSalesOnly
   // Sales users (sales-only or PM/DA/Admin also Sales) get the fast Sales COGS entry view.
   const showCogsSales = isSales || isAdmin
   const allNavItems: NavItem[] = [
     ...baseItems,
     ...(showCogsSales ? [{ href: '/cogs-sales', label: 'Saisie COGS', icon: Wallet }] : []),
     ...(showAssistantInCommon ? [{ href: '/assistant', label: 'Assistant', icon: Sparkles }] : []),
-    ...(showAssistantInCommon ? [{ href: '/refs', label: 'Belle Base', icon: Film }] : []),
+    ...(showBelleBaseInCommon ? [{ href: '/refs', label: 'Belle Base', icon: Film }] : []),
     ...(showABriefer ? [{ href: '/a-briefer', label: 'Brief client à planifier', icon: ClipboardCheck, badge: aBrieferCount }] : []),
     ...(showOnboarding && !isSalesOnly ? [{ href: '/intentions', label: 'Intentions', icon: Lightbulb, badge: intentionsToOnboardCount }] : []),
     ...(showOnboarding ? [{ href: '/onboarding', label: 'Onboarding', icon: Rocket, badge: onboardingCount?.toOnboard || 0 }] : []),
