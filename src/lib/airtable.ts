@@ -19,6 +19,7 @@ export const TABLES = {
   CLIENTS: 'Clients',
   MENSUEL: 'Mensuel',
   CATEGORIES_COGS: 'tblGDfQgUxD2pSoQf',
+  UPSELLS: 'tbldmU1cSz2n66N8C',
 } as const
 
 export type TableName = (typeof TABLES)[keyof typeof TABLES]

@@ -10,6 +10,15 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.25',
+    date: '22/07/2026',
+    changes: [
+      'Onboarding : nouvel onglet "Upsells BDC" — les upsells signés depuis 2026 (sans BDC et sans numéro) remontent pour le sales concerné',
+      'Upsells : le sales peut renseigner le "Num BDC Upsell", cocher "Pas de BDC" ou joindre le Devis / BDC Upsell directement depuis l\'interface',
+      'Upsells : deux sections À compléter / Complétés, l\'upsell bascule en Complété dès qu\'un numéro est saisi ou "Pas de BDC" coché',
+    ],
+  },
+  {
     version: '1.24',
     date: '28/04/2026',
     changes: [

@@ -14,9 +14,12 @@ import {
   Circle,
   Filter,
   X,
+  TrendingUp,
+  Paperclip,
 } from 'lucide-react'
 import OnboardingPanel from '@/components/OnboardingPanel'
-import type { Projet } from '@/types'
+import UpsellPanel from '@/components/UpsellPanel'
+import type { Projet, Upsell } from '@/types'
 import {
   missingOnboardingFields,
   ONBOARDING_CATEGORIES,
@@ -32,7 +35,7 @@ type OnboardingProjet = Projet & {
   missing?: OnboardingField[]
 }
 
-type View = 'toOnboard' | 'archive'
+type View = 'toOnboard' | 'archive' | 'upsells'
 
 interface Client { id: string; name: string }
 interface Mensuel { id: string; name: string }
@@ -66,6 +69,10 @@ export default function OnboardingPage() {
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<OnboardingProjet | null>(null)
 
+  const [upsells, setUpsells] = useState<Upsell[]>([])
+  const [upsellCounts, setUpsellCounts] = useState({ total: 0, toComplete: 0, completed: 0 })
+  const [selectedUpsell, setSelectedUpsell] = useState<Upsell | null>(null)
+
   const [clients, setClients] = useState<Client[]>([])
   const [mensuels, setMensuels] = useState<Mensuel[]>([])
   const [users, setUsers] = useState<{ name: string; role: string }[]>([])
@@ -80,16 +87,22 @@ export default function OnboardingPage() {
     if (!effectiveSales) return
     setLoading(true)
     try {
-      const [projRes, clientsRes, mensuelsRes, usersRes] = await Promise.all([
+      const [projRes, clientsRes, mensuelsRes, usersRes, upsellsRes] = await Promise.all([
         fetch(`/api/onboarding?sales=${encodeURIComponent(effectiveSales)}`, { cache: 'no-store' }),
         fetch('/api/clients'),
         fetch('/api/mensuel'),
         fetch('/api/users'),
+        fetch(`/api/upsells?sales=${encodeURIComponent(effectiveSales)}`, { cache: 'no-store' }),
       ])
       if (projRes.ok) {
         const data = await projRes.json()
         setProjets(data.projets || [])
         setCounts(data.counts || { total: 0, toOnboard: 0, onboarded: 0 })
+      }
+      if (upsellsRes.ok) {
+        const data = await upsellsRes.json()
+        setUpsells(data.upsells || [])
+        setUpsellCounts(data.counts || { total: 0, toComplete: 0, completed: 0 })
       }
       if (clientsRes.ok) setClients(await clientsRes.json())
       if (mensuelsRes.ok) setMensuels(await mensuelsRes.json())
@@ -182,8 +195,8 @@ export default function OnboardingPage() {
     )
   }
 
-  // Not sales and not admin and no projets → friendly message
-  const hasAnySales = counts.total > 0
+  // Not sales and not admin and no projets/upsells → friendly message
+  const hasAnySales = counts.total > 0 || upsellCounts.total > 0
   if (!hasAnySales && !isAdmin) {
     return (
       <div className="max-w-5xl mx-auto px-6 py-12">
@@ -242,7 +255,7 @@ export default function OnboardingPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard
           label="À onboarder"
           value={counts.toOnboard}
@@ -260,7 +273,15 @@ export default function OnboardingPage() {
           onClick={() => setView('archive')}
         />
         <StatCard
-          label="Total"
+          label="Upsells BDC"
+          value={upsellCounts.toComplete}
+          icon={TrendingUp}
+          color="purple"
+          active={view === 'upsells'}
+          onClick={() => setView('upsells')}
+        />
+        <StatCard
+          label="Total projets"
           value={counts.total}
           icon={Rocket}
           color="indigo"
@@ -268,21 +289,29 @@ export default function OnboardingPage() {
       </div>
 
       {/* Search */}
-      <div className="flex items-center gap-2 mb-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher…"
-            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-          />
+      {view !== 'upsells' && (
+        <div className="flex items-center gap-2 mb-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher…"
+              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* List */}
-      {visibleProjets.length === 0 ? (
+      {view === 'upsells' ? (
+        <UpsellsView
+          upsells={upsells}
+          counts={upsellCounts}
+          onSelect={setSelectedUpsell}
+        />
+      ) : visibleProjets.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center">
           {view === 'toOnboard' ? (
             <>
@@ -385,6 +414,30 @@ export default function OnboardingPage() {
           onClientCreated={(c) => setClients((prev) => [...prev, c].sort((a, b) => a.name.localeCompare(b.name)))}
         />
       )}
+
+      {/* Upsell panel */}
+      {selectedUpsell && (
+        <UpsellPanel
+          upsell={selectedUpsell}
+          onClose={() => setSelectedUpsell(null)}
+          onSaved={(updated) => {
+            setUpsells((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
+            setUpsellCounts((c) => {
+              const prev = upsells.find((u) => u.id === updated.id)
+              const wasDone = prev?.isDone ?? false
+              const isDone = updated.isDone
+              const toCompleteDelta = (wasDone ? 0 : 1) - (isDone ? 0 : 1)
+              return {
+                total: c.total,
+                toComplete: c.toComplete - toCompleteDelta,
+                completed: c.completed + toCompleteDelta,
+              }
+            })
+            setSelectedUpsell(null)
+            fetchData()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -403,7 +456,7 @@ function StatCard({
   value: number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   icon: any
-  color: 'amber' | 'green' | 'indigo'
+  color: 'amber' | 'green' | 'indigo' | 'purple'
   active?: boolean
   onClick?: () => void
 }) {
@@ -425,6 +478,12 @@ function StatCard({
       icon: 'text-indigo-600',
       border: 'border-indigo-200',
       activeBorder: 'border-indigo-500 ring-2 ring-indigo-200',
+    },
+    purple: {
+      bg: 'bg-purple-50',
+      icon: 'text-purple-600',
+      border: 'border-purple-200',
+      activeBorder: 'border-purple-500 ring-2 ring-purple-200',
     },
   }
   const c = colorMap[color]
@@ -544,6 +603,146 @@ function ProjetCard({ projet, onClick }: { projet: OnboardingProjet; onClick: ()
           </span>
         ) : (
           <span className="text-xs font-semibold text-indigo-600">Compléter</span>
+        )}
+        <ChevronRight className="w-4 h-4 text-gray-400" />
+      </div>
+    </button>
+  )
+}
+
+function formatMontant(montant?: number, currency?: string) {
+  if (montant == null) return null
+  try {
+    return new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency: currency || 'EUR',
+      maximumFractionDigits: 0,
+    }).format(montant)
+  } catch {
+    return `${montant} ${currency || '€'}`
+  }
+}
+
+function UpsellsView({
+  upsells,
+  counts,
+  onSelect,
+}: {
+  upsells: Upsell[]
+  counts: { total: number; toComplete: number; completed: number }
+  onSelect: (u: Upsell) => void
+}) {
+  const toComplete = upsells.filter((u) => !u.isDone)
+  const completed = upsells.filter((u) => u.isDone)
+
+  if (counts.total === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center">
+        <TrendingUp className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+        <p className="text-sm text-gray-500">Aucun upsell à traiter pour le moment.</p>
+        <p className="text-xs text-gray-400 mt-1">
+          Les upsells signés depuis 2026 apparaîtront ici pour renseigner le BDC.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-8">
+      <p className="text-xs text-gray-500 -mt-2">
+        Renseignez le numéro de BDC et joignez le devis / bon de commande pour chaque upsell.
+      </p>
+
+      {toComplete.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-2 px-1">
+            <span className="w-2 h-2 rounded-full bg-purple-500" />
+            <h2 className="text-sm font-bold text-gray-900">À compléter</h2>
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-800">
+              {toComplete.length}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {toComplete.map((u) => (
+              <UpsellCard key={u.id} upsell={u} onClick={() => onSelect(u)} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {completed.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-2 px-1">
+            <span className="w-2 h-2 rounded-full bg-green-500" />
+            <h2 className="text-sm font-bold text-gray-900">Complétés</h2>
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-800">
+              {completed.length}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {completed.map((u) => (
+              <UpsellCard key={u.id} upsell={u} onClick={() => onSelect(u)} />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
+function UpsellCard({ upsell, onClick }: { upsell: Upsell; onClick: () => void }) {
+  const montant = formatMontant(upsell.montantHT, upsell.currency)
+  const nbFiles = upsell.devisBdc?.length || 0
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:border-purple-300 hover:shadow-sm transition flex items-center gap-4"
+    >
+      {/* Ref */}
+      <div className="shrink-0">
+        <span className="inline-flex items-center px-2 py-1 rounded bg-purple-50 text-purple-700 text-xs font-semibold">
+          {upsell.projetRef || '—'}
+        </span>
+      </div>
+
+      {/* Description + client */}
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-gray-900 text-sm truncate">
+          {upsell.description || upsell.projetNom || 'Upsell'}
+        </p>
+        <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+          {upsell.clientName && <span className="truncate">{upsell.clientName}</span>}
+          {montant && <span className="font-medium text-gray-600">· {montant} HT</span>}
+          {upsell.agence && (
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${agenceColors[upsell.agence] || 'bg-gray-100 text-gray-600'}`}>
+              {upsell.agence}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Status hints */}
+      <div className="hidden md:flex items-center gap-3 shrink-0 text-xs">
+        {upsell.pasDeBdc ? (
+          <span className="text-gray-400">Pas de BDC</span>
+        ) : upsell.numBdc ? (
+          <span className="text-gray-600 font-medium truncate max-w-[140px]">BDC {upsell.numBdc}</span>
+        ) : (
+          <span className="text-purple-600 font-semibold">Num BDC manquant</span>
+        )}
+        {nbFiles > 0 && (
+          <span className="inline-flex items-center gap-1 text-gray-500">
+            <Paperclip className="w-3 h-3" /> {nbFiles}
+          </span>
+        )}
+      </div>
+
+      {/* CTA */}
+      <div className="shrink-0 flex items-center gap-2">
+        {upsell.isDone ? (
+          <CheckCircle2 className="w-4 h-4 text-green-500" />
+        ) : (
+          <span className="text-xs font-semibold text-purple-600">Compléter</span>
         )}
         <ChevronRight className="w-4 h-4 text-gray-400" />
       </div>

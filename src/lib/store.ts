@@ -32,6 +32,7 @@ type Store = {
   clients: StoreTable
   mensuel: StoreTable
   categoriesCogs: StoreTable
+  upsells: StoreTable
 }
 
 // ── Singleton ──
@@ -79,10 +80,11 @@ async function syncAll() {
 
   try {
     // Fetch in 2 batches to stay under Airtable rate limit (5 req/s)
-    const [projets, tasks, cogs] = await Promise.all([
+    const [projets, tasks, cogs, upsells] = await Promise.all([
       fetchTable(TABLES.PROJETS),
       fetchTable(TABLES.TASKS),
       fetchTable(TABLES.COGS),
+      fetchTable(TABLES.UPSELLS),
     ])
 
     // Small delay between batches
@@ -105,19 +107,21 @@ async function syncAll() {
         clients: emptyTable(),
         mensuel: emptyTable(),
         categoriesCogs: emptyTable(),
+        upsells: emptyTable(),
       }
     }
 
     if (projets.length > 0 || !store.projets.lastSync) store.projets = buildTable(projets)
     if (tasks.length > 0 || !store.tasks.lastSync) store.tasks = buildTable(tasks)
     if (cogs.length > 0 || !store.cogs.lastSync) store.cogs = buildTable(cogs)
+    if (upsells.length > 0 || !store.upsells.lastSync) store.upsells = buildTable(upsells)
     if (ressources.length > 0 || !store.ressources.lastSync) store.ressources = buildTable(ressources)
     if (clients.length > 0 || !store.clients.lastSync) store.clients = buildTable(clients)
     if (mensuel.length > 0 || !store.mensuel.lastSync) store.mensuel = buildTable(mensuel)
     if (categoriesCogs.length > 0 || !store.categoriesCogs.lastSync) store.categoriesCogs = buildTable(categoriesCogs)
 
     console.log(
-      `[Store] Synced: ${projets.length} projets, ${tasks.length} tasks, ${cogs.length} cogs, ${ressources.length} ressources, ${clients.length} clients, ${mensuel.length} mensuel, ${categoriesCogs.length} cat.cogs`
+      `[Store] Synced: ${projets.length} projets, ${tasks.length} tasks, ${cogs.length} cogs, ${ressources.length} ressources, ${clients.length} clients, ${mensuel.length} mensuel, ${categoriesCogs.length} cat.cogs, ${upsells.length} upsells`
     )
   } catch (err: unknown) {
     console.error('[Store] Sync error:', err)
@@ -192,6 +196,7 @@ function tableNameToKey(tableName: string): keyof Store | null {
     case TABLES.CLIENTS: return 'clients'
     case TABLES.MENSUEL: return 'mensuel'
     case TABLES.CATEGORIES_COGS: return 'categoriesCogs'
+    case TABLES.UPSELLS: return 'upsells'
     default: return null
   }
 }

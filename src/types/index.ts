@@ -184,6 +184,25 @@ export interface BelleBaseEntry {
   projetRefs: string[]        // Project réf values (for matching against PM base)
 }
 
+// ── Upsell (Upsell & Contracts table) ──
+export interface Upsell {
+  id: string
+  projetRef?: string
+  projetNom?: string
+  clientName?: string
+  montantHT?: number
+  currency?: string
+  description?: string
+  statut?: string
+  agence?: string
+  sales?: string
+  createdAt?: string          // "create" field (createdTime)
+  numBdc?: string             // Num BDC Upsell (singleLineText)
+  pasDeBdc?: boolean          // Pas de BDC upsell (checkbox)
+  devisBdc?: Attachment[]     // Devis / BDC Upsell (attachments)
+  isDone: boolean             // numBdc filled OR pasDeBdc checked
+}
+
 // ── User (session) ──
 export type UserRole = 'Admin' | 'PM' | 'DA' | 'Sales'
 
