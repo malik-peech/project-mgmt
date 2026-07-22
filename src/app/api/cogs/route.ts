@@ -88,6 +88,10 @@ export async function GET(request: Request) {
     const salesFilter = searchParams.get('sales')
     const statutFilter = searchParams.get('statut')
     const projetId = searchParams.get('projetId')
+    // "Intentions" mode: return only COGS linked to the generic "Intention"
+    // project (réf 1789), ignoring PM/DA scoping. Used by the dedicated
+    // "COGS intentions" block on the COGS page.
+    const intentionsOnly = searchParams.get('intentions') === '1'
 
     // Build lookup maps from store
     const resMap = buildLookupMap(store.ressources, 'Name')
@@ -95,6 +99,14 @@ export async function GET(request: Request) {
     const projetRefMap = buildLookupMap(store.projets, 'Project réf')
     const clientMap = buildLookupMap(store.clients, 'Client')
     const { idToName: categorieIdToName } = buildCategoriesCogsMaps(store)
+
+    // Project IDs of the generic "Intention" project (réf 1789). COGS linked to
+    // these are surfaced in a separate block, not in the scoped PM/DA lists.
+    const INTENTIONS_REF = '1789'
+    const intentionProjetIds = new Set<string>()
+    for (const [pid, ref] of projetRefMap) {
+      if (String(ref).trim() === INTENTIONS_REF) intentionProjetIds.add(pid)
+    }
 
     // Helper: extract singleSelect value (may be string or {id,name})
     const extractSelect = (raw: unknown): string | undefined => {
@@ -138,6 +150,20 @@ export async function GET(request: Request) {
 
     for (const r of store.cogs.records) {
       const f = r.fields
+
+      const projetsOfCog = f['Projet'] as string[] | undefined
+      const isIntention = !!projetsOfCog && projetsOfCog.some((pid) => intentionProjetIds.has(pid))
+
+      // Intentions mode: keep only COGS on the "Intention" project, no scoping.
+      if (intentionsOnly) {
+        if (!isIntention) continue
+        cogs.push(mapRecord(r, resMap, projetNameMap, projetRefMap, clientMap, store.projets.byId, categorieIdToName))
+        continue
+      }
+
+      // Outside intentions mode, keep intention COGS out of the PM/DA scoped
+      // lists — they live in the dedicated "COGS intentions" block instead.
+      if ((pmFilter || daFilter) && isIntention) continue
 
       // Filter by PM (manual) — lookup field, returns array — OR by PM2 via linked project
       if (pmFilter) {

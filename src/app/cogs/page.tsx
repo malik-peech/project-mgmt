@@ -74,6 +74,7 @@ function CogsPage() {
   const [ressourceFilter, setRessourceFilter] = useState('')
   const [categorieFilter, setCategorieFilter] = useState('')
   const [expandedProjetId, setExpandedProjetId] = useState<string | null>(null)
+  const [intentionsOpen, setIntentionsOpen] = useState(false)
   // Condensed view is the default; only the explicit opt-out ("0") sticks.
   const [condensed, setCondensed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true
@@ -151,18 +152,29 @@ function CogsPage() {
     { key: 'categories-cogs', enabled: ready, staleTime: 300_000 }
   )
 
+  // COGS liés au projet générique "Intention" (réf 1789), affichés dans un bloc
+  // dédié séparé de la liste principale. Surtout utile aux PM/DA qui ne les
+  // voient pas via leur filtre de périmètre.
+  const showIntentions = userRole === 'PM' || userRole === 'DA'
+  const { data: intentionsCogs, revalidate: revalidateIntentions } = useData<Cogs[]>(
+    ready && showIntentions ? '/api/cogs?intentions=1' : null,
+    { key: 'cogs-intentions', enabled: ready && showIntentions, staleTime: 60_000 }
+  )
+
   const cogsList = cogs ?? []
+  const intentionsList = intentionsCogs ?? []
   const projetList = projets ?? []
   const ressourceList = ressources ?? []
 
-  // Keep selectedCog in sync with refreshed cogs data
+  // Keep selectedCog in sync with refreshed cogs data (main list or intentions)
   useEffect(() => {
-    if (selectedCog && cogs) {
-      const updated = cogs.find((c) => c.id === selectedCog.id)
-      if (updated) setSelectedCog(updated)
-    }
+    if (!selectedCog) return
+    const updated =
+      cogs?.find((c) => c.id === selectedCog.id) ||
+      intentionsCogs?.find((c) => c.id === selectedCog.id)
+    if (updated) setSelectedCog(updated)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cogs])
+  }, [cogs, intentionsCogs])
 
   // Handle URL params (projetId and cogId from project side panel)
   const [urlParamsApplied, setUrlParamsApplied] = useState(false)
@@ -326,6 +338,7 @@ function CogsPage() {
         } catch {}
 
         await revalidateCogs()
+        if (showIntentions) revalidateIntentions()
       }
     } catch (e) {
       console.error('[saveCogEdits] error:', e)
@@ -349,6 +362,10 @@ function CogsPage() {
       // Server already refreshed the COGS table before returning; just revalidate client cache.
       const cogId = selectedCog.id
       await revalidateCogs()
+      // Intention COGS live in a separate cache; refresh it too so the panel
+      // (and the block) reflect the new attachment. The selectedCog sync effect
+      // picks up the fresh record from whichever list it lands in.
+      if (showIntentions) await revalidateIntentions()
       mutateCogs((prev) => {
         const fresh = prev?.find((c) => c.id === cogId)
         if (fresh) setSelectedCog({ ...fresh })
@@ -395,6 +412,7 @@ function CogsPage() {
       })
       await fetch('/api/admin/refresh', { method: 'POST' })
       await revalidateCogs()
+      if (showIntentions) revalidateIntentions()
     } catch {
       revalidateCogs()
     }
@@ -460,6 +478,11 @@ function CogsPage() {
     }
     return list
   }, [cogsList, activeTab, projetFilter, ressourceFilter, categorieFilter, search, sortField, sortDir])
+
+  const intentionsTotal = useMemo(
+    () => intentionsList.reduce((sum, c) => sum + (c.montantEngageProd || 0), 0),
+    [intentionsList]
+  )
 
   // Modal category options come from the linked Catégories COGS table,
   // so the value we save matches an existing Airtable record.
@@ -712,6 +735,83 @@ function CogsPage() {
               </div>
             </div>
           </div>
+
+          {/* COGS intentions (projet générique 1789) — bloc dédié, replié par défaut */}
+          {showIntentions && intentionsList.length > 0 && (
+            <div className="mb-5 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <button
+                onClick={() => setIntentionsOpen((v) => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50/50 transition"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {intentionsOpen
+                    ? <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                    : <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />}
+                  <span className="text-[11px] font-mono text-gray-500 shrink-0">1789</span>
+                  <span className="text-sm font-semibold text-gray-900">COGS intentions</span>
+                  <span className="text-[11px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 shrink-0">
+                    {intentionsList.length}
+                  </span>
+                </div>
+                <span className="text-xs text-gray-500 tabular-nums shrink-0">{fmt(intentionsTotal)} engagé</span>
+              </button>
+              {intentionsOpen && (
+                <div className="overflow-x-auto border-t border-gray-100">
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50/50 text-[10px] uppercase tracking-wider text-gray-500">
+                        <th className="px-3 py-2 text-left font-medium">Ressource</th>
+                        <th className="px-3 py-2 text-left font-medium">Catégorie</th>
+                        <th className="px-3 py-2 text-right font-medium">HT engagé</th>
+                        <th className="px-3 py-2 text-left font-medium">Facture</th>
+                        <th className="px-3 py-2 text-center font-medium">Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {intentionsList.map((c) => {
+                        const facture = c.facture?.[0]
+                        return (
+                          <tr
+                            key={c.id}
+                            className={`cursor-pointer transition ${selectedCog?.id === c.id ? 'bg-indigo-50' : 'hover:bg-gray-50/50'}`}
+                            onClick={() => openCogPanel(c)}
+                          >
+                            <td className="px-3 py-1.5 text-gray-700 truncate max-w-[180px]" title={c.ressourceName || ''}>{c.ressourceName || '—'}</td>
+                            <td className="px-3 py-1.5">
+                              {c.categorie ? (
+                                <span className="inline-block max-w-full truncate align-middle text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full" title={c.categorie}>{c.categorie}</span>
+                              ) : '—'}
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-medium text-gray-900 tabular-nums">{fmt(c.montantEngageProd)}</td>
+                            <td className="px-3 py-1.5">
+                              {facture ? (
+                                <a
+                                  href={facture.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline min-w-0 max-w-full"
+                                  title={facture.filename}
+                                >
+                                  <FileText className="w-3 h-3 shrink-0" />
+                                  <span className="truncate">{facture.filename}</span>
+                                </a>
+                              ) : <span className="text-[11px] text-gray-300">—</span>}
+                            </td>
+                            <td className="px-3 py-1.5 text-center">
+                              {c.statut ? (
+                                <span className={`inline-block max-w-full truncate align-middle text-[11px] font-medium px-2.5 py-0.5 rounded-full ${statutColors[c.statut] || 'bg-gray-100 text-gray-600'}`} title={c.statut}>{c.statut}</span>
+                              ) : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Table */}
           {filtered.length === 0 ? (

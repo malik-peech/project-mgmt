@@ -10,6 +10,14 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.26',
+    date: '22/07/2026',
+    changes: [
+      'COGS : nouveau bloc "COGS intentions" (projet générique 1789) visible pour les PM/DA — replié par défaut, avec compteur et total engagé',
+      'Ces COGS n\'apparaissent plus dans la liste principale filtrée par PM/DA, ils sont regroupés dans le bloc dédié (facture, montant, statut éditables via le panneau habituel)',
+    ],
+  },
+  {
     version: '1.25',
     date: '22/07/2026',
     changes: [
