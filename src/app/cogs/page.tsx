@@ -162,7 +162,10 @@ function CogsPage() {
   )
 
   const cogsList = cogs ?? []
-  const intentionsList = intentionsCogs ?? []
+  // COGS intentions : on masque les dépenses déjà payées ou annulées.
+  const intentionsList = (intentionsCogs ?? []).filter(
+    (c) => c.statut !== 'Payée' && c.statut !== 'Annulée'
+  )
   const projetList = projets ?? []
   const ressourceList = ressources ?? []
 
@@ -762,6 +765,7 @@ function CogsPage() {
                       <tr className="border-b border-gray-100 bg-gray-50/50 text-[10px] uppercase tracking-wider text-gray-500">
                         <th className="px-3 py-2 text-left font-medium">Ressource</th>
                         <th className="px-3 py-2 text-left font-medium">Catégorie</th>
+                        <th className="px-3 py-2 text-left font-medium">Commentaire</th>
                         <th className="px-3 py-2 text-right font-medium">HT engagé</th>
                         <th className="px-3 py-2 text-left font-medium">Facture</th>
                         <th className="px-3 py-2 text-center font-medium">Statut</th>
@@ -781,6 +785,11 @@ function CogsPage() {
                               {c.categorie ? (
                                 <span className="inline-block max-w-full truncate align-middle text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full" title={c.categorie}>{c.categorie}</span>
                               ) : '—'}
+                            </td>
+                            <td className="px-3 py-1.5 text-gray-600 max-w-[240px]">
+                              {c.commentaire
+                                ? <span className="block truncate" title={c.commentaire}>{c.commentaire}</span>
+                                : <span className="text-gray-300">—</span>}
                             </td>
                             <td className="px-3 py-1.5 text-right font-medium text-gray-900 tabular-nums">{fmt(c.montantEngageProd)}</td>
                             <td className="px-3 py-1.5">

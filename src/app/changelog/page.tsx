@@ -17,6 +17,7 @@ const RELEASES: Release[] = [
       'Ressources (RH/Admin) : filtre par statut avec compteurs + statut affiché visuellement sur chaque ressource (badge en grille, colonne en liste)',
       'COGS : le panneau d\'une dépense affiche le lien de dépôt de facture à transmettre au prestataire (avec bouton copier + rappel du n° de commande)',
       'Dépôt facture : blocage du dépôt si une facture est déjà présente sur la commande (le presta est invité à contacter son chef de projet)',
+      'COGS intentions : masquage des dépenses payées/annulées + nouvelle colonne Commentaire',
     ],
   },
   {
