@@ -1,21 +1,23 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { upsertRecord } from '@/lib/store'
-import { TABLES } from '@/lib/airtable'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
+import { TABLES } from '@/lib/airtable'
+import { ensureStore, upsertRecord } from '@/lib/store'
+import {
+  findSourceRecordIdByNumericId,
+  patchPrestataire,
+  getPrestataireAttachments,
+} from '@/lib/prestataires'
 
-const BASE_ID = process.env.AIRTABLE_BASE_ID || 'appYFl5MvR7VeL0uB'
-const RESSOURCES_TABLE_ID = 'tblgwh9bP5Piz32SL'
 const TMP_DIR = '/tmp/pm-uploads'
-
 const ALLOWED_FIELDS = new Set(['RIB', 'Photo'])
 
 /**
  * POST /api/ressources/[id]/upload — attach files to a resource's RIB or Photo
- * field (RH back-office). Same tmp-proxy pattern as COGS uploads.
- * FormData: files[], field ("RIB" | "Photo", default "RIB").
+ * field (RH back-office). Writes to the SOURCE Prestataires base (the main-base
+ * Ressources table is a read-only sync). FormData: files[], field ("RIB"|"Photo").
  */
 export async function POST(
   request: Request,
@@ -25,10 +27,7 @@ export async function POST(
     const session = await getServerSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { id: recordId } = await params
-    const apiKey = process.env.AIRTABLE_API_KEY
-    if (!apiKey) return NextResponse.json({ error: 'AIRTABLE_API_KEY not set' }, { status: 500 })
-
+    const { id: mirrorId } = await params
     const url = new URL(request.url)
     const baseUrl = process.env.NEXTAUTH_URL || `${url.protocol}//${url.host}`
 
@@ -42,19 +41,19 @@ export async function POST(
       return NextResponse.json({ error: 'No files provided' }, { status: 400 })
     }
 
+    const store = await ensureStore()
+    const mirror = store.ressources.byId.get(mirrorId)
+    if (!mirror) return NextResponse.json({ error: 'Ressource introuvable' }, { status: 404 })
+    const numId = Number(mirror.fields['ID'])
+    if (!Number.isFinite(numId)) {
+      return NextResponse.json({ error: 'ID source manquant sur cette ressource' }, { status: 422 })
+    }
+    const sourceId = await findSourceRecordIdByNumericId(numId)
+    if (!sourceId) return NextResponse.json({ error: 'Enregistrement source introuvable' }, { status: 404 })
+
     await mkdir(TMP_DIR, { recursive: true })
 
-    // Preserve existing attachments (reference by Airtable id)
-    const getRes = await fetch(
-      `https://api.airtable.com/v0/${BASE_ID}/${RESSOURCES_TABLE_ID}/${recordId}`,
-      { headers: { Authorization: `Bearer ${apiKey}` } }
-    )
-    let existingAttachments: { id?: string; url: string }[] = []
-    if (getRes.ok) {
-      const record = await getRes.json()
-      existingAttachments = (record.fields?.[field] as { id?: string; url: string }[]) || []
-    }
-
+    const existing = await getPrestataireAttachments(sourceId, field)
     const newAttachments: { url: string; filename: string }[] = []
     for (const file of files) {
       const buffer = Buffer.from(await file.arrayBuffer())
@@ -67,36 +66,19 @@ export async function POST(
     await new Promise((r) => setTimeout(r, 500))
 
     const patchAttachments = [
-      ...existingAttachments.filter((a) => a.id).map((a) => ({ id: a.id })),
+      ...existing.filter((a) => a.id).map((a) => ({ id: a.id! })),
       ...newAttachments,
     ]
 
-    const updateRes = await fetch(
-      `https://api.airtable.com/v0/${BASE_ID}/${RESSOURCES_TABLE_ID}/${recordId}`,
-      {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: { [field]: patchAttachments } }),
-      }
-    )
-    if (!updateRes.ok) {
-      const err = await updateRes.text()
-      console.error('[Ressource Upload] Airtable error:', updateRes.status, err)
-      return NextResponse.json({ error: `Upload failed: ${err}` }, { status: updateRes.status })
-    }
+    const updated = await patchPrestataire(sourceId, { [field]: patchAttachments })
 
-    let updatedFields: Record<string, unknown> | null = null
-    try {
-      const updated = await updateRes.json()
-      updatedFields = updated.fields
-      upsertRecord(TABLES.RESSOURCES, { id: updated.id, fields: updated.fields })
-    } catch (e) {
-      console.error('[Ressource Upload] failed to parse Airtable response:', e)
-    }
+    // Optimistic mirror-store update for immediate UI feedback.
+    const cleaned = { ...mirror.fields, [field]: updated.fields[field] }
+    upsertRecord(TABLES.RESSOURCES, { id: mirrorId, fields: cleaned })
 
-    return NextResponse.json({ ok: true, count: newAttachments.length, fields: updatedFields })
+    return NextResponse.json({ ok: true, count: newAttachments.length })
   } catch (error) {
     console.error('Error uploading resource attachment:', error)
-    return NextResponse.json({ error: 'Failed to upload attachment' }, { status: 500 })
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to upload attachment' }, { status: 500 })
   }
 }

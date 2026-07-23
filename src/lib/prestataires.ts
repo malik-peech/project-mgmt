@@ -141,3 +141,42 @@ export async function createPrestataire(input: CreatePrestataireInput): Promise<
   const record = (await res.json()) as AirtableRecord
   return { id: record.id }
 }
+
+// ── Edit an existing Prestataire (source of the synced Ressources mirror) ──
+
+/**
+ * Resolve the SOURCE record id from the numeric "ID" shared with the mirror.
+ * The main-base Ressources table is a read-only sync of this base, so edits
+ * must target the source record — matched by the synced autoNumber "ID".
+ */
+export async function findSourceRecordIdByNumericId(numId: number): Promise<string | null> {
+  const url = new URL(`${API_BASE}/${PRESTATAIRES_BASE_ID}/${PRESTATAIRES_TABLE_ID}`)
+  url.searchParams.set('filterByFormula', `{ID}=${numId}`)
+  url.searchParams.set('maxRecords', '1')
+  const res = await fetch(url.toString(), { headers: authHeader(), cache: 'no-store' })
+  if (!res.ok) throw new Error(`Prestataire lookup failed: ${res.status} ${await res.text()}`)
+  const json = (await res.json()) as { records: AirtableRecord[] }
+  return json.records?.[0]?.id ?? null
+}
+
+/** PATCH fields on a source Prestataire record (typecast on, so selects auto-create). */
+export async function patchPrestataire(recordId: string, fields: Record<string, unknown>): Promise<AirtableRecord> {
+  const res = await fetch(`${API_BASE}/${PRESTATAIRES_BASE_ID}/${PRESTATAIRES_TABLE_ID}/${recordId}`, {
+    method: 'PATCH',
+    headers: { ...authHeader(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields, typecast: true }),
+  })
+  if (!res.ok) throw new Error(`Update prestataire failed: ${res.status} ${await res.text()}`)
+  return (await res.json()) as AirtableRecord
+}
+
+/** Read current attachments of an attachment field on a source record. */
+export async function getPrestataireAttachments(recordId: string, field: string): Promise<{ id?: string; url: string; filename?: string }[]> {
+  const res = await fetch(`${API_BASE}/${PRESTATAIRES_BASE_ID}/${PRESTATAIRES_TABLE_ID}/${recordId}`, {
+    headers: authHeader(),
+    cache: 'no-store',
+  })
+  if (!res.ok) return []
+  const rec = (await res.json()) as AirtableRecord
+  return (rec.fields?.[field] as { id?: string; url: string; filename?: string }[]) || []
+}

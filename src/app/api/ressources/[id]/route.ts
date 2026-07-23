@@ -1,16 +1,40 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { TABLES } from '@/lib/airtable'
-import { upsertRecord } from '@/lib/store'
-
-const BASE_ID = process.env.AIRTABLE_BASE_ID || 'appYFl5MvR7VeL0uB'
-const RESSOURCES_TABLE_ID = 'tblgwh9bP5Piz32SL'
+import { ensureStore, upsertRecord } from '@/lib/store'
+import {
+  findSourceRecordIdByNumericId,
+  patchPrestataire,
+  getPrestataireAttachments,
+} from '@/lib/prestataires'
 
 /**
  * PATCH /api/ressources/[id] — edit a resource (RH back-office).
- * Editable: contact fields, catégorie, pays, ville, statut, blacklist, IBAN,
- * paypal, payment instructions. RIB / Photo attachments go through /upload.
+ *
+ * The main-base Ressources table is a READ-ONLY sync of the external
+ * "Prestataires" base, so we resolve the source record (via the shared numeric
+ * "ID") and write there. The mirror re-syncs within a few minutes; we also
+ * patch the in-memory store optimistically so the UI reflects the change now.
+ *
+ * `id` is the MIRROR (main base) record id, as served by GET /api/ressources.
  */
+
+// Map our API payload keys → source Prestataires field names.
+const FIELD_MAP: Record<string, string> = {
+  name: 'Name',
+  email: 'Email',
+  telephone: 'Téléphone',
+  contactPrincipal: 'Contact principal (si société)',
+  categorie: 'Catégorie',
+  pays: 'Pays',
+  ville: 'Ville',
+  statut: 'Statut',
+  blacklist: 'Blacklist',
+  iban: 'IBAN',
+  paypal: 'Paypal',
+  instructionsPaiement: 'Instructions spécifiques de paiement',
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -19,74 +43,74 @@ export async function PATCH(
     const session = await getServerSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { id } = await params
+    const { id: mirrorId } = await params
     const body = await request.json()
-    const apiKey = process.env.AIRTABLE_API_KEY
-    if (!apiKey) return NextResponse.json({ error: 'AIRTABLE_API_KEY not set' }, { status: 500 })
 
-    const fields: Record<string, unknown> = {}
-    if (body.name !== undefined) fields['Name'] = body.name
-    if (body.email !== undefined) fields['Email'] = body.email || null
-    if (body.telephone !== undefined) fields['Téléphone'] = body.telephone || null
-    if (body.contactPrincipal !== undefined) fields['Contact principal (si société)'] = body.contactPrincipal || null
-    if (body.categorie !== undefined) fields['Catégorie'] = Array.isArray(body.categorie) ? body.categorie : []
-    if (body.pays !== undefined) fields['Pays'] = body.pays || null
-    if (body.ville !== undefined) fields['Ville'] = body.ville || null
-    if (body.statut !== undefined) fields['Statut'] = body.statut || null
-    if (body.blacklist !== undefined) fields['Blacklist'] = !!body.blacklist
-    if (body.iban !== undefined) fields['IBAN'] = body.iban || null
-    if (body.paypal !== undefined) fields['Paypal'] = body.paypal || null
-    if (body.instructionsPaiement !== undefined) fields['Instructions spécifiques de paiement'] = body.instructionsPaiement || null
-    if (body.description !== undefined) fields['Description'] = body.description || null
-    if (body.declarationHonoraires !== undefined) fields['Déclaration honoraires'] = !!body.declarationHonoraires
+    const store = await ensureStore()
+    const mirror = store.ressources.byId.get(mirrorId)
+    if (!mirror) return NextResponse.json({ error: 'Ressource introuvable' }, { status: 404 })
 
-    // Attachment deletion by index (RIB or Photo)
+    const numId = Number(mirror.fields['ID'])
+    if (!Number.isFinite(numId)) {
+      return NextResponse.json({ error: 'ID source manquant sur cette ressource' }, { status: 422 })
+    }
+    const sourceId = await findSourceRecordIdByNumericId(numId)
+    if (!sourceId) {
+      return NextResponse.json({ error: 'Enregistrement source introuvable' }, { status: 404 })
+    }
+
+    // Build the source field payload from the mapped keys present in the body.
+    const sourceFields: Record<string, unknown> = {}
+    const mirrorPatch: Record<string, unknown> = {}
+    for (const [key, srcName] of Object.entries(FIELD_MAP)) {
+      if (body[key] === undefined) continue
+      if (key === 'categorie') {
+        const arr = Array.isArray(body.categorie) ? body.categorie : []
+        sourceFields[srcName] = arr
+        mirrorPatch['Catégorie'] = arr
+      } else if (key === 'blacklist') {
+        sourceFields[srcName] = !!body.blacklist
+        mirrorPatch['Blacklist'] = !!body.blacklist
+      } else {
+        const val = body[key] === '' ? null : body[key]
+        sourceFields[srcName] = val
+        // Mirror uses the same field names for these (synced 1:1).
+        mirrorPatch[srcName] = val ?? undefined
+      }
+    }
+
+    // Attachment deletion (RIB / Photo) on the source record.
     const removeField = body.removeRibIndex !== undefined ? 'RIB'
       : body.removePhotoIndex !== undefined ? 'Photo'
       : null
     if (removeField) {
       const removeIdx = removeField === 'RIB' ? body.removeRibIndex : body.removePhotoIndex
-      const getRes = await fetch(
-        `https://api.airtable.com/v0/${BASE_ID}/${RESSOURCES_TABLE_ID}/${id}`,
-        { headers: { Authorization: `Bearer ${apiKey}` } }
-      )
-      if (getRes.ok) {
-        const rec = await getRes.json()
-        const existing = (rec.fields?.[removeField] as { id: string }[]) || []
-        fields[removeField] = existing.filter((_: unknown, i: number) => i !== removeIdx).map((a) => ({ id: a.id }))
-      }
+      const existing = await getPrestataireAttachments(sourceId, removeField)
+      const remaining = existing.filter((_, i) => i !== removeIdx)
+      sourceFields[removeField] = remaining.filter((a) => a.id).map((a) => ({ id: a.id! }))
     }
 
-    if (Object.keys(fields).length === 0) {
-      return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+    if (Object.keys(sourceFields).length === 0) {
+      return NextResponse.json({ error: 'Aucun champ à mettre à jour' }, { status: 400 })
     }
 
-    const patchRes = await fetch(
-      `https://api.airtable.com/v0/${BASE_ID}/${RESSOURCES_TABLE_ID}/${id}`,
-      {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields, typecast: true }),
-      }
-    )
-    const patchText = await patchRes.text()
-    if (!patchRes.ok) {
-      console.error('[Ressource PATCH] Airtable error:', patchRes.status, patchText)
-      return NextResponse.json({ error: patchText }, { status: patchRes.status })
-    }
+    const updated = await patchPrestataire(sourceId, sourceFields)
 
-    let updatedFields: Record<string, unknown> | null = null
-    try {
-      const updated = JSON.parse(patchText) as { id: string; fields: Record<string, unknown> }
-      updatedFields = updated.fields
-      upsertRecord(TABLES.RESSOURCES, { id: updated.id, fields: updated.fields })
-    } catch (e) {
-      console.error('[Ressource PATCH] failed to parse Airtable response:', e)
+    // Optimistic mirror-store update so the UI reflects the change immediately
+    // (the real Airtable sync back into the mirror takes a few minutes).
+    if (removeField && updated.fields[removeField] !== undefined) {
+      mirrorPatch[removeField] = updated.fields[removeField]
     }
+    const cleaned: Record<string, unknown> = { ...mirror.fields }
+    for (const [k, v] of Object.entries(mirrorPatch)) {
+      if (v === undefined) delete cleaned[k]
+      else cleaned[k] = v
+    }
+    upsertRecord(TABLES.RESSOURCES, { id: mirrorId, fields: cleaned })
 
-    return NextResponse.json({ id, fields: updatedFields })
+    return NextResponse.json({ id: mirrorId, sourceId })
   } catch (error) {
     console.error('Error updating ressource:', error)
-    return NextResponse.json({ error: 'Failed to update ressource' }, { status: 500 })
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to update ressource' }, { status: 500 })
   }
 }

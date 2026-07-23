@@ -241,6 +241,11 @@ export default function RessourceEditPanel({
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>
           )}
+
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            Les modifications sont enregistrées dans la base Prestataires (source). La liste
+            se met à jour immédiatement ici ; la synchronisation Airtable complète prend quelques minutes.
+          </p>
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-2 sticky bottom-0 bg-white">
