@@ -22,6 +22,8 @@ export async function GET() {
         email: f['Email'] as string | undefined,
         categorie: f['Catégorie'] as string[] | undefined,
         statut: f['Statut'] as string | undefined,
+        pays: f['Pays'] as string | undefined,
+        ville: f['Ville'] as string | undefined,
         telephone: f['Téléphone'] as string | undefined,
         description: f['Description'] as string | undefined,
         iban: f['IBAN'] as string | undefined,

@@ -2,10 +2,11 @@
 
 import { useState, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
-import { Search, Users, Mail, Phone, CreditCard, FileText, ChevronDown, ChevronUp, Plus } from 'lucide-react'
+import { Search, Users, Mail, Phone, CreditCard, FileText, ChevronDown, ChevronUp, Plus, MapPin } from 'lucide-react'
 import { useData } from '@/hooks/useData'
 import type { Ressource } from '@/types'
 import AddPrestataireModal from '@/components/AddPrestataireModal'
+import ComboSelect from '@/components/ComboSelect'
 
 const PRIORITY_CATEGORIES = [
   'Cadreur', 'Cadreur/Monteur', 'Concepteur-Rédacteur', 'Droniste',
@@ -47,6 +48,8 @@ export default function RessourcesPage() {
 
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [paysFilter, setPaysFilter] = useState('')
+  const [villeFilter, setVilleFilter] = useState('')
   const [selected, setSelected] = useState<Ressource | null>(null)
   const [showOtherCategories, setShowOtherCategories] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -75,9 +78,32 @@ export default function RessourcesPage() {
     }
   }, [list])
 
+  // Pays options (from all validated resources)
+  const paysOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of list) if (r.pays) set.add(r.pays)
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b, 'fr'))
+      .map((p) => ({ value: p, label: p }))
+  }, [list])
+
+  // Ville options — restricted to the selected pays so the two filters cross
+  const villeOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of list) {
+      if (paysFilter && r.pays !== paysFilter) continue
+      if (r.ville) set.add(r.ville)
+    }
+    return Array.from(set)
+      .sort((a, b) => a.localeCompare(b, 'fr'))
+      .map((v) => ({ value: v, label: v }))
+  }, [list, paysFilter])
+
   const filtered = useMemo(() => {
     let result = list
     if (categoryFilter) result = result.filter((r) => r.categorie?.includes(categoryFilter))
+    if (paysFilter) result = result.filter((r) => r.pays === paysFilter)
+    if (villeFilter) result = result.filter((r) => r.ville === villeFilter)
     if (search.trim()) {
       const q = search.toLowerCase()
       result = result.filter(
@@ -85,11 +111,13 @@ export default function RessourcesPage() {
           r.name.toLowerCase().includes(q) ||
           r.email?.toLowerCase().includes(q) ||
           r.categorie?.some((c) => c.toLowerCase().includes(q)) ||
+          r.pays?.toLowerCase().includes(q) ||
+          r.ville?.toLowerCase().includes(q) ||
           r.description?.toLowerCase().includes(q)
       )
     }
     return result
-  }, [list, categoryFilter, search])
+  }, [list, categoryFilter, paysFilter, villeFilter, search])
 
   // Count per category
   const countFor = (cat: string) => list.filter((r) => r.categorie?.includes(cat)).length
@@ -124,6 +152,42 @@ export default function RessourcesPage() {
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
             />
+          </div>
+
+          {/* Location filters (pays / ville) — croisables avec la catégorie */}
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <div className="flex items-center gap-1.5 text-gray-400 text-xs">
+              <MapPin className="w-3.5 h-3.5" />
+              <span>Localisation</span>
+            </div>
+            <div className="w-44">
+              <ComboSelect
+                options={paysOptions}
+                value={paysFilter}
+                onChange={(v) => { setPaysFilter(v); setVilleFilter('') }}
+                placeholder="Pays"
+                clearable
+                size="sm"
+              />
+            </div>
+            <div className="w-44">
+              <ComboSelect
+                options={villeOptions}
+                value={villeFilter}
+                onChange={setVilleFilter}
+                placeholder="Ville"
+                clearable
+                size="sm"
+              />
+            </div>
+            {(paysFilter || villeFilter) && (
+              <button
+                onClick={() => { setPaysFilter(''); setVilleFilter('') }}
+                className="text-[11px] text-gray-400 hover:text-gray-600 underline"
+              >
+                Réinitialiser
+              </button>
+            )}
           </div>
 
           {/* Priority categories */}
@@ -223,6 +287,12 @@ export default function RessourcesPage() {
                   </div>
                   <div className="p-3">
                     <p className="font-semibold text-gray-900 text-sm truncate">{r.name}</p>
+                    {(r.ville || r.pays) && (
+                      <p className="flex items-center gap-1 text-[10px] text-gray-400 mt-1">
+                        <MapPin className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{[r.ville, r.pays].filter(Boolean).join(', ')}</span>
+                      </p>
+                    )}
                     {r.categorie && r.categorie.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {r.categorie.slice(0, 2).map((c) => (
@@ -276,6 +346,12 @@ export default function RessourcesPage() {
 
               <div className="text-center mb-4 pr-0">
                 <h2 className="text-xl font-bold text-gray-900">{selected.name}</h2>
+                {(selected.ville || selected.pays) && (
+                  <p className="flex items-center justify-center gap-1 text-xs text-gray-400 mt-1">
+                    <MapPin className="w-3.5 h-3.5" />
+                    {[selected.ville, selected.pays].filter(Boolean).join(', ')}
+                  </p>
+                )}
               </div>
 
               {selected.categorie && selected.categorie.length > 0 && (

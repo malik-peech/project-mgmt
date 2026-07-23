@@ -157,6 +157,8 @@ export interface Ressource {
   email?: string
   categorie?: string[]
   statut?: string
+  pays?: string
+  ville?: string
   telephone?: string
   description?: string
   iban?: string
