@@ -1497,6 +1497,9 @@ function CogSidePanel({
             )}
           </div>
 
+          {/* Lien de dépôt facture à transmettre au prestataire */}
+          <InvoiceDropLink numeroCommande={cog.numeroCommande} />
+
           {/* Méthode de paiement (editable) */}
           <div>
             <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Méthode de paiement</label>
@@ -1672,5 +1675,52 @@ function CogSidePanel({
         />
       )}
     </>
+  )
+}
+
+/* ─── Lien de dépôt de facture prestataire ─── */
+
+function InvoiceDropLink({ numeroCommande }: { numeroCommande?: string }) {
+  const [copied, setCopied] = useState(false)
+  const [url, setUrl] = useState('/facture')
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') setUrl(`${window.location.origin}/facture`)
+  }, [])
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* ignore */ }
+  }
+
+  return (
+    <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
+      <p className="text-[11px] font-semibold text-indigo-700 uppercase tracking-wider mb-1">Dépôt de facture (prestataire)</p>
+      <p className="text-[11px] text-gray-500 mb-2 leading-relaxed">
+        Lien à transmettre au presta. Il saisit son email
+        {numeroCommande ? <> + le n° de commande <span className="font-mono font-semibold text-indigo-700">{numeroCommande}</span></> : <> + le n° de commande</>}
+        {' '}pour déposer sa facture.
+      </p>
+      {!numeroCommande && (
+        <p className="text-[11px] text-amber-600 mb-2">⚠ Aucun n° de commande sur cette ligne — le presta ne pourra pas la retrouver.</p>
+      )}
+      <div className="flex items-center gap-1.5">
+        <input
+          readOnly
+          value={url}
+          onFocus={(e) => e.currentTarget.select()}
+          className="flex-1 min-w-0 text-xs font-mono bg-white border border-indigo-200 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        <button
+          onClick={copy}
+          className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition"
+        >
+          {copied ? <><Check className="w-3.5 h-3.5" /> Copié</> : <><Copy className="w-3.5 h-3.5" /> Copier</>}
+        </button>
+      </div>
+    </div>
   )
 }

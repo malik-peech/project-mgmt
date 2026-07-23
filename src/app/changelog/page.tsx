@@ -10,6 +10,15 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.28',
+    date: '23/07/2026',
+    changes: [
+      'Ressources : bascule vue grille / liste (mémorisée), pour tout le monde',
+      'Ressources (RH/Admin) : filtre par statut avec compteurs + statut affiché visuellement sur chaque ressource (badge en grille, colonne en liste)',
+      'COGS : le panneau d\'une dépense affiche le lien de dépôt de facture à transmettre au prestataire (avec bouton copier + rappel du n° de commande)',
+    ],
+  },
+  {
     version: '1.27',
     date: '23/07/2026',
     changes: [
