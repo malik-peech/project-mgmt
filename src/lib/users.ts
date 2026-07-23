@@ -4,7 +4,7 @@
  * Matching = name as it appears in Airtable PM (manual) / DA fields.
  */
 
-export type UserRole = 'PM' | 'DA' | 'Admin' | 'Sales'
+export type UserRole = 'PM' | 'DA' | 'Admin' | 'Sales' | 'RH'
 
 export interface AppUser {
   id: string          // Airtable record ID
@@ -29,7 +29,7 @@ const atUrl = `https://api.airtable.com/v0/${baseId}/${tableId}`
 function mapRecord(rec: { id: string; fields: Record<string, unknown> }): AppUser {
   const f = rec.fields
   const typeVal = f['Type']
-  const validRoles: UserRole[] = ['PM', 'DA', 'Admin', 'Sales']
+  const validRoles: UserRole[] = ['PM', 'DA', 'Admin', 'Sales', 'RH']
   let role: UserRole = 'PM'
   if (typeof typeVal === 'string') {
     role = (validRoles.includes(typeVal as UserRole) ? typeVal : 'PM') as UserRole

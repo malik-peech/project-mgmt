@@ -162,7 +162,22 @@ export interface Ressource {
   telephone?: string
   description?: string
   iban?: string
+  paypal?: string
+  instructionsPaiement?: string
+  contactPrincipal?: string
+  declarationHonoraires?: boolean
+  blacklist?: boolean
+  rating?: number
+  comments?: RessourceComment[]
+  rib?: { url: string; filename: string }[]
   photo?: { url: string; filename: string }[]
+}
+
+// Quality feedback left on a resource, aggregated from COGS "Qualité (comment)" / "(note)"
+export interface RessourceComment {
+  comment?: string
+  note?: number
+  projetRef?: string
 }
 
 // ── Clients (onboarding) ──
@@ -206,7 +221,7 @@ export interface Upsell {
 }
 
 // ── User (session) ──
-export type UserRole = 'Admin' | 'PM' | 'DA' | 'Sales'
+export type UserRole = 'Admin' | 'PM' | 'DA' | 'Sales' | 'RH'
 
 export interface AppUser {
   name: string

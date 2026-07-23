@@ -2,11 +2,21 @@
 
 import { useState, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
-import { Search, Users, Mail, Phone, CreditCard, FileText, ChevronDown, ChevronUp, Plus, MapPin } from 'lucide-react'
+import { Search, Users, Mail, Phone, CreditCard, FileText, ChevronDown, ChevronUp, Plus, MapPin, Star, Pencil, MessageSquare } from 'lucide-react'
 import { useData } from '@/hooks/useData'
 import type { Ressource } from '@/types'
 import AddPrestataireModal from '@/components/AddPrestataireModal'
+import RessourceEditPanel from '@/components/RessourceEditPanel'
 import ComboSelect from '@/components/ComboSelect'
+
+const STATUT_BADGE: Record<string, string> = {
+  'Validé': 'bg-green-100 text-green-700',
+  'Auto-validé': 'bg-emerald-100 text-emerald-700',
+  'Réserve': 'bg-amber-100 text-amber-700',
+  'Quality check to do': 'bg-pink-100 text-pink-700',
+  'Non validé': 'bg-red-100 text-red-700',
+  'Blacklisté': 'bg-gray-200 text-gray-600',
+}
 
 const PRIORITY_CATEGORIES = [
   'Cadreur', 'Cadreur/Monteur', 'Concepteur-Rédacteur', 'Droniste',
@@ -45,25 +55,52 @@ function getInitials(name: string): string {
 export default function RessourcesPage() {
   const { data: session } = useSession()
   const ready = !!session?.user?.name
+  const userRole = (session?.user as { role?: string })?.role
+  // RH & Admin get the back-office: every resource (incl. non-validé /
+  // blacklisted) + full edit.
+  const canEdit = userRole === 'RH' || userRole === 'Admin'
 
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [paysFilter, setPaysFilter] = useState('')
   const [villeFilter, setVilleFilter] = useState('')
   const [selected, setSelected] = useState<Ressource | null>(null)
+  const [editing, setEditing] = useState<Ressource | null>(null)
   const [showOtherCategories, setShowOtherCategories] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
 
   const { data: ressources, loading, revalidate } = useData<Ressource[]>(
-    ready ? '/api/ressources' : null,
-    { key: 'ressources-all', enabled: ready, staleTime: 60_000 }
+    ready ? `/api/ressources${canEdit ? '?all=1' : ''}` : null,
+    { key: `ressources-${canEdit ? 'all' : 'valid'}`, enabled: ready, staleTime: 60_000 }
   )
 
-  // Filter only "Validé" resources
+  // PM view = only "Validé" resources. RH/Admin see every resource.
   const list = useMemo(() =>
-    (ressources ?? []).filter((r) => r.statut === 'Validé'),
-    [ressources]
+    canEdit ? (ressources ?? []) : (ressources ?? []).filter((r) => r.statut === 'Validé'),
+    [ressources, canEdit]
   )
+
+  // Keep the open side panel in sync after an edit/revalidate.
+  const selectedFresh = useMemo(
+    () => (selected ? (ressources ?? []).find((r) => r.id === selected.id) || selected : null),
+    [ressources, selected]
+  )
+
+  // Full option lists (from every resource) for the RH edit form + datalists.
+  const { allCategories, allPays, allVilles } = useMemo(() => {
+    const cats = new Set<string>(), pays = new Set<string>(), villes = new Set<string>()
+    for (const r of ressources ?? []) {
+      if (r.categorie) for (const c of r.categorie) cats.add(c)
+      if (r.pays) pays.add(r.pays)
+      if (r.ville) villes.add(r.ville)
+    }
+    const sortFr = (a: string, b: string) => a.localeCompare(b, 'fr')
+    return {
+      allCategories: Array.from(cats).sort(sortFr),
+      allPays: Array.from(pays).sort(sortFr),
+      allVilles: Array.from(villes).sort(sortFr),
+    }
+  }, [ressources])
 
   // All unique categories split into priority and other
   const { priorityCats, otherCats } = useMemo(() => {
@@ -130,7 +167,7 @@ export default function RessourcesPage() {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Ressources</h1>
-              <p className="text-sm text-gray-500 mt-0.5">{list.length} ressource{list.length !== 1 ? 's' : ''} validées</p>
+              <p className="text-sm text-gray-500 mt-0.5">{list.length} ressource{list.length !== 1 ? 's' : ''}{canEdit ? '' : ' validées'}</p>
             </div>
             <button
               type="button"
@@ -286,7 +323,14 @@ export default function RessourcesPage() {
                     )}
                   </div>
                   <div className="p-3">
-                    <p className="font-semibold text-gray-900 text-sm truncate">{r.name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-semibold text-gray-900 text-sm truncate flex-1">{r.name}</p>
+                      {canEdit && r.statut && r.statut !== 'Validé' && (
+                        <span className={`shrink-0 text-[8px] font-medium px-1.5 py-0.5 rounded-full ${STATUT_BADGE[r.statut] || 'bg-gray-100 text-gray-600'}`}>
+                          {r.statut}
+                        </span>
+                      )}
+                    </div>
                     {(r.ville || r.pays) && (
                       <p className="flex items-center gap-1 text-[10px] text-gray-400 mt-1">
                         <MapPin className="w-3 h-3 shrink-0" />
@@ -321,42 +365,77 @@ export default function RessourcesPage() {
       />
 
       {/* Side panel */}
-      {selected && (
+      {selected && selectedFresh && (
         <>
           <div className="fixed inset-0 bg-black/20 z-30 md:hidden" onClick={() => setSelected(null)} />
           <div className="fixed md:relative right-0 top-0 h-full z-40 md:z-0 w-full md:w-[360px] bg-white border-l border-gray-200 shadow-xl md:shadow-none overflow-y-auto shrink-0">
             <div className="p-6">
-              <button
-                onClick={() => setSelected(null)}
-                className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
-              >
-                ✕
-              </button>
+              <div className="absolute top-4 right-4 flex items-center gap-1">
+                {canEdit && (
+                  <button
+                    onClick={() => setEditing(selectedFresh)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-indigo-600 hover:bg-indigo-50 transition"
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> Éditer
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelected(null)}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
+                >
+                  ✕
+                </button>
+              </div>
 
               {/* Photo header */}
-              {selected.photo && selected.photo.length > 0 ? (
+              {selectedFresh.photo && selectedFresh.photo.length > 0 ? (
                 <div className="w-full aspect-[4/3] rounded-xl overflow-hidden mb-4 -mx-0">
-                  <img src={selected.photo[0].url} alt={selected.name} className="w-full h-full object-cover" />
+                  <img src={selectedFresh.photo[0].url} alt={selectedFresh.name} className="w-full h-full object-cover" />
                 </div>
               ) : (
                 <div className="w-20 h-20 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-2xl font-bold mx-auto mb-4">
-                  {getInitials(selected.name)}
+                  {getInitials(selectedFresh.name)}
                 </div>
               )}
 
               <div className="text-center mb-4 pr-0">
-                <h2 className="text-xl font-bold text-gray-900">{selected.name}</h2>
-                {(selected.ville || selected.pays) && (
+                <h2 className="text-xl font-bold text-gray-900">{selectedFresh.name}</h2>
+                {(selectedFresh.ville || selectedFresh.pays) && (
                   <p className="flex items-center justify-center gap-1 text-xs text-gray-400 mt-1">
                     <MapPin className="w-3.5 h-3.5" />
-                    {[selected.ville, selected.pays].filter(Boolean).join(', ')}
+                    {[selectedFresh.ville, selectedFresh.pays].filter(Boolean).join(', ')}
                   </p>
+                )}
+                {/* Rating */}
+                {selectedFresh.rating != null && (
+                  <div className="flex items-center justify-center gap-0.5 mt-2">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <Star
+                        key={n}
+                        className={`w-4 h-4 ${n <= Math.round(selectedFresh.rating!) ? 'text-amber-400 fill-amber-400' : 'text-gray-200'}`}
+                      />
+                    ))}
+                    <span className="text-xs text-gray-400 ml-1">{selectedFresh.rating!.toFixed(1)}</span>
+                  </div>
+                )}
+                {/* Statut + blacklist (RH/Admin) */}
+                {canEdit && (
+                  <div className="flex items-center justify-center gap-1.5 mt-2">
+                    {selectedFresh.statut && (
+                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${STATUT_BADGE[selectedFresh.statut] || 'bg-gray-100 text-gray-600'}`}>
+                        {selectedFresh.statut}
+                      </span>
+                    )}
+                    {selectedFresh.blacklist && (
+                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-800 text-white">Blacklist</span>
+                    )}
+                  </div>
                 )}
               </div>
 
-              {selected.categorie && selected.categorie.length > 0 && (
+              {selectedFresh.categorie && selectedFresh.categorie.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 justify-center mb-5">
-                  {selected.categorie.map((c) => (
+                  {selectedFresh.categorie.map((c) => (
                     <span key={c} className={`text-xs font-medium px-2.5 py-1 rounded-full ${getCategoryColor(c)}`}>
                       {c}
                     </span>
@@ -364,46 +443,100 @@ export default function RessourcesPage() {
                 </div>
               )}
 
-              {selected.description && (
+              {selectedFresh.description && (
                 <div className="mb-5 bg-gray-50 rounded-xl p-3">
                   <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Description</p>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{selected.description}</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedFresh.description}</p>
                 </div>
               )}
 
               <div className="space-y-3">
-                {selected.email && (
+                {selectedFresh.email && (
                   <div className="flex items-center gap-3 text-sm">
                     <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
                       <Mail className="w-4 h-4 text-blue-500" />
                     </div>
-                    <a href={`mailto:${selected.email}`} className="text-indigo-600 hover:underline truncate">
-                      {selected.email}
+                    <a href={`mailto:${selectedFresh.email}`} className="text-indigo-600 hover:underline truncate">
+                      {selectedFresh.email}
                     </a>
                   </div>
                 )}
-                {selected.telephone && (
+                {selectedFresh.telephone && (
                   <div className="flex items-center gap-3 text-sm">
                     <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
                       <Phone className="w-4 h-4 text-green-500" />
                     </div>
-                    <a href={`tel:${selected.telephone}`} className="text-gray-700 hover:text-indigo-600">
-                      {selected.telephone}
+                    <a href={`tel:${selectedFresh.telephone}`} className="text-gray-700 hover:text-indigo-600">
+                      {selectedFresh.telephone}
                     </a>
                   </div>
                 )}
-                {selected.iban && (
+                {selectedFresh.iban && (
                   <div className="flex items-start gap-3 text-sm">
                     <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
                       <CreditCard className="w-4 h-4 text-amber-500" />
                     </div>
-                    <span className="font-mono text-gray-700 break-all text-xs pt-1.5">{selected.iban}</span>
+                    <span className="font-mono text-gray-700 break-all text-xs pt-1.5">{selectedFresh.iban}</span>
+                  </div>
+                )}
+                {/* RIB attachment (RH/Admin) */}
+                {canEdit && selectedFresh.rib && selectedFresh.rib.length > 0 && (
+                  <div className="flex items-start gap-3 text-sm">
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+                      <FileText className="w-4 h-4 text-amber-500" />
+                    </div>
+                    <div className="flex flex-col gap-0.5 pt-1">
+                      {selectedFresh.rib.map((a, i) => (
+                        <a key={i} href={a.url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline text-xs truncate">
+                          {a.filename}
+                        </a>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
+
+              {/* Commentaires qualité (depuis les lignes COGS) */}
+              {selectedFresh.comments && selectedFresh.comments.length > 0 && (
+                <div className="mt-6">
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Retours qualité ({selectedFresh.comments.length})
+                  </p>
+                  <div className="space-y-2">
+                    {selectedFresh.comments.map((cm, i) => (
+                      <div key={i} className="bg-gray-50 rounded-lg p-2.5">
+                        <div className="flex items-center justify-between mb-1">
+                          {cm.note != null ? (
+                            <div className="flex items-center gap-0.5">
+                              {[1, 2, 3, 4, 5].map((n) => (
+                                <Star key={n} className={`w-3 h-3 ${n <= Math.round(cm.note!) ? 'text-amber-400 fill-amber-400' : 'text-gray-200'}`} />
+                              ))}
+                            </div>
+                          ) : <span />}
+                          {cm.projetRef && <span className="text-[10px] font-mono text-gray-400">{cm.projetRef}</span>}
+                        </div>
+                        {cm.comment && <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{cm.comment}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </>
+      )}
+
+      {/* RH edit modal */}
+      {editing && (
+        <RessourceEditPanel
+          ressource={editing}
+          allCategories={allCategories}
+          allPays={allPays}
+          allVilles={allVilles}
+          onClose={() => setEditing(null)}
+          onSaved={() => revalidate()}
+        />
       )}
     </div>
   )

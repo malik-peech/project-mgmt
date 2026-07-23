@@ -1,0 +1,104 @@
+import { ensureStore, buildLookupMap } from '@/lib/store'
+
+const NON_ELIGIBLE_STATUTS = new Set(['Payée', 'Annulée'])
+
+export interface FactureTarget {
+  cogId: string
+  numeroCommande: string
+  montantHT?: number
+  statut?: string
+  ressourceId: string
+  ressourceName: string
+  ressourceEmail: string
+  iban?: string
+  paypal?: string
+  instructionsPaiement?: string
+  projetRef?: string
+  projetName?: string
+  hasFacture: boolean
+  eligible: boolean
+  reason?: 'paid' | 'cancelled'
+}
+
+function s(val: unknown): string {
+  if (val == null) return ''
+  if (typeof val === 'string') return val
+  if (typeof val === 'number') return String(val)
+  if (Array.isArray(val)) return s(val[0])
+  return ''
+}
+function n(val: unknown): number | undefined {
+  if (typeof val === 'number') return val
+  if (typeof val === 'string' && val.trim() !== '') { const x = Number(val); return isNaN(x) ? undefined : x }
+  return undefined
+}
+const norm = (v: string) => v.trim().toLowerCase()
+
+/**
+ * Find the COGS line a prestataire can drop an invoice on, matching by
+ * (numéro de commande + resource email). Returns null if nothing matches the
+ * pair at all; otherwise a target with `eligible` reflecting the COGS status
+ * (already-paid / cancelled lines are returned but flagged non-eligible).
+ */
+export async function findFactureTarget(
+  email: string,
+  numeroCommande: string,
+): Promise<FactureTarget | null> {
+  const store = await ensureStore()
+  const wantEmail = norm(email)
+  const wantCmd = numeroCommande.trim()
+  if (!wantEmail || !wantCmd) return null
+
+  const projetNameMap = buildLookupMap(store.projets, 'Projet')
+  const projetRefMap = buildLookupMap(store.projets, 'Project réf')
+
+  const matches: FactureTarget[] = []
+
+  for (const c of store.cogs.records) {
+    const f = c.fields
+    if (s(f['Numéro de commande']).trim() !== wantCmd) continue
+
+    const ressourceId = (f['Ressource'] as string[] | undefined)?.[0]
+    if (!ressourceId) continue
+    const res = store.ressources.byId.get(ressourceId)
+    if (!res) continue
+    const resEmail = s(res.fields['Email'])
+    if (norm(resEmail) !== wantEmail) continue
+
+    const statut = s(f['Statut de la dépense']) || undefined
+    const projetId = (f['Projet'] as string[] | undefined)?.[0]
+    const facture = f['Facture']
+
+    matches.push({
+      cogId: c.id,
+      numeroCommande: wantCmd,
+      montantHT: n(f['Montant HT engagé (prod)']),
+      statut,
+      ressourceId,
+      ressourceName: s(res.fields['Name']),
+      ressourceEmail: resEmail,
+      iban: s(res.fields['IBAN']) || undefined,
+      paypal: s(res.fields['Paypal']) || undefined,
+      instructionsPaiement: s(res.fields['Instructions spécifiques de paiement']) || undefined,
+      projetRef: projetId ? projetRefMap.get(projetId) || undefined : undefined,
+      projetName: projetId ? projetNameMap.get(projetId) || undefined : undefined,
+      hasFacture: Array.isArray(facture) && facture.length > 0,
+      eligible: !!statut && !NON_ELIGIBLE_STATUTS.has(statut) || !statut,
+      reason: statut === 'Payée' ? 'paid' : statut === 'Annulée' ? 'cancelled' : undefined,
+    })
+  }
+
+  if (matches.length === 0) return null
+  // Prefer an eligible line if several share the command number.
+  return matches.find((m) => m.eligible) ?? matches[0]
+}
+
+/** Payment date = the 15th of the month following the deposit. */
+export function paymentDateFor(deposit: Date): { iso: string; label: string } {
+  const y = deposit.getFullYear()
+  const m = deposit.getMonth()
+  const d = new Date(y, m + 1, 15)
+  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-15`
+  const label = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+  return { iso, label }
+}

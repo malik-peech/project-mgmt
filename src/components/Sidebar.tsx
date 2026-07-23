@@ -50,6 +50,11 @@ const salesOnlyNavItems = [
   { href: '/refs', label: 'Belle Base', icon: Film },
 ]
 
+// RH users manage the resources directory only.
+const rhOnlyNavItems = [
+  { href: '/ressources', label: 'Ressources', icon: Users },
+]
+
 export default function Sidebar() {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -237,7 +242,8 @@ export default function Sidebar() {
   // Sales-only = primary role is Sales AND not also Admin. Users who have PM/DA as primary
   // role and are ALSO sales keep their full PM/DA menu.
   const isSalesOnly = userRole === 'Sales' && !isAdmin
-  const rawBase = isSalesOnly ? salesOnlyNavItems : navItems
+  const isRHOnly = userRole === 'RH' && !isAdmin
+  const rawBase = isRHOnly ? rhOnlyNavItems : isSalesOnly ? salesOnlyNavItems : navItems
   // Enrich nav items with inline badges.
   const baseItems: NavItem[] = rawBase.map((item) => {
     if (item.href === '/intentions' && intentionsToOnboardCount > 0) {
@@ -340,8 +346,8 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Quick-access: unassigned projets. Hidden for sales-only users. */}
-      {!isSalesOnly && session?.user && (
+      {/* Quick-access: unassigned projets. Hidden for sales-only / RH users. */}
+      {!isSalesOnly && !isRHOnly && session?.user && (
         <div className="px-3 pb-3">
           <button
             onClick={() => setShowUnassigned(true)}

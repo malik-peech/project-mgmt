@@ -5,7 +5,7 @@ import Sidebar from './Sidebar'
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const isPublic = pathname.startsWith('/brief') || pathname.startsWith('/login')
+  const isPublic = pathname.startsWith('/brief') || pathname.startsWith('/login') || pathname.startsWith('/facture')
 
   if (isPublic) {
     return <>{children}</>

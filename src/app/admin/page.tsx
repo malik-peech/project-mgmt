@@ -19,7 +19,7 @@ import {
   Mail,
 } from 'lucide-react'
 
-type UserRole = 'PM' | 'DA' | 'Admin' | 'Sales'
+type UserRole = 'PM' | 'DA' | 'Admin' | 'Sales' | 'RH'
 interface User {
   id: string
   name: string
@@ -42,6 +42,7 @@ const roleBadge: Record<UserRole, string> = {
   PM: 'bg-indigo-100 text-indigo-800',
   DA: 'bg-teal-100 text-teal-800',
   Sales: 'bg-amber-100 text-amber-800',
+  RH: 'bg-rose-100 text-rose-800',
 }
 
 export default function AdminPage() {
@@ -466,6 +467,7 @@ export default function AdminPage() {
                   <option value="DA">DA</option>
                   <option value="Admin">Admin</option>
                   <option value="Sales">Sales</option>
+                  <option value="RH">RH</option>
                 </select>
                 <input
                   type="text"
@@ -527,6 +529,8 @@ export default function AdminPage() {
                         <option value="PM">PM</option>
                         <option value="DA">DA</option>
                         <option value="Admin">Admin</option>
+                        <option value="Sales">Sales</option>
+                        <option value="RH">RH</option>
                       </select>
                       <input
                         type="text"

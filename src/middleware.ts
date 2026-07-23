@@ -12,8 +12,10 @@ export default async function middleware(req: NextRequest) {
   if (
     pathname.startsWith('/login') ||
     pathname.startsWith('/brief') ||
+    pathname.startsWith('/facture') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/brief') ||
+    pathname.startsWith('/api/facture') ||
     pathname.startsWith('/api/tmp') ||
     pathname.startsWith('/api/health') ||
     pathname.startsWith('/_next') ||
@@ -36,6 +38,15 @@ export default async function middleware(req: NextRequest) {
     const isBlocked = pathname === '/' || SALES_BLOCKED_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'))
     if (isBlocked) {
       return NextResponse.redirect(new URL('/onboarding', req.url))
+    }
+  }
+
+  // RH users only manage resources: allow /ressources + /changelog + APIs, redirect the rest.
+  if (role === 'RH') {
+    const isApi = pathname.startsWith('/api/')
+    const allowed = isApi || pathname.startsWith('/ressources') || pathname.startsWith('/changelog')
+    if (!allowed) {
+      return NextResponse.redirect(new URL('/ressources', req.url))
     }
   }
 

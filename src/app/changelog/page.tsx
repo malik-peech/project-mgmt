@@ -10,6 +10,15 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.27',
+    date: '23/07/2026',
+    changes: [
+      'Nouveau rôle RH : accès à toutes les ressources (y compris non validées / blacklistées) + édition complète (contact, catégorie, pays, ville, statut, blacklist, IBAN, Paypal, instructions, RIB, photo) depuis la page Ressources',
+      'Ressources (PM) : affichage de la note (rating) et des retours qualité laissés sur les lignes COGS (champ "Qualité (comment)")',
+      'Dépôt de facture prestataire : page publique /facture — le presta saisit email + n° de commande, dépose sa facture (rattachée à la ligne COGS), confirme ses coordonnées bancaires et le montant, voit la date de paiement (15 du mois suivant) et reçoit un email de confirmation',
+    ],
+  },
+  {
     version: '1.26',
     date: '22/07/2026',
     changes: [
