@@ -17,7 +17,7 @@ export interface FactureTarget {
   projetName?: string
   hasFacture: boolean
   eligible: boolean
-  reason?: 'paid' | 'cancelled'
+  reason?: 'paid' | 'cancelled' | 'has_facture'
 }
 
 function s(val: unknown): string {
@@ -68,6 +68,11 @@ export async function findFactureTarget(
     const statut = s(f['Statut de la dépense']) || undefined
     const projetId = (f['Projet'] as string[] | undefined)?.[0]
     const facture = f['Facture']
+    const hasFacture = Array.isArray(facture) && facture.length > 0
+    const statutEligible = !statut || !NON_ELIGIBLE_STATUTS.has(statut)
+    // A line that already carries an invoice can no longer be dropped on —
+    // the presta must reach out to the project manager.
+    const eligible = statutEligible && !hasFacture
 
     matches.push({
       cogId: c.id,
@@ -82,9 +87,9 @@ export async function findFactureTarget(
       instructionsPaiement: s(res.fields['Instructions spécifiques de paiement']) || undefined,
       projetRef: projetId ? projetRefMap.get(projetId) || undefined : undefined,
       projetName: projetId ? projetNameMap.get(projetId) || undefined : undefined,
-      hasFacture: Array.isArray(facture) && facture.length > 0,
-      eligible: !!statut && !NON_ELIGIBLE_STATUTS.has(statut) || !statut,
-      reason: statut === 'Payée' ? 'paid' : statut === 'Annulée' ? 'cancelled' : undefined,
+      hasFacture,
+      eligible,
+      reason: statut === 'Payée' ? 'paid' : statut === 'Annulée' ? 'cancelled' : hasFacture ? 'has_facture' : undefined,
     })
   }
 

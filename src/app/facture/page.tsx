@@ -54,9 +54,14 @@ export default function FactureDropPage() {
         return
       }
       if (!data.eligible) {
-        setError(data.reason === 'paid'
-          ? "Cette commande a déjà été payée — aucun dépôt supplémentaire n'est nécessaire."
-          : "Cette commande a été annulée et n'accepte pas de facture.")
+        setError(
+          data.reason === 'paid'
+            ? "Cette commande a déjà été payée — aucun dépôt supplémentaire n'est nécessaire."
+            : data.reason === 'cancelled'
+              ? "Cette commande a été annulée et n'accepte pas de facture."
+              : data.reason === 'has_facture'
+                ? "Une facture a déjà été déposée pour cette commande. Merci de vous rapprocher de votre chef de projet."
+                : "Cette commande n'accepte pas de dépôt de facture.")
         return
       }
       setResult(data as LookupResult)
@@ -170,10 +175,6 @@ export default function FactureDropPage() {
                     {result.instructionsPaiement && <div className="text-gray-600 whitespace-pre-wrap">{result.instructionsPaiement}</div>}
                   </div>
                 </div>
-              )}
-
-              {result.hasFacture && (
-                <p className="text-xs text-amber-600">⚠ Une facture est déjà présente sur cette commande. Un nouveau dépôt s'ajoutera aux fichiers existants.</p>
               )}
 
               {/* Drop zone */}

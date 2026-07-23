@@ -46,7 +46,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Aucune commande ne correspond à ces informations' }, { status: 404 })
     }
     if (!target.eligible) {
-      return NextResponse.json({ ok: false, error: 'Cette commande n\'accepte plus de dépôt de facture' }, { status: 409 })
+      const msg = target.reason === 'has_facture'
+        ? 'Une facture a déjà été déposée pour cette commande. Merci de vous rapprocher de votre chef de projet.'
+        : 'Cette commande n\'accepte plus de dépôt de facture.'
+      return NextResponse.json({ ok: false, error: msg }, { status: 409 })
     }
 
     await mkdir(TMP_DIR, { recursive: true })
