@@ -22,6 +22,7 @@ export async function PATCH(
     if (body.qualiteNote !== undefined) fields['Qualité (note)'] = body.qualiteNote
     if (body.qualiteComment !== undefined) fields['Qualité (comment)'] = body.qualiteComment
     if (body.bdcEnvoye !== undefined) fields['BDC envoyé'] = body.bdcEnvoye
+    if (body.bdcCommunique !== undefined) fields['BDC communiqué'] = body.bdcCommunique
     if (body.commentaire !== undefined) fields['Commentaire COGS'] = body.commentaire
     if (body.numeroFacture !== undefined) fields['Numéro de facture'] = body.numeroFacture
     if (body.okPourPaiement !== undefined) fields['OK pour paiement'] = body.okPourPaiement

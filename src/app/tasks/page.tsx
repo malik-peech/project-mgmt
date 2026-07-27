@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, X, CheckCircle2, Circle, Loader2, Copy, Trash2, RefreshCw, AlertTriangle, Search, List, CalendarDays } from 'lucide-react'
+import { Plus, X, CheckCircle2, Circle, Loader2, Copy, Trash2, RefreshCw, AlertTriangle, Search, List, CalendarDays, GripVertical } from 'lucide-react'
 import ContextMenu from '@/components/ContextMenu'
 import ForceNewTaskModal from '@/components/ForceNewTaskModal'
 import TaskCalendarView from '@/components/TaskCalendarView'
@@ -105,10 +105,16 @@ export default function TasksPage() {
   const [activeTab, setActiveTab] = useState<'todo' | 'done'>('todo')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState('all')
-  const [scopeFilter, setScopeFilter] = useState<'myProjects' | 'myTasks'>('myProjects')
+  const [scopeFilter, setScopeFilter] = useState<'myProjects' | 'myTasks'>('myTasks')
   const [specificDate, setSpecificDate] = useState('')
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list')
   const [calendarMode, setCalendarMode] = useState<'week' | 'month'>('month')
+
+  // Manual drag-and-drop ordering of tasks within each project block.
+  // Persisted per-user in localStorage: { [projetKey]: orderedTaskId[] }.
+  const [taskOrder, setTaskOrder] = useState<Record<string, string[]>>({})
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null)
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null)
 
   // Apply URL filter param on mount (e.g. /tasks?filter=overdue)
   useEffect(() => {
@@ -143,6 +149,34 @@ export default function TasksPage() {
   const userRole = (session?.user as any)?.role || 'PM'
   const pmParam = userRole === 'Admin' ? '' : `pm=${encodeURIComponent(userName)}`
   const ready = !!session?.user?.name
+
+  // Load the saved manual task order for this user from localStorage.
+  const taskOrderKey = userName ? `peechpm_task_order_${userName}` : ''
+  useEffect(() => {
+    if (!taskOrderKey) return
+    try {
+      const raw = localStorage.getItem(taskOrderKey)
+      if (raw) setTaskOrder(JSON.parse(raw))
+    } catch { /* ignore */ }
+  }, [taskOrderKey])
+
+  const saveTaskOrder = useCallback((next: Record<string, string[]>) => {
+    setTaskOrder(next)
+    if (taskOrderKey) {
+      try { localStorage.setItem(taskOrderKey, JSON.stringify(next)) } catch { /* ignore */ }
+    }
+  }, [taskOrderKey])
+
+  // Reorder `draggedId` to sit just before `targetId` within one project group,
+  // pinning the group's full current display order into the saved map.
+  const reorderTask = useCallback((groupKey: string, orderedIds: string[], draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return
+    if (!orderedIds.includes(draggedId) || !orderedIds.includes(targetId)) return // same-group only
+    const ids = [...orderedIds]
+    ids.splice(ids.indexOf(draggedId), 1)
+    ids.splice(ids.indexOf(targetId), 0, draggedId)
+    saveTaskOrder({ ...taskOrder, [groupKey]: ids })
+  }, [taskOrder, saveTaskOrder])
 
   const { data: tasks, mutate: mutateTasks, revalidate: revalidateTasks, loading: loadingTodo, error: errorTodo } = useData<Task[]>(
     ready ? `/api/tasks?${pmParam}` : null,
@@ -347,6 +381,13 @@ export default function TasksPage() {
     } catch {} finally { setSubmitting(false) }
   }
 
+  // Open the "Nouvelle task" modal prefilled with a date (from a calendar day
+  // click) and the currently-filtered project, if any.
+  const openCreateForDate = (date: string) => {
+    setForm({ name: '', projetId: projetFilter || '', type: '', priority: '', dueDate: date, description: '' })
+    setShowModal(true)
+  }
+
   const createInlineTask = async () => {
     const projetId = inlineProjet || projetFilter
     if (!inlineName.trim() || !projetId) return
@@ -446,6 +487,40 @@ export default function TasksPage() {
     }
     return list
   }, [displayedTasks, typeFilter, projetFilter, search, dateFilter, specificDate, scopeFilter, myProjetIds, userName])
+
+  // Group the (already filtered + sorted) tasks by project for the list view,
+  // so each project shows as its own visual block. Tasks without a project land
+  // in a "Sans projet" group. Insertion order follows filteredTasks order.
+  const groupedTasks = useMemo(() => {
+    const groups = new Map<
+      string,
+      { key: string; projetId?: string; projetRef?: string; projetName?: string; clientName?: string; tasks: Task[] }
+    >()
+    for (const t of filteredTasks) {
+      const key = t.projetId || '__none__'
+      let g = groups.get(key)
+      if (!g) {
+        g = { key, projetId: t.projetId, projetRef: t.projetRef, projetName: t.projetName, clientName: t.clientName, tasks: [] }
+        groups.set(key, g)
+      }
+      g.tasks.push(t)
+    }
+    // Apply the user's saved manual order within each group (stable for the rest).
+    for (const g of groups.values()) {
+      const order = taskOrder[g.key]
+      if (order && order.length) {
+        g.tasks.sort((a, b) => {
+          const ia = order.indexOf(a.id)
+          const ib = order.indexOf(b.id)
+          if (ia === -1 && ib === -1) return 0
+          if (ia === -1) return 1
+          if (ib === -1) return -1
+          return ia - ib
+        })
+      }
+    }
+    return Array.from(groups.values())
+  }, [filteredTasks, taskOrder])
 
   // Calendar-specific filtered tasks (no date filter, applies type/project/search/scope)
   const calendarFilteredTasks = useMemo(() => {
@@ -733,6 +808,7 @@ export default function TasksPage() {
             setViewMode('list')
             setSearch(task.name)
           }}
+          onCreateTask={openCreateForDate}
         />
       ) : filteredTasks.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
@@ -742,16 +818,68 @@ export default function TasksPage() {
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm divide-y divide-gray-50">
-          {filteredTasks.map((task) => (
+        <div className="space-y-4">
+          {groupedTasks.map((group) => (
+            <div key={group.key} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              {/* Project header */}
+              <div className="flex items-center gap-2 px-4 py-2 bg-gray-50/70 border-b border-gray-100">
+                {group.projetRef && (
+                  <span className="text-xs font-mono font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">
+                    {group.projetRef}
+                  </span>
+                )}
+                <span className="text-sm font-semibold text-gray-800 truncate">
+                  {group.projetName || 'Sans projet'}
+                </span>
+                {group.clientName && (
+                  <span className="text-xs text-gray-400 truncate">— {group.clientName}</span>
+                )}
+                <span className="ml-auto text-[11px] text-gray-400 shrink-0">
+                  {group.tasks.length} task{group.tasks.length > 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="divide-y divide-gray-50">
+          {group.tasks.map((task) => {
+            const canDrag = activeTab === 'todo' && editingName !== task.id
+            return (
             <div
               key={task.id}
-              className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50/50 transition-colors group"
+              draggable={canDrag}
+              onDragStart={(e) => {
+                if (!canDrag) return
+                setDraggingTaskId(task.id)
+                e.dataTransfer.effectAllowed = 'move'
+              }}
+              onDragOver={(e) => {
+                if (!draggingTaskId || draggingTaskId === task.id) return
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                if (dragOverTaskId !== task.id) setDragOverTaskId(task.id)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                if (draggingTaskId) reorderTask(group.key, group.tasks.map((t) => t.id), draggingTaskId, task.id)
+                setDraggingTaskId(null)
+                setDragOverTaskId(null)
+              }}
+              onDragEnd={() => { setDraggingTaskId(null); setDragOverTaskId(null) }}
+              className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-50/50 transition-colors group ${
+                draggingTaskId === task.id ? 'opacity-40' : ''
+              } ${dragOverTaskId === task.id ? 'border-t-2 border-indigo-400' : ''}`}
               onContextMenu={(e) => {
                 e.preventDefault()
                 setContextMenu({ x: e.clientX, y: e.clientY, task })
               }}
             >
+              {/* Drag handle (À faire only) */}
+              {canDrag && (
+                <span
+                  className="shrink-0 -ml-1 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 opacity-0 group-hover:opacity-100 transition"
+                  title="Glisser pour réordonner"
+                >
+                  <GripVertical className="w-4 h-4" />
+                </span>
+              )}
               {/* Checkbox */}
               <button onClick={() => toggleDone(task)} className="shrink-0 text-gray-300 hover:text-indigo-500 transition-colors">
                 {task.done ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Circle className="w-5 h-5" />}
@@ -778,14 +906,6 @@ export default function TasksPage() {
                     onClick={() => { setEditingName(task.id); setEditingNameValue(stripRecIds(task.name)) }}
                   >
                     {stripRecIds(task.name)}
-                  </p>
-                )}
-                {(task.projetName || task.projetRef) && (
-                  <p className="text-xs text-gray-400 truncate mt-0.5">
-                    {task.projetRef && <span className="font-mono">{task.projetRef}</span>}
-                    {task.projetRef && task.projetName && ' · '}
-                    {task.projetName}
-                    {task.clientName ? ` — ${task.clientName}` : ''}
                   </p>
                 )}
               </div>
@@ -903,6 +1023,9 @@ export default function TasksPage() {
                   )}
                 </button>
               )}
+            </div>
+          )})}
+              </div>
             </div>
           ))}
         </div>

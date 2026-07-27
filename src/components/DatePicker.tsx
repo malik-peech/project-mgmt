@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, X, Calendar } from 'lucide-react'
 
 interface Props {
@@ -42,11 +43,48 @@ function formatDisplay(s: string): string {
 export default function DatePicker({ value, onChange, min, placeholder = 'Choisir une date', className = '', clearable = false, size = 'md', autoOpen = false }: Props) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
+  // Calendar is portaled to <body> with fixed positioning so it is never
+  // clipped by an ancestor with overflow (e.g. a modal's scroll container).
+  const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number; width: number } | null>(null)
 
   useEffect(() => {
     if (autoOpen) setOpen(true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const computePosition = () => {
+    const el = ref.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const POP_W = 256
+    const POP_H = 340
+    const spaceBelow = window.innerHeight - rect.bottom
+    const openUp = spaceBelow < POP_H && rect.top > spaceBelow
+    let left = rect.left
+    if (left + POP_W > window.innerWidth - 8) left = window.innerWidth - POP_W - 8
+    if (left < 8) left = 8
+    setCoords({
+      left,
+      width: POP_W,
+      top: openUp ? undefined : rect.bottom + 4,
+      bottom: openUp ? window.innerHeight - rect.top + 4 : undefined,
+    })
+  }
+
+  // Reposition on open, and keep it anchored while scrolling/resizing.
+  useEffect(() => {
+    if (!open) return
+    computePosition()
+    const onMove = () => computePosition()
+    window.addEventListener('scroll', onMove, true)
+    window.addEventListener('resize', onMove)
+    return () => {
+      window.removeEventListener('scroll', onMove, true)
+      window.removeEventListener('resize', onMove)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const minDate = min ? parseDate(min) : null
@@ -66,7 +104,10 @@ export default function DatePicker({ value, onChange, min, placeholder = 'Choisi
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const t = e.target as Node
+      const inTrigger = ref.current?.contains(t)
+      const inPopup = popRef.current?.contains(t)
+      if (!inTrigger && !inPopup) setOpen(false)
     }
     document.addEventListener('mousedown', onClickOutside)
     return () => document.removeEventListener('mousedown', onClickOutside)
@@ -135,9 +176,13 @@ export default function DatePicker({ value, onChange, min, placeholder = 'Choisi
         )}
       </button>
 
-      {/* Calendar dropdown */}
-      {open && (
-        <div className="absolute z-[100] mt-1 bg-white border border-gray-200 rounded-xl shadow-xl p-3 w-64">
+      {/* Calendar dropdown — portaled to body so it escapes overflow clipping */}
+      {open && coords && createPortal(
+        <div
+          ref={popRef}
+          style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, width: coords.width }}
+          className="z-[200] bg-white border border-gray-200 rounded-xl shadow-xl p-3"
+        >
           {/* Month nav */}
           <div className="flex items-center justify-between mb-3">
             <button type="button" onClick={prevMonth} className="p-1 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition">
@@ -196,7 +241,8 @@ export default function DatePicker({ value, onChange, min, placeholder = 'Choisi
               </button>
             </div>
           ) : null}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

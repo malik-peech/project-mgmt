@@ -10,6 +10,7 @@ export interface FactureTarget {
   ressourceId: string
   ressourceName: string
   ressourceEmail: string
+  methodePaiement?: string
   iban?: string
   paypal?: string
   instructionsPaiement?: string
@@ -35,10 +36,15 @@ function n(val: unknown): number | undefined {
 const norm = (v: string) => v.trim().toLowerCase()
 
 /**
- * Find the COGS line a prestataire can drop an invoice on, matching by
- * (numéro de commande + resource email). Returns null if nothing matches the
- * pair at all; otherwise a target with `eligible` reflecting the COGS status
- * (already-paid / cancelled lines are returned but flagged non-eligible).
+ * Find the COGS line a prestataire can drop an invoice on.
+ *
+ * Matching is primarily on the numéro de commande — so a presta can deposit as
+ * soon as the amount is validated, WITHOUT waiting for a Ressource to be
+ * assigned. When a Ressource *with an email* is already assigned, that email
+ * must match the one entered (kept as a light security check); otherwise the
+ * command number alone is enough. Returns null if no line carries the number;
+ * otherwise a target with `eligible` reflecting the COGS status (already-paid /
+ * cancelled lines are returned but flagged non-eligible).
  */
 export async function findFactureTarget(
   email: string,
@@ -59,11 +65,11 @@ export async function findFactureTarget(
     if (s(f['Numéro de commande']).trim() !== wantCmd) continue
 
     const ressourceId = (f['Ressource'] as string[] | undefined)?.[0]
-    if (!ressourceId) continue
-    const res = store.ressources.byId.get(ressourceId)
-    if (!res) continue
-    const resEmail = s(res.fields['Email'])
-    if (norm(resEmail) !== wantEmail) continue
+    const res = ressourceId ? store.ressources.byId.get(ressourceId) : undefined
+    const resEmail = res ? s(res.fields['Email']) : ''
+    // If a resource with an email is already assigned, keep the email check.
+    // If not (no resource yet), the numéro de commande alone is enough.
+    if (resEmail && norm(resEmail) !== wantEmail) continue
 
     const statut = s(f['Statut de la dépense']) || undefined
     const projetId = (f['Projet'] as string[] | undefined)?.[0]
@@ -79,12 +85,15 @@ export async function findFactureTarget(
       numeroCommande: wantCmd,
       montantHT: n(f['Montant HT engagé (prod)']),
       statut,
-      ressourceId,
-      ressourceName: s(res.fields['Name']),
-      ressourceEmail: resEmail,
-      iban: s(res.fields['IBAN']) || undefined,
-      paypal: s(res.fields['Paypal']) || undefined,
-      instructionsPaiement: s(res.fields['Instructions spécifiques de paiement']) || undefined,
+      ressourceId: ressourceId || '',
+      ressourceName: res ? s(res.fields['Name']) : '',
+      // Use the resource email when known, else the email the presta entered
+      // (so the confirmation email still reaches them).
+      ressourceEmail: resEmail || wantEmail,
+      methodePaiement: s(f['Méthode de paiement']) || undefined,
+      iban: res ? s(res.fields['IBAN']) || undefined : undefined,
+      paypal: res ? s(res.fields['Paypal']) || undefined : undefined,
+      instructionsPaiement: res ? s(res.fields['Instructions spécifiques de paiement']) || undefined : undefined,
       projetRef: projetId ? projetRefMap.get(projetId) || undefined : undefined,
       projetName: projetId ? projetNameMap.get(projetId) || undefined : undefined,
       hasFacture,

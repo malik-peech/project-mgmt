@@ -44,6 +44,8 @@ interface DashboardData {
 
 type TabKey = 'briefs' | 'overdue' | 'noTasks' | 'deadline'
 
+const STATUT_OPTIONS = ['Stand-by', 'En cours', 'Finalisation', 'Done', 'Tentative', 'Intention']
+
 export default function PMWelcomeModal({ userName, onClose }: { userName: string; onClose: () => void }) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -125,6 +127,26 @@ export default function PMWelcomeModal({ userName, onClose }: { userName: string
             pastDeadline: prev.pastDeadline.map((e) =>
               e.id === entry.id ? { ...e, dateFinalisationPrevue: value } : e,
             ),
+          }
+        : prev,
+    )
+  }
+
+  const updateStatut = async (entry: Entry, value: string) => {
+    await patchProjet(entry.id, { statut: value || null })
+    const leaves = value === 'Done' || value === 'Archivé'
+    setData((prev) =>
+      prev
+        ? {
+            ...prev,
+            // Done / Archivé projets no longer belong in the past-deadline list.
+            pastDeadline: leaves
+              ? prev.pastDeadline.filter((e) => e.id !== entry.id)
+              : prev.pastDeadline.map((e) => (e.id === entry.id ? { ...e, statut: value } : e)),
+            counts: {
+              ...prev.counts,
+              pastDeadline: leaves ? prev.counts.pastDeadline - 1 : prev.counts.pastDeadline,
+            },
           }
         : prev,
     )
@@ -266,10 +288,21 @@ export default function PMWelcomeModal({ userName, onClose }: { userName: string
               entries={data.pastDeadline}
               emptyMessage="Aucune date de finalisation dépassée ⏱️"
               renderActions={(entry) => (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-end">
                   <span className="text-[11px] text-red-600">
                     Prévu: {formatDate(entry.dateFinalisationPrevue)}
                   </span>
+                  <select
+                    value={entry.statut || ''}
+                    onChange={(e) => updateStatut(entry, e.target.value)}
+                    disabled={savingId === entry.id}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50"
+                    title="Modifier le statut du projet"
+                  >
+                    {STATUT_OPTIONS.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
                   <div className="w-36">
                     <DatePicker
                       value={entry.dateFinalisationPrevue || ''}

@@ -22,6 +22,11 @@ function str(val: unknown): string | undefined {
   return String(val)
 }
 
+/** Map app Phase values to the exact Airtable single-select option names. */
+const PHASE_OPTION_NAMES: Record<string, string> = {
+  'Last modifs': 'Last modifs ', // Airtable option has a trailing space
+}
+
 /** Extract singleSelect value (may be string or {id,name} object) */
 function sel(val: unknown): string | undefined {
   if (val == null) return undefined
@@ -98,7 +103,7 @@ export async function GET(request: Request) {
         statutBrief: str(f['Statut du brief']),
         pc: str(f['Project Coordinator (PC)']),
         filmmaker: str(f['Filmmaker']),
-        phase: str(f['Phase']) as Projet['phase'],
+        phase: (str(f['Phase'])?.trim() || undefined) as Projet['phase'],
         statut: statut as Projet['statut'],
         typeProjet: str(f['Type de projet']) as Projet['typeProjet'],
         sales,
@@ -178,13 +183,14 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json()
-    const { id, pm, pm2, daOfficial, pasDeDa, phase, dateFinalisationPrevue, facturable100, briefEffectue, dateBrief, cogsBudget, bdc, numeroCommande } = body as {
+    const { id, pm, pm2, daOfficial, pasDeDa, phase, statut, dateFinalisationPrevue, facturable100, briefEffectue, dateBrief, cogsBudget, bdc, numeroCommande } = body as {
       id?: string
       pm?: string
       pm2?: string
       daOfficial?: string
       pasDeDa?: boolean
       phase?: string
+      statut?: string
       dateFinalisationPrevue?: string | null
       facturable100?: boolean
       briefEffectue?: boolean
@@ -203,7 +209,11 @@ export async function PATCH(request: Request) {
     if (pm2 !== undefined) fields['PM2 (manual)'] = pm2 || null
     if (daOfficial !== undefined) fields['DA (official)'] = daOfficial || null
     if (pasDeDa !== undefined) fields['Pas de DA'] = !!pasDeDa
-    if (phase !== undefined) fields['Phase'] = phase || null
+    // The Airtable "Phase" single-select option for last-modifs carries a
+    // trailing space ("Last modifs "). Map the app value to the exact option
+    // name so the write matches an existing option (no typecast, no dup).
+    if (phase !== undefined) fields['Phase'] = phase ? (PHASE_OPTION_NAMES[phase] ?? phase) : null
+    if (statut !== undefined) fields['Statut'] = statut || null
     if (dateFinalisationPrevue !== undefined) fields['Date de finalisation prévue'] = dateFinalisationPrevue || null
     if (facturable100 !== undefined) fields['Facturable 100%'] = !!facturable100
     if (briefEffectue !== undefined) fields['Brief effectué'] = !!briefEffectue

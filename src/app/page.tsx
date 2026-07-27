@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { Search, Calendar, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, AlertTriangle, TrendingUp, Plus, FileText, Loader2, CheckCircle2, Circle, Clock, MessageSquare, Send } from 'lucide-react'
+import { Search, Calendar, X, ChevronRight, ChevronUp, ChevronDown, RefreshCw, AlertTriangle, TrendingUp, Plus, FileText, Loader2, CheckCircle2, Circle, Clock, MessageSquare, Send, CalendarX } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useData } from '@/hooks/useData'
 import ForceNewTaskModal from '@/components/ForceNewTaskModal'
@@ -94,7 +94,7 @@ function formatDate(dateStr?: string) {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
-type SortField = 'ref' | 'clientName' | 'nom' | 'agence' | 'bu' | 'phase' | 'statut' | 'nextTask' | 'nextTaskDate' | 'pm' | 'daOfficial'
+type SortField = 'ref' | 'clientName' | 'nom' | 'agence' | 'bu' | 'phase' | 'statut' | 'nextTask' | 'nextTaskDate' | 'dateFin' | 'pm' | 'daOfficial'
 type SortDir = 'asc' | 'desc'
 
 export default function DashboardPage() {
@@ -106,6 +106,8 @@ export default function DashboardPage() {
   const [pmFilter, setPmFilter] = useState<string>('')
   const [daFilter, setDaFilter] = useState<string>('')
   const [noTaskFilter, setNoTaskFilter] = useState(false)
+  const [overdueFinFilter, setOverdueFinFilter] = useState(false)
+  const [editingDateFin, setEditingDateFin] = useState<string | null>(null)
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
@@ -118,7 +120,7 @@ export default function DashboardPage() {
   const projetColDefaults = useMemo(
     () => ({
       ref: 70, agence: 70, bu: 70, client: 140, projet: 180,
-      phase: 90, statut: 90, pm: 90, da: 90, nextTask: 200, date: 80,
+      phase: 90, statut: 90, pm: 90, da: 90, nextTask: 200, date: 80, dateFin: 104,
     }),
     []
   )
@@ -129,8 +131,8 @@ export default function DashboardPage() {
   )
   // Build grid-template-columns string from current widths. 28px is the chevron column.
   const projetGridCols = userRole === 'Admin'
-    ? `${pCol.ref}px ${pCol.agence}px ${pCol.bu}px ${pCol.client}px ${pCol.projet}px ${pCol.phase}px ${pCol.statut}px ${pCol.pm}px ${pCol.da}px ${pCol.nextTask}px ${pCol.date}px 28px`
-    : `${pCol.ref}px ${pCol.agence}px ${pCol.bu}px ${pCol.client}px ${pCol.projet}px ${pCol.phase}px ${pCol.statut}px ${pCol.nextTask}px ${pCol.date}px 28px`
+    ? `${pCol.ref}px ${pCol.agence}px ${pCol.bu}px ${pCol.client}px ${pCol.projet}px ${pCol.phase}px ${pCol.statut}px ${pCol.pm}px ${pCol.da}px ${pCol.nextTask}px ${pCol.date}px ${pCol.dateFin}px 28px`
+    : `${pCol.ref}px ${pCol.agence}px ${pCol.bu}px ${pCol.client}px ${pCol.projet}px ${pCol.phase}px ${pCol.statut}px ${pCol.nextTask}px ${pCol.date}px ${pCol.dateFin}px 28px`
 
   // Simulation support: admin can simulate a PM's view
   const [simulatedPm, setSimulatedPm] = useState<string>('')
@@ -197,6 +199,25 @@ export default function DashboardPage() {
     }).length
   }, [allTasks, userName, userRole])
 
+  // Active projets whose planned end date (Date de finalisation prévue) is past.
+  const overdueFinCount = useMemo(
+    () => allProjets.filter((p) => !isTermine(p) && isOverdue(p.dateFinalisationPrevue)).length,
+    [allProjets]
+  )
+
+  const patchProjetDateFin = async (id: string, value: string) => {
+    try {
+      await fetch('/api/projets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, dateFinalisationPrevue: value || null }),
+      })
+      revalidate()
+    } catch {
+      // silent
+    }
+  }
+
   // Extract unique agences for filter
   const agences = useMemo(() => {
     const set = new Set<string>()
@@ -213,6 +234,7 @@ export default function DashboardPage() {
     if (pmFilter) list = list.filter((p) => p.pm === pmFilter || p.pm2 === pmFilter)
     if (daFilter) list = list.filter((p) => p.daOfficial === daFilter)
     if (noTaskFilter) list = list.filter((p) => p.statut === 'En cours' && !p.nextTask)
+    if (overdueFinFilter) list = list.filter((p) => isOverdue(p.dateFinalisationPrevue))
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(
@@ -237,6 +259,7 @@ export default function DashboardPage() {
           case 'statut': va = a.statut; vb = b.statut; break
           case 'nextTask': va = a.nextTask; vb = b.nextTask; break
           case 'nextTaskDate': va = a.nextTaskDate; vb = b.nextTaskDate; break
+          case 'dateFin': va = a.dateFinalisationPrevue; vb = b.dateFinalisationPrevue; break
           case 'pm': va = a.pm; vb = b.pm; break
           case 'daOfficial': va = a.daOfficial; vb = b.daOfficial; break
         }
@@ -245,7 +268,7 @@ export default function DashboardPage() {
       })
     }
     return list
-  }, [allProjets, activeTab, agenceFilter, pmFilter, daFilter, noTaskFilter, search, sortField, sortDir])
+  }, [allProjets, activeTab, agenceFilter, pmFilter, daFilter, noTaskFilter, overdueFinFilter, search, sortField, sortDir])
 
   useEffect(() => {
     if (selectedProjet && !filtered.find((p) => p.id === selectedProjet.id)) {
@@ -411,6 +434,17 @@ export default function DashboardPage() {
               <Clock className="w-4 h-4 text-orange-500" />
               <span>{overdueTaskCount} task{overdueTaskCount !== 1 ? 's' : ''} en retard</span>
             </button>
+            <button
+              onClick={() => setOverdueFinFilter(!overdueFinFilter)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition ${
+                overdueFinFilter
+                  ? 'bg-red-50 border-red-300 text-red-700 ring-2 ring-red-200'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-red-300 hover:bg-red-50'
+              }`}
+            >
+              <CalendarX className="w-4 h-4 text-red-500" />
+              <span>{overdueFinCount} finalisation{overdueFinCount !== 1 ? 's' : ''} dépassée{overdueFinCount !== 1 ? 's' : ''}</span>
+            </button>
           </div>
 
           {/* List */}
@@ -496,6 +530,12 @@ export default function DashboardPage() {
                   </button>
                   <ResizeHandle onMouseDown={(e) => startProjetColResize('date', e)} />
                 </div>
+                <div className="relative text-left overflow-hidden">
+                  <button onClick={() => handleSort('dateFin')} className="truncate hover:text-gray-700 transition">
+                    Fin<SortIcon field="dateFin" />
+                  </button>
+                  <ResizeHandle onMouseDown={(e) => startProjetColResize('dateFin', e)} />
+                </div>
                 <span />
               </div>
 
@@ -505,9 +545,17 @@ export default function DashboardPage() {
                   const isActive = selectedProjet?.id === projet.id
 
                   return (
-                    <button
+                    <div
                       key={projet.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => setSelectedProjet(isActive ? null : projet)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelectedProjet(isActive ? null : projet)
+                        }
+                      }}
                       className={`w-full text-left grid grid-cols-1 md:grid-cols-[var(--projet-grid)] gap-x-3 gap-y-1 px-4 py-2.5 transition-colors duration-150 group cursor-pointer ${
                         isActive
                           ? 'bg-indigo-50 border-l-2 border-l-indigo-500'
@@ -620,11 +668,36 @@ export default function DashboardPage() {
                         ) : <span className="text-xs text-gray-300">—</span>}
                       </div>
 
+                      {/* Date fin (éditable) */}
+                      <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+                        {editingDateFin === projet.id ? (
+                          <DatePicker
+                            value={projet.dateFinalisationPrevue || ''}
+                            onChange={(v) => { patchProjetDateFin(projet.id, v); setEditingDateFin(null) }}
+                            size="sm"
+                            clearable
+                            autoOpen
+                            className="w-32"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setEditingDateFin(projet.id) }}
+                            className={`text-[11px] tabular-nums font-medium rounded px-1 py-0.5 hover:bg-gray-100 transition ${
+                              isOverdue(projet.dateFinalisationPrevue) ? 'text-red-600' : projet.dateFinalisationPrevue ? 'text-gray-700' : 'text-gray-300'
+                            }`}
+                            title="Modifier la date de fin de projet"
+                          >
+                            {projet.dateFinalisationPrevue ? formatDate(projet.dateFinalisationPrevue) : '—'}
+                          </button>
+                        )}
+                      </div>
+
                       {/* Chevron */}
                       <div className="hidden md:flex items-center justify-center">
                         <ChevronRight className={`w-3.5 h-3.5 transition-colors ${isActive ? 'text-indigo-500' : 'text-gray-300 group-hover:text-gray-400'}`} />
                       </div>
-                    </button>
+                    </div>
                   )
                 })}
               </div>
@@ -1340,6 +1413,9 @@ function SidePanel({
         </div>
       )}
 
+      {/* Factures (read-only, from the Factures table) */}
+      {projet.ref && <FacturesSection projetRef={projet.ref} />}
+
       {/* Comments (Airtable record comments) */}
       <ProjetComments projetId={projet.id} />
 
@@ -1366,6 +1442,125 @@ function SidePanel({
           filename={viewer.filename}
           onClose={() => setViewer(null)}
         />
+      )}
+    </div>
+  )
+}
+
+/* ─── Factures (read-only view of a project's invoices) ─── */
+
+type FactureRow = {
+  id: string
+  numero?: string
+  dateEmission?: string
+  montantHT?: number
+  montantTTC?: number
+  reglement?: number
+  soldeDu?: number
+  numeroBdc?: string
+  type?: string
+}
+
+function FacturesSection({ projetRef }: { projetRef: string }) {
+  const [factures, setFactures] = useState<FactureRow[]>([])
+  const [totals, setTotals] = useState<{ montantTTC: number; reglement: number; soldeDu: number } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetch(`/api/factures?ref=${encodeURIComponent(projetRef)}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return
+        setFactures(data.factures || [])
+        setTotals(data.totals || null)
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [projetRef])
+
+  const eur = (n?: number) =>
+    n == null ? '—' : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
+  const fdate = (s?: string) => {
+    if (!s) return '—'
+    const parts = s.substring(0, 10).split('-').map(Number)
+    if (parts.length < 3 || parts.some(isNaN)) return '—'
+    return new Date(parts[0], parts[1] - 1, parts[2]).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  }
+
+  if (loading) {
+    return (
+      <div className="mb-6">
+        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2.5">Factures</h3>
+        <div className="flex items-center gap-2 text-xs text-gray-400"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Chargement…</div>
+      </div>
+    )
+  }
+  if (factures.length === 0) return null
+
+  return (
+    <div className="mb-6">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2 mb-2.5"
+      >
+        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+          Factures ({factures.length})
+        </h3>
+        {totals && totals.soldeDu > 0 && (
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+            Solde dû {eur(totals.soldeDu)}
+          </span>
+        )}
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 ml-auto transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 text-left">
+                <th className="px-2 py-1.5 font-medium">Émission</th>
+                <th className="px-2 py-1.5 font-medium">N°</th>
+                <th className="px-2 py-1.5 font-medium">BDC</th>
+                <th className="px-2 py-1.5 font-medium text-right">TTC</th>
+                <th className="px-2 py-1.5 font-medium text-right">Réglé</th>
+                <th className="px-2 py-1.5 font-medium text-right">Solde dû</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {factures.map((f) => (
+                <tr key={f.id} className="text-gray-700">
+                  <td className="px-2 py-1.5 tabular-nums whitespace-nowrap">{fdate(f.dateEmission)}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">
+                    {f.numero || '—'}
+                    {f.type && <span className="ml-1 text-[9px] text-gray-400">({f.type})</span>}
+                  </td>
+                  <td className="px-2 py-1.5 font-mono text-gray-500 whitespace-nowrap">{f.numeroBdc || '—'}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{eur(f.montantTTC)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap text-green-700">{eur(f.reglement)}</td>
+                  <td className={`px-2 py-1.5 text-right tabular-nums whitespace-nowrap ${f.soldeDu && f.soldeDu > 0 ? 'text-amber-700 font-medium' : ''}`}>
+                    {eur(f.soldeDu)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            {totals && (
+              <tfoot>
+                <tr className="bg-gray-50 font-semibold text-gray-700">
+                  <td className="px-2 py-1.5" colSpan={3}>Total</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{eur(totals.montantTTC)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-green-700">{eur(totals.reglement)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{eur(totals.soldeDu)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
       )}
     </div>
   )

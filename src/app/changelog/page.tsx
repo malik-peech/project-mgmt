@@ -10,6 +10,26 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.29',
+    date: '23/07/2026',
+    changes: [
+      'Modale PM « Bonjour » : réapparaît au login/démarrage puis toutes les heures (au lieu d\'une seule fois par session)',
+      'Modale PM · onglet « Date finalisation dépassée » : le statut du projet est désormais modifiable directement (menu déroulant)',
+      'Tasks : vue par défaut « Mes tasks » (au lieu de « Mes projets »)',
+      'Tasks : la liste est regroupée en blocs distincts par projet',
+      'COGS : dépôt de facture prestataire possible dès la validation du montant, sans attendre l\'affectation d\'une ressource (le n° de commande suffit)',
+      'COGS : nouvelle case « BDC comm. » (BDC communiqué) éditable directement sur la ligne',
+      'Dépôt facture prestataire : montant HT et méthode de paiement affichés en grisé ; le presta saisit désormais la TVA et son numéro de facture (enregistrés sur la ligne COGS)',
+      'Fix calendrier « Brief client à planifier » : le sélecteur de date n\'est plus tronqué/bloqué dans les modales (rendu en overlay)',
+      'Fix changement de phase projet non enregistré dans Airtable (option « Last modifs » désormais correctement mappée)',
+      'Projets : nouvelle colonne « Fin » (date de finalisation prévue) éditable, en rouge si dépassée, avec filtre « finalisations dépassées »',
+      'Projets : vue facturation en lecture par projet (émission, n°, montant, règlement, solde dû, n° BDC) dans le panneau latéral',
+      'Tasks : réordonnancement manuel par glisser-déposer des lignes (dans chaque bloc projet, mémorisé par utilisateur)',
+      'Tasks · calendrier : création d\'une task en cliquant sur une journée (modale pré-remplie avec la date)',
+      'Tasks · calendrier : une couleur par projet pour repérer les tasks d\'un même projet',
+    ],
+  },
+  {
     version: '1.28',
     date: '23/07/2026',
     changes: [

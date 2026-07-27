@@ -97,6 +97,7 @@ function CogsPage() {
       montantEngageProd: 110,
       facture: 180,
       statut: 140,
+      bdcCommunique: 96,
     }),
     []
   )
@@ -847,6 +848,7 @@ function CogsPage() {
                     <col style={{ width: colW.montantEngageProd }} />
                     <col style={{ width: colW.facture }} />
                     <col style={{ width: colW.statut }} />
+                    <col style={{ width: colW.bdcCommunique }} />
                   </colgroup>
                   <thead>
                     <tr className={`border-b border-gray-100 bg-gray-50/50 ${condensed ? '' : ''}`}>
@@ -858,6 +860,7 @@ function CogsPage() {
                         { key: 'montantEngageProd', label: 'HT engagé', align: 'right', noSort: false },
                         { key: 'facture', label: 'Facture', align: 'left', noSort: true },
                         { key: 'statut', label: 'Statut', align: 'center', noSort: false },
+                        { key: 'bdcCommunique', label: 'BDC comm.', align: 'center', noSort: true },
                       ] as const).map(({ key, label, align, noSort }) => (
                         <th
                           key={key}
@@ -1002,6 +1005,16 @@ function CogsPage() {
                               {c.statut}
                             </span>
                           ) : '—'}
+                        </td>
+                        <td className={`${rowPad} text-center overflow-hidden`}>
+                          <input
+                            type="checkbox"
+                            checked={!!c.bdcCommunique}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => { e.stopPropagation(); updateCogField(c.id, { bdcCommunique: e.target.checked }) }}
+                            className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer align-middle"
+                            title="BDC communiqué au prestataire"
+                          />
                         </td>
                       </tr>
                     )})}

@@ -6,9 +6,10 @@ import { FileText, UploadCloud, CheckCircle2, Loader2, AlertTriangle, CreditCard
 type LookupResult = {
   found: boolean
   eligible?: boolean
-  reason?: 'paid' | 'cancelled'
+  reason?: 'paid' | 'cancelled' | 'has_facture'
   numeroCommande?: string
   montantHT?: number
+  methodePaiement?: string
   ressourceName?: string
   projetRef?: string
   projetName?: string
@@ -31,6 +32,8 @@ export default function FactureDropPage() {
   const [result, setResult] = useState<LookupResult | null>(null)
 
   const [file, setFile] = useState<File | null>(null)
+  const [tva, setTva] = useState('')
+  const [numeroFacture, setNumeroFacture] = useState('')
   const [confirmBank, setConfirmBank] = useState(false)
   const [confirmAmount, setConfirmAmount] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -74,13 +77,15 @@ export default function FactureDropPage() {
   }
 
   const submitFacture = async () => {
-    if (!file || !confirmBank || !confirmAmount) return
+    if (!file || !confirmBank || !confirmAmount || !numeroFacture.trim() || tva.trim() === '') return
     setLoading(true)
     setError(null)
     try {
       const fd = new FormData()
       fd.append('email', email.trim())
       fd.append('numeroCommande', numeroCommande.trim())
+      fd.append('tva', tva.trim())
+      fd.append('numeroFacture', numeroFacture.trim())
       fd.append('files', file, file.name)
       const res = await fetch('/api/facture/upload', { method: 'POST', body: fd })
       const data = await res.json()
@@ -160,7 +165,53 @@ export default function FactureDropPage() {
                 {(result.projetRef || result.projetName) && (
                   <Row label="Projet" value={[result.projetRef, result.projetName].filter(Boolean).join(' · ')} />
                 )}
-                <Row label="Montant indiqué" value={`${fmtEur(result.montantHT)} HT`} strong />
+              </div>
+
+              {/* Détails de facturation */}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Montant HT</label>
+                    <input
+                      type="text"
+                      value={`${fmtEur(result.montantHT)} HT`}
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Méthode de paiement</label>
+                    <input
+                      type="text"
+                      value={result.methodePaiement || '—'}
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Numéro de facture <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      value={numeroFacture}
+                      onChange={(e) => setNumeroFacture(e.target.value)}
+                      placeholder="ex : FAC-2026-014"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">TVA (€) <span className="text-red-500">*</span></label>
+                    <input
+                      type="number"
+                      value={tva}
+                      onChange={(e) => setTva(e.target.value)}
+                      placeholder="0"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1">Montant de TVA en €. Mettez 0 si non applicable.</p>
+                  </div>
+                </div>
               </div>
 
               {/* Bank reminder */}
@@ -229,7 +280,7 @@ export default function FactureDropPage() {
 
               <button
                 onClick={submitFacture}
-                disabled={loading || !file || !confirmBank || !confirmAmount}
+                disabled={loading || !file || !confirmBank || !confirmAmount || !numeroFacture.trim() || tva.trim() === ''}
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition disabled:opacity-50"
               >
                 {loading && <Loader2 className="w-4 h-4 animate-spin" />}

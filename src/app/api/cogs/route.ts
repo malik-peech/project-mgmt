@@ -62,6 +62,7 @@ function mapRecord(
     tva: num(f['TVA']),
     montantTTC: num(f['Montant TTC']),
     bdcEnvoye: !!f['BDC envoyé'],
+    bdcCommunique: !!f['BDC communiqué'],
     numeroFacture: str(f['Numéro de facture']),
     facture: Array.isArray(f['Facture'])
       ? (f['Facture'] as { url: string; filename: string; type?: string; size?: number }[]).map((a) => ({

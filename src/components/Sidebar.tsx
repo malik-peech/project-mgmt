@@ -174,18 +174,33 @@ export default function Sidebar() {
   // Belle Base (catalogue de références) — Sales, Admin et PM.
   const showBelleBase = isSales || isAdmin || isPM
 
-  // Show PM welcome modal once per session on first login for PMs only.
+  // Show the PM welcome modal on startup/login, then re-show every hour (PMs only).
+  // Throttled via a localStorage timestamp so a quick page refresh doesn't re-pop it.
   useEffect(() => {
     if (!userName || !isPM) return
-    const key = `peechpm_welcome_shown_${userName}`
-    const alreadyShown = sessionStorage.getItem(key)
-    if (!alreadyShown) {
+    const key = `peechpm_welcome_last_${userName}`
+    const HOUR = 60 * 60 * 1000
+    const shouldShow = () => {
+      const last = Number(localStorage.getItem(key) || 0)
+      return !last || Date.now() - last >= HOUR
+    }
+    const trigger = () => {
+      setShowWelcome(true)
+      localStorage.setItem(key, String(Date.now()))
+    }
+    // On mount (startup / login): show if it hasn't been shown in the last hour.
+    let initialTimer: ReturnType<typeof setTimeout> | undefined
+    if (shouldShow()) {
       // Delay slightly to avoid flashing during auth redirect.
-      const t = setTimeout(() => {
-        setShowWelcome(true)
-        sessionStorage.setItem(key, '1')
-      }, 600)
-      return () => clearTimeout(t)
+      initialTimer = setTimeout(trigger, 600)
+    }
+    // Then re-check each minute so it re-pops ~1h after it was last shown.
+    const interval = setInterval(() => {
+      if (shouldShow()) trigger()
+    }, 60_000)
+    return () => {
+      if (initialTimer) clearTimeout(initialTimer)
+      clearInterval(interval)
     }
   }, [userName, isPM])
 

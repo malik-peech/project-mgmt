@@ -8,35 +8,28 @@ import {
   eachDayOfInterval,
 } from 'date-fns'
 import { fr } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Circle, CheckCircle2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Circle, CheckCircle2, Plus } from 'lucide-react'
 import type { Task } from '@/types'
 
-const TYPE_COLORS: Record<string, string> = {
-  'Brief': 'border-l-blue-500 bg-blue-50',
-  'Call client': 'border-l-blue-500 bg-blue-50',
-  'Email client': 'border-l-sky-500 bg-sky-50',
-  'Prez': 'border-l-indigo-500 bg-indigo-50',
-  'Delivery': 'border-l-violet-500 bg-violet-50',
-  'Envoi r\u00e9troplanning': 'border-l-purple-500 bg-purple-50',
-  'Contact presta': 'border-l-teal-500 bg-teal-50',
-  'Call presta': 'border-l-teal-500 bg-teal-50',
-  'Retour presta': 'border-l-teal-400 bg-teal-50',
-  'COGS': 'border-l-green-500 bg-green-50',
-  'Demande float': 'border-l-lime-500 bg-lime-50',
-  'Matos': 'border-l-yellow-500 bg-yellow-50',
-  'Shooting': 'border-l-orange-500 bg-orange-50',
-  'Prepa Tournage': 'border-l-orange-400 bg-orange-50',
-  'Casting VO': 'border-l-pink-500 bg-pink-50',
-  'Casting acteur': 'border-l-pink-400 bg-pink-50',
-  'Task interne': 'border-l-gray-400 bg-gray-50',
-  'Check': 'border-l-slate-400 bg-slate-50',
-  'Calendar': 'border-l-slate-400 bg-slate-50',
-}
-
-function getTypeColor(type?: string): string {
-  if (!type) return 'border-l-gray-300 bg-gray-50'
-  return TYPE_COLORS[type] ?? 'border-l-indigo-400 bg-indigo-50'
-}
+// Palette used to color task pills by project. Full class strings (no dynamic
+// interpolation) so Tailwind doesn't purge them.
+const PROJECT_PALETTE = [
+  'border-l-blue-500 bg-blue-50',
+  'border-l-emerald-500 bg-emerald-50',
+  'border-l-violet-500 bg-violet-50',
+  'border-l-orange-500 bg-orange-50',
+  'border-l-pink-500 bg-pink-50',
+  'border-l-teal-500 bg-teal-50',
+  'border-l-amber-500 bg-amber-50',
+  'border-l-cyan-500 bg-cyan-50',
+  'border-l-fuchsia-500 bg-fuchsia-50',
+  'border-l-lime-600 bg-lime-50',
+  'border-l-rose-500 bg-rose-50',
+  'border-l-indigo-500 bg-indigo-50',
+  'border-l-sky-500 bg-sky-50',
+  'border-l-purple-500 bg-purple-50',
+]
+const NO_PROJECT_COLOR = 'border-l-gray-300 bg-gray-50'
 
 interface Props {
   tasks: Task[]
@@ -45,6 +38,7 @@ interface Props {
   onTaskDateChange: (taskId: string, newDate: string) => Promise<void>
   onToggleDone: (task: Task) => void
   onTaskClick: (task: Task) => void
+  onCreateTask?: (date: string) => void
 }
 
 function toISO(d: Date): string {
@@ -56,9 +50,27 @@ function toISO(d: Date): string {
 
 const DAYS_FR = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven']
 
-export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeChange, onTaskDateChange, onToggleDone, onTaskClick }: Props) {
+export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeChange, onTaskDateChange, onToggleDone, onTaskClick, onCreateTask }: Props) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [dragOverDate, setDragOverDate] = useState<string | null>(null)
+
+  // Assign a stable color to each project present, in first-seen order, so
+  // tasks of the same project share a color across the calendar.
+  const projectColorMap = useMemo(() => {
+    const map = new Map<string, string>()
+    let i = 0
+    for (const t of tasks) {
+      const key = t.projetId || t.projetRef
+      if (!key || map.has(key)) continue
+      map.set(key, PROJECT_PALETTE[i % PROJECT_PALETTE.length])
+      i++
+    }
+    return map
+  }, [tasks])
+  const colorFor = useCallback((task: Task) => {
+    const key = task.projetId || task.projetRef
+    return (key && projectColorMap.get(key)) || NO_PROJECT_COLOR
+  }, [projectColorMap])
 
   // Group tasks by date
   const tasksByDate = useMemo(() => {
@@ -152,9 +164,9 @@ export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeCh
       <div
         draggable
         onDragStart={(e) => handleDragStart(e, task)}
-        onClick={() => onTaskClick(task)}
+        onClick={(e) => { e.stopPropagation(); onTaskClick(task) }}
         className={`group flex items-start gap-1 px-1.5 py-1 rounded border-l-[3px] cursor-pointer active:cursor-grabbing transition-colors text-[11px] leading-tight mb-0.5
-          ${getTypeColor(task.type)}
+          ${colorFor(task)}
           ${isOverdue ? 'ring-1 ring-red-300' : ''}
           hover:shadow-md hover:brightness-95`}
         title={`${task.name}${task.projetRef ? '\n' + task.projetRef : ''}${task.clientName ? ' - ' + task.clientName : ''}${task.type ? '\nType: ' + task.type : ''}`}
@@ -272,10 +284,13 @@ export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeCh
                 onDragOver={(e) => handleDragOver(e, dateStr)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, dateStr)}
-                className={`border-r border-b border-gray-200 p-1 ${cellMinH} transition-colors
+                onClick={() => onCreateTask?.(dateStr)}
+                className={`group/cell relative border-r border-b border-gray-200 p-1 ${cellMinH} transition-colors
+                  ${onCreateTask ? 'cursor-pointer' : ''}
                   ${!inMonth && calendarMode === 'month' ? 'bg-gray-50/50' : 'bg-white'}
-                  ${isDragOver ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-300' : ''}
+                  ${isDragOver ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-300' : 'hover:bg-indigo-50/30'}
                 `}
+                title={onCreateTask ? 'Cliquer pour créer une task ce jour' : undefined}
               >
                 {/* Date number */}
                 <div className="flex items-center justify-between mb-1">
@@ -284,9 +299,21 @@ export default function TaskCalendarView({ tasks, calendarMode, onCalendarModeCh
                   `}>
                     {format(day, 'd')}
                   </span>
-                  {dayTasks.length > 0 && (
-                    <span className="text-[9px] text-gray-400 font-medium">{dayTasks.length}</span>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {onCreateTask && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onCreateTask(dateStr) }}
+                        className="opacity-0 group-hover/cell:opacity-100 transition text-indigo-500 hover:text-indigo-700"
+                        title="Créer une task ce jour"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {dayTasks.length > 0 && (
+                      <span className="text-[9px] text-gray-400 font-medium">{dayTasks.length}</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Tasks */}

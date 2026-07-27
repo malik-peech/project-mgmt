@@ -138,6 +138,7 @@ export interface Cogs {
   tva?: number
   montantTTC?: number
   bdcEnvoye?: boolean
+  bdcCommunique?: boolean
   numeroFacture?: string
   facture?: Attachment[]
   commentaire?: string

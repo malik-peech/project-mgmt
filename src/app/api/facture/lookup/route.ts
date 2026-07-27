@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       montantHT: target.montantHT,
       statut: target.statut,
       ressourceName: target.ressourceName,
+      methodePaiement: target.methodePaiement,
       projetRef: target.projetRef,
       projetName: target.projetName,
       iban: target.iban,

@@ -31,6 +31,8 @@ export async function POST(request: Request) {
     const formData = await request.formData()
     const email = String(formData.get('email') || '')
     const numeroCommande = String(formData.get('numeroCommande') || '')
+    const tvaRaw = String(formData.get('tva') || '').trim()
+    const numeroFacture = String(formData.get('numeroFacture') || '').trim()
     const files = formData.getAll('files') as File[]
 
     if (!email || !numeroCommande) {
@@ -81,12 +83,18 @@ export async function POST(request: Request) {
       ...newAttachments,
     ]
 
+    // Write the invoice + the presta-filled TVA / invoice number.
+    const patchFields: Record<string, unknown> = { 'Facture': patchAttachments }
+    const tvaNum = tvaRaw !== '' ? Number(tvaRaw.replace(',', '.')) : NaN
+    if (!isNaN(tvaNum)) patchFields['TVA'] = tvaNum
+    if (numeroFacture) patchFields['Numéro de facture'] = numeroFacture
+
     const updateRes = await fetch(
       `https://api.airtable.com/v0/${BASE_ID}/${COGS_TABLE_ID}/${target.cogId}`,
       {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: { 'Facture': patchAttachments } }),
+        body: JSON.stringify({ fields: patchFields }),
       }
     )
     if (!updateRes.ok) {
