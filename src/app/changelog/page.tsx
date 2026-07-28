@@ -10,11 +10,21 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.31',
+    date: '28/07/2026',
+    changes: [
+      'Clocking : cliquer un jour du calendrier ouvre une pop-up (saisir le projet → cliquer une bulle de durée)',
+      'Clocking : la liste projet ne montre que les projets du PM (statut ≠ Done) + le projet 1789',
+      'Clocking · vue Jour : espace rouge pâle indiquant le temps manquant (objectif 7h) — repère d\'un coup d\'œil où il manque du clocking',
+      'Clocking : jours sans clocking surlignés en rouge pâle en vues semaine/mois',
+    ],
+  },
+  {
     version: '1.30',
     date: '28/07/2026',
     changes: [
       'Nouveau menu Clocking : les PM loguent leur temps par projet en un minimum de clics (choisir un projet, cliquer une durée)',
-      'Vues Jour / Semaine / Mois avec total par jour et repérage des jours non cloqués (en rouge/orange)',
+      'Vues Jour / Semaine / Mois avec total par jour et repérage des jours non clockés (en rouge/orange)',
       'Calendrier : glisser un log vers un autre jour, étirer le bas d\'un log pour changer sa durée, clic droit pour dupliquer/supprimer',
       'Données stockées dans la table Time log (Airtable) — durée + projet + note',
       'Clocking : association via le champ « App user » (créé automatiquement) — plus fiable, chaque PM retrouve ses logs quel que soit son nom',

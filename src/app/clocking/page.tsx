@@ -67,6 +67,8 @@ export default function ClockingPage() {
   const [desc, setDesc] = useState('')
   const [saving, setSaving] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; log: TimeLog } | null>(null)
+  // Date (YYYY-MM-DD) for the click-to-add popup, or null when closed.
+  const [addModal, setAddModal] = useState<string | null>(null)
 
   // Visible range → [from, to]
   const [from, to] = useMemo<[string, string]>(() => {
@@ -103,27 +105,32 @@ export default function ClockingPage() {
   const totalFor = useCallback((dateStr: string) =>
     (byDate.get(dateStr) ?? []).reduce((s, e) => s + (e.durationSeconds || 0), 0), [byDate])
 
-  const projetOptions = useMemo(() =>
-    (projets ?? [])
-      .filter((p) => p.statut !== 'Done')
-      .map((p) => ({ value: p.id, label: p.nom || p.ref || '—', sub: [p.ref, p.clientName].filter(Boolean).join(' · ') || undefined })),
-    [projets]
-  )
+  // Seule la liste des projets du PM (statut ≠ Done) + le projet générique 1789.
+  const projetOptions = useMemo(() => {
+    const all = projets ?? []
+    const mine = all.filter((p) => p.statut !== 'Done' && p.pm === userName)
+    const p1789 = all.find((p) => p.ref === '1789')
+    const list = p1789 && !mine.some((p) => p.id === p1789.id) ? [...mine, p1789] : mine
+    return list.map((p) => ({
+      value: p.id,
+      label: `${p.ref ? p.ref + ' · ' : ''}${p.nom || '—'}`,
+      sub: [p.ref, p.clientName].filter(Boolean).join(' · ') || undefined,
+    }))
+  }, [projets, userName])
 
   // ── mutations ──
-  const addLog = async (dateStr: string, durationSeconds: number) => {
-    if (!projetId) return
+  const createLog = async (dateStr: string, durationSeconds: number, projId: string, description: string) => {
+    if (!projId) return
     setSaving(true)
     try {
       const res = await fetch('/api/timelog', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user: userName, date: dateStr, durationSeconds, projetId, description: desc || null }),
+        body: JSON.stringify({ user: userName, date: dateStr, durationSeconds, projetId: projId, description: description || null }),
       })
       if (res.ok) {
         const created = (await res.json()) as TimeLog
         mutate((prev) => ({ linked: true, entries: [...(prev?.entries ?? []), created] }))
-        setDesc('')
       }
     } finally { setSaving(false) }
   }
@@ -246,7 +253,7 @@ export default function ClockingPage() {
               <span className="text-[11px] text-gray-400 mr-1">Durée&nbsp;:</span>
               {DURATION_PRESETS.map((p) => (
                 <button key={p.label} disabled={!projetId || saving}
-                  onClick={() => addLog(addDate, p.seconds)}
+                  onClick={() => createLog(addDate, p.seconds, projetId, desc)}
                   title={projetId ? `Ajouter ${p.label}` : 'Choisis d\'abord un projet'}
                   className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${projetId && !saving ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}>
                   +{p.label}
@@ -261,7 +268,7 @@ export default function ClockingPage() {
             <div className="h-64 bg-gray-100 rounded-xl animate-pulse" />
           ) : view === 'semaine' ? (
             <WeekView from={from} byDate={byDate} totalFor={totalFor}
-              onPickDay={setAddDate} addDate={addDate}
+              onDayClick={(d) => setAddModal(d)}
               onDropToDay={(id, dateStr) => patchLog(id, { date: dateStr })}
               onContext={(e, log) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, log }) }}
               startResize={(id, e, sec) => { resizeRef.current = { id, startY: e.clientY, startSec: sec }; setResizePreview({ id, sec }) }}
@@ -269,12 +276,16 @@ export default function ClockingPage() {
             />
           ) : view === 'mois' ? (
             <MonthView anchor={anchor} byDate={byDate} totalFor={totalFor}
-              onPickDay={(d) => { setAddDate(d); setAnchor(parseLocal(d)); setView('jour') }}
+              onDayClick={(d) => setAddModal(d)}
               onDropToDay={(id, dateStr) => patchLog(id, { date: dateStr })}
             />
           ) : (
             <DayView dateStr={ymd(anchor)} logs={byDate.get(ymd(anchor)) ?? []} total={totalFor(ymd(anchor))}
-              onContext={(e, log) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, log }) }} />
+              onAddClick={() => setAddModal(ymd(anchor))}
+              onContext={(e, log) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, log }) }}
+              startResize={(id, e, sec) => { resizeRef.current = { id, startY: e.clientY, startSec: sec }; setResizePreview({ id, sec }) }}
+              resizePreview={resizePreview}
+            />
           )}
         </>
       )}
@@ -287,6 +298,58 @@ export default function ClockingPage() {
             { label: 'Supprimer', icon: <Trash2 className="w-4 h-4" />, danger: true, onClick: () => deleteLog(contextMenu.log.id) },
           ]} />
       )}
+
+      {addModal && (
+        <AddLogModal
+          date={addModal}
+          projetOptions={projetOptions}
+          saving={saving}
+          onClose={() => setAddModal(null)}
+          onCreate={(projId, seconds, note) => { createLog(addModal, seconds, projId, note); setAddModal(null) }}
+        />
+      )}
+    </div>
+  )
+}
+
+/* ─── Click-to-add popup ─── */
+function AddLogModal({ date, projetOptions, saving, onClose, onCreate }: {
+  date: string
+  projetOptions: { value: string; label: string; sub?: string }[]
+  saving: boolean
+  onClose: () => void
+  onCreate: (projId: string, seconds: number, note: string) => void
+}) {
+  const [projId, setProjId] = useState('')
+  const [note, setNote] = useState('')
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-gray-900 capitalize">
+            Clocker — {parseLocal(date).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </h3>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><Plus className="w-5 h-5 rotate-45" /></button>
+        </div>
+
+        <label className="block text-xs font-medium text-gray-600 mb-1">Projet</label>
+        <ComboSelect options={projetOptions} value={projId} onChange={setProjId} placeholder="Code ou nom du projet…" clearable />
+
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optionnel)"
+          className="w-full mt-3 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+
+        <p className="text-xs font-medium text-gray-500 mt-4 mb-2">Durée — clique une bulle pour enregistrer</p>
+        <div className="grid grid-cols-3 gap-2">
+          {DURATION_PRESETS.map((p) => (
+            <button key={p.label} disabled={!projId || saving}
+              onClick={() => onCreate(projId, p.seconds, note)}
+              className={`py-2.5 rounded-xl text-sm font-semibold transition ${projId && !saving ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {!projId && <p className="text-[11px] text-gray-400 mt-3">Saisis d&apos;abord le projet, puis clique une bulle de temps.</p>}
+      </div>
     </div>
   )
 }
@@ -328,16 +391,15 @@ function LogPill({ log, height, onContext, onResizeStart, previewSec }: {
 
 function DayTotal({ seconds }: { seconds: number }) {
   const color = seconds === 0 ? 'text-red-500' : seconds < DAY_TARGET_SECONDS ? 'text-amber-600' : 'text-green-600'
-  return <span className={`text-[11px] font-semibold tabular-nums ${color}`}>{seconds === 0 ? 'Non cloqué' : fmtDur(seconds)}</span>
+  return <span className={`text-[11px] font-semibold tabular-nums ${color}`}>{seconds === 0 ? 'Non clocké' : fmtDur(seconds)}</span>
 }
 
 /* ─── Week view ─── */
-function WeekView({ from, byDate, totalFor, onPickDay, addDate, onDropToDay, onContext, startResize, resizePreview }: {
+function WeekView({ from, byDate, totalFor, onDayClick, onDropToDay, onContext, startResize, resizePreview }: {
   from: string
   byDate: Map<string, TimeLog[]>
   totalFor: (d: string) => number
-  onPickDay: (d: string) => void
-  addDate: string
+  onDayClick: (d: string) => void
   onDropToDay: (id: string, dateStr: string) => void
   onContext: (e: React.MouseEvent, log: TimeLog) => void
   startResize: (id: string, e: React.MouseEvent, sec: number) => void
@@ -352,14 +414,15 @@ function WeekView({ from, byDate, totalFor, onPickDay, addDate, onDropToDay, onC
         const ds = ymd(d)
         const logs = byDate.get(ds) ?? []
         const total = totalFor(ds)
-        const selected = ds === addDate
+        const empty = total === 0
         return (
           <div key={ds}
-            onClick={() => onPickDay(ds)}
+            onClick={() => onDayClick(ds)}
             onDragOver={(e) => { e.preventDefault(); setDragOver(ds) }}
             onDragLeave={() => setDragOver((c) => c === ds ? null : c)}
             onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) onDropToDay(id, ds); setDragOver(null) }}
-            className={`rounded-xl border p-2 min-h-[320px] transition cursor-pointer ${dragOver === ds ? 'border-indigo-400 bg-indigo-50/50' : selected ? 'border-indigo-300 ring-1 ring-indigo-200' : 'border-gray-100 bg-white'} ${isToday(d) ? 'ring-1 ring-indigo-300' : ''}`}>
+            title="Cliquer pour clocker sur ce jour"
+            className={`rounded-xl border p-2 min-h-[320px] transition cursor-pointer ${dragOver === ds ? 'border-indigo-400 bg-indigo-50/50' : empty ? 'border-red-100 bg-red-50/40 hover:bg-red-50/70' : 'border-gray-100 bg-white hover:bg-gray-50/40'} ${isToday(d) ? 'ring-1 ring-indigo-300' : ''}`}>
             <div className="flex items-center justify-between mb-2 px-0.5">
               <span className={`text-xs font-semibold ${isToday(d) ? 'text-indigo-600' : 'text-gray-600'}`}>{WEEKDAY_LABELS[i]} {d.getDate()}</span>
               <DayTotal seconds={total} />
@@ -375,7 +438,11 @@ function WeekView({ from, byDate, totalFor, onPickDay, addDate, onDropToDay, onC
                   </div>
                 )
               })}
-              {logs.length === 0 && <p className="text-[11px] text-gray-300 text-center pt-4">—</p>}
+              {empty && (
+                <p className="text-[11px] text-red-400 text-center pt-6 flex flex-col items-center gap-1">
+                  <Plus className="w-4 h-4" /> Clique pour clocker
+                </p>
+              )}
             </div>
           </div>
         )
@@ -385,11 +452,11 @@ function WeekView({ from, byDate, totalFor, onPickDay, addDate, onDropToDay, onC
 }
 
 /* ─── Month view ─── */
-function MonthView({ anchor, byDate, totalFor, onPickDay, onDropToDay }: {
+function MonthView({ anchor, byDate, totalFor, onDayClick, onDropToDay }: {
   anchor: Date
   byDate: Map<string, TimeLog[]>
   totalFor: (d: string) => number
-  onPickDay: (d: string) => void
+  onDayClick: (d: string) => void
   onDropToDay: (id: string, dateStr: string) => void
 }) {
   const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
@@ -414,20 +481,22 @@ function MonthView({ anchor, byDate, totalFor, onPickDay, onDropToDay }: {
           const inMonth = d.getMonth() === anchor.getMonth()
           const total = totalFor(ds)
           const logs = byDate.get(ds) ?? []
+          const missing = inMonth && !isWeekend(d) && total === 0
           return (
             <div key={ds}
-              onClick={() => onPickDay(ds)}
+              onClick={() => onDayClick(ds)}
               onDragOver={(e) => { e.preventDefault(); setDragOver(ds) }}
               onDragLeave={() => setDragOver((c) => c === ds ? null : c)}
               onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) onDropToDay(id, ds); setDragOver(null) }}
-              className={`min-h-[92px] border-b border-r border-gray-50 p-1.5 cursor-pointer transition ${!inMonth ? 'bg-gray-50/40' : dragOver === ds ? 'bg-indigo-50' : 'hover:bg-gray-50/50'} ${isToday(d) ? 'ring-1 ring-inset ring-indigo-300' : ''}`}>
+              title="Cliquer pour clocker sur ce jour"
+              className={`min-h-[92px] border-b border-r border-gray-50 p-1.5 cursor-pointer transition ${!inMonth ? 'bg-gray-50/40' : dragOver === ds ? 'bg-indigo-50' : missing ? 'bg-red-50/50 hover:bg-red-50' : 'hover:bg-gray-50/50'} ${isToday(d) ? 'ring-1 ring-inset ring-indigo-300' : ''}`}>
               <div className="flex items-center justify-between mb-1">
                 <span className={`text-[11px] ${inMonth ? 'text-gray-600' : 'text-gray-300'} ${isToday(d) ? 'font-bold text-indigo-600' : ''}`}>{d.getDate()}</span>
                 {inMonth && !isWeekend(d) && <DayTotal seconds={total} />}
               </div>
               <div className="space-y-0.5">
                 {logs.slice(0, 3).map((log) => (
-                  <div key={log.id} draggable onDragStart={(e) => e.dataTransfer.setData('text/plain', log.id)}
+                  <div key={log.id} draggable onClick={(e) => e.stopPropagation()} onDragStart={(e) => e.dataTransfer.setData('text/plain', log.id)}
                     className="truncate rounded bg-indigo-50 text-indigo-700 text-[9px] px-1 py-0.5 border border-indigo-100 cursor-grab">
                     {log.projetRef || log.projetName} · {fmtDur(log.durationSeconds)}
                   </div>
@@ -443,35 +512,69 @@ function MonthView({ anchor, byDate, totalFor, onPickDay, onDropToDay }: {
 }
 
 /* ─── Day view ─── */
-function DayView({ dateStr, logs, total, onContext }: {
+function DayView({ dateStr, logs, total, onAddClick, onContext, startResize, resizePreview }: {
   dateStr: string
   logs: TimeLog[]
   total: number
+  onAddClick: () => void
   onContext: (e: React.MouseEvent, log: TimeLog) => void
+  startResize: (id: string, e: React.MouseEvent, sec: number) => void
+  resizePreview: { id: string; sec: number } | null
 }) {
+  const gap = Math.max(0, DAY_TARGET_SECONDS - total)
+  const gapHeight = Math.max(56, Math.round((gap / 3600) * HOUR_PX))
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 max-w-2xl">
-      <div className="flex items-center justify-between mb-3">
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 max-w-3xl">
+      <div className="flex items-center justify-between mb-4">
         <span className="text-sm font-semibold text-gray-700 capitalize">{parseLocal(dateStr).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
-        <DayTotal seconds={total} />
-      </div>
-      {logs.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-8">Aucun temps cloqué ce jour.</p>
-      ) : (
-        <div className="space-y-2">
-          {logs.map((log) => (
-            <div key={log.id} onContextMenu={(e) => onContext(e, log)}
-              className="flex items-center gap-3 rounded-lg border border-gray-100 hover:border-indigo-200 px-3 py-2">
-              {log.projetRef && <span className="font-mono text-[11px] text-gray-500 shrink-0">{log.projetRef}</span>}
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-gray-800 truncate">{log.projetName || '—'}{log.clientName ? ` · ${log.clientName}` : ''}</p>
-                {log.description && <p className="text-xs text-gray-400 truncate">{log.description}</p>}
-              </div>
-              <span className="text-sm font-semibold text-indigo-700 tabular-nums shrink-0">{fmtDur(log.durationSeconds)}</span>
-            </div>
-          ))}
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-gray-400">objectif 7h</span>
+          <DayTotal seconds={total} />
         </div>
-      )}
+      </div>
+
+      <div className="flex gap-6">
+        {/* Timeline column — logged blocks + pale-red missing space */}
+        <div className="w-52 shrink-0 space-y-1.5">
+          {logs.map((log) => {
+            const preview = resizePreview?.id === log.id ? resizePreview.sec : undefined
+            const sec = preview ?? log.durationSeconds
+            const h = Math.max(30, Math.round((sec / 3600) * HOUR_PX))
+            return <LogPill key={log.id} log={log} height={h} onContext={onContext} onResizeStart={startResize} previewSec={preview} />
+          })}
+          {gap > 0 ? (
+            <button onClick={onAddClick} style={{ height: gapHeight }}
+              className="w-full rounded-md border-2 border-dashed border-red-200 bg-red-50/60 hover:bg-red-50 text-red-400 hover:text-red-500 text-[11px] font-medium flex flex-col items-center justify-center gap-1 transition">
+              <Plus className="w-4 h-4" />
+              Il manque {fmtDur(gap)}
+              <span className="text-[10px]">clique pour clocker</span>
+            </button>
+          ) : (
+            <div className="w-full rounded-md bg-green-50 text-green-600 text-[11px] font-medium text-center py-2">Objectif atteint ✓</div>
+          )}
+        </div>
+
+        {/* Detail list */}
+        <div className="flex-1 min-w-0">
+          {logs.length === 0 ? (
+            <p className="text-sm text-gray-400 py-8 text-center">Aucun temps clocké ce jour — clique dans la zone rouge pour ajouter.</p>
+          ) : (
+            <div className="space-y-2">
+              {logs.map((log) => (
+                <div key={log.id} onContextMenu={(e) => onContext(e, log)}
+                  className="flex items-center gap-3 rounded-lg border border-gray-100 hover:border-indigo-200 px-3 py-2">
+                  {log.projetRef && <span className="font-mono text-[11px] text-gray-500 shrink-0">{log.projetRef}</span>}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-gray-800 truncate">{log.projetName || '—'}{log.clientName ? ` · ${log.clientName}` : ''}</p>
+                    {log.description && <p className="text-xs text-gray-400 truncate">{log.description}</p>}
+                  </div>
+                  <span className="text-sm font-semibold text-indigo-700 tabular-nums shrink-0">{fmtDur(log.durationSeconds)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
