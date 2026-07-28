@@ -322,6 +322,9 @@ function AddLogModal({ date, projetOptions, saving, onClose, onCreate }: {
 }) {
   const [projId, setProjId] = useState('')
   const [note, setNote] = useState('')
+  const [h, setH] = useState('')
+  const [m, setM] = useState('')
+  const customSec = (parseInt(h || '0', 10) * 3600) + (parseInt(m || '0', 10) * 60)
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
@@ -348,6 +351,24 @@ function AddLogModal({ date, projetOptions, saving, onClose, onCreate }: {
             </button>
           ))}
         </div>
+        {/* Durée personnalisée */}
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <p className="text-xs font-medium text-gray-500 mb-2">Ou durée personnalisée</p>
+          <div className="flex items-center gap-2">
+            <input type="number" min="0" value={h} onChange={(e) => setH(e.target.value)} placeholder="0"
+              className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <span className="text-sm text-gray-400">h</span>
+            <input type="number" min="0" max="59" value={m} onChange={(e) => setM(e.target.value)} placeholder="0"
+              className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <span className="text-sm text-gray-400">min</span>
+            <button disabled={!projId || saving || customSec <= 0}
+              onClick={() => onCreate(projId, customSec, note)}
+              className={`ml-auto px-4 py-1.5 rounded-lg text-sm font-semibold transition ${projId && !saving && customSec > 0 ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-100 text-gray-300 cursor-not-allowed'}`}>
+              Ajouter
+            </button>
+          </div>
+        </div>
+
         {!projId && <p className="text-[11px] text-gray-400 mt-3">Saisis d&apos;abord le projet, puis clique une bulle de temps.</p>}
       </div>
     </div>

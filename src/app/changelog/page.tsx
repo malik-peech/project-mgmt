@@ -17,6 +17,7 @@ const RELEASES: Release[] = [
       'Clocking : la liste projet ne montre que les projets du PM (statut ≠ Done) + le projet 1789',
       'Clocking · vue Jour : espace rouge pâle indiquant le temps manquant (objectif 7h) — repère d\'un coup d\'œil où il manque du clocking',
       'Clocking : jours sans clocking surlignés en rouge pâle en vues semaine/mois',
+      'Clocking : saisie manuelle de la durée (h/min) dans la pop-up si aucune bulle ne convient',
     ],
   },
   {
