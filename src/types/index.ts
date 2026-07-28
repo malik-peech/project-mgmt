@@ -181,6 +181,19 @@ export interface RessourceComment {
   projetRef?: string
 }
 
+// ── Time log (clocking) ──
+export interface TimeLog {
+  id: string
+  date: string            // YYYY-MM-DD
+  durationSeconds: number
+  timeRange?: string
+  projetId?: string
+  projetRef?: string
+  projetName?: string
+  clientName?: string
+  description?: string
+}
+
 // ── Clients (onboarding) ──
 export interface Client {
   id: string

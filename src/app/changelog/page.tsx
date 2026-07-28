@@ -10,6 +10,16 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.30',
+    date: '28/07/2026',
+    changes: [
+      'Nouveau menu Clocking : les PM loguent leur temps par projet en un minimum de clics (choisir un projet, cliquer une durée)',
+      'Vues Jour / Semaine / Mois avec total par jour et repérage des jours non cloqués (en rouge/orange)',
+      'Calendrier : glisser un log vers un autre jour, étirer le bas d\'un log pour changer sa durée, clic droit pour dupliquer/supprimer',
+      'Données stockées dans la table Time log (Airtable) — durée + projet + note',
+    ],
+  },
+  {
     version: '1.29',
     date: '23/07/2026',
     changes: [

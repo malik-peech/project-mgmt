@@ -29,6 +29,7 @@ import {
   Wallet,
   ShieldCheck,
   Film,
+  Clock,
 } from 'lucide-react'
 import UnassignedModal from './UnassignedModal'
 import PMWelcomeModal from './PMWelcomeModal'
@@ -38,6 +39,7 @@ import type { Cogs, Task } from '@/types'
 const navItems = [
   { href: '/', label: 'Projets', icon: LayoutDashboard },
   { href: '/tasks', label: 'Tasks', icon: ListTodo },
+  { href: '/clocking', label: 'Clocking', icon: Clock },
   { href: '/cogs', label: 'COGS', icon: Receipt },
   { href: '/ressources', label: 'Ressources', icon: Users },
 ]
