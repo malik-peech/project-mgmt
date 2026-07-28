@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { ensureStore, buildLookupMap } from '@/lib/store'
 import { sanitize } from '@/lib/sanitize'
-import { resolveTeamMember, updateTimeLog, deleteTimeLog, type TimeLogEntry } from '@/lib/timelog'
+import { updateTimeLog, deleteTimeLog, type TimeLogEntry } from '@/lib/timelog'
 
 async function enrichOne(e: TimeLogEntry) {
   const store = await ensureStore()
@@ -26,10 +26,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const { id } = await params
     const body = await request.json()
-    const member = await resolveTeamMember(String(body.user || ''))
-    if (!member) return NextResponse.json({ error: 'Compte non relié' }, { status: 422 })
 
-    const updated = await updateTimeLog(member, id, {
+    const updated = await updateTimeLog(id, {
       date: body.date,
       durationSeconds: body.durationSeconds,
       projetId: body.projetId,

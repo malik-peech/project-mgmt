@@ -16,7 +16,8 @@ export const TEAM_TABLE_ID = 'tblMPFDPGaF5ljJI4'
 // Time log field ids
 export const F = {
   date: 'fldIBtpCzhqIhQE7V',
-  user: 'fldbi9SFn3POhMzqa',        // singleCollaborator
+  user: 'fldbi9SFn3POhMzqa',        // singleCollaborator (Airtable user)
+  appUser: 'fldFMciRJ5HHrXzED',     // singleSelect — the app login name (our key)
   timeRange: 'fldV7Bs3SJR3Gsza5',   // singleSelect
   duration: 'fldG42Vgm1FL3nDCs',    // duration (seconds)
   projets: 'fld4Rm7ePdoml4Vfz',     // link → Projets
@@ -144,10 +145,10 @@ function mapEntry(r: RawRecord): TimeLogEntry {
   }
 }
 
-/** List a member's logs within [from, to] inclusive (YYYY-MM-DD). */
-export async function listTimeLogs(member: TeamMember, from: string, to: string): Promise<TimeLogEntry[]> {
-  const name = member.name.replace(/"/g, '\\"')
-  const formula = `AND({User}="${name}",IS_AFTER({Date},DATEADD(DATETIME_PARSE("${from}","YYYY-MM-DD"),-1,'days')),IS_BEFORE({Date},DATEADD(DATETIME_PARSE("${to}","YYYY-MM-DD"),1,'days')))`
+/** List the logs of an app user within [from, to] inclusive (YYYY-MM-DD). */
+export async function listTimeLogs(appUser: string, from: string, to: string): Promise<TimeLogEntry[]> {
+  const name = appUser.replace(/"/g, '\\"')
+  const formula = `AND({App user}="${name}",IS_AFTER({Date},DATEADD(DATETIME_PARSE("${from}","YYYY-MM-DD"),-1,'days')),IS_BEFORE({Date},DATEADD(DATETIME_PARSE("${to}","YYYY-MM-DD"),1,'days')))`
   const entries: TimeLogEntry[] = []
   let offset: string | undefined
   do {
@@ -165,7 +166,7 @@ export async function listTimeLogs(member: TeamMember, from: string, to: string)
   return entries
 }
 
-function buildFields(member: TeamMember, input: {
+function buildFields(input: {
   date?: string
   durationSeconds?: number
   projetId?: string | null
@@ -182,15 +183,23 @@ function buildFields(member: TeamMember, input: {
   return fields
 }
 
-export async function createTimeLog(member: TeamMember, input: {
+export async function createTimeLog(appUser: string, input: {
   date: string
   durationSeconds: number
   projetId?: string | null
   description?: string | null
 }): Promise<TimeLogEntry> {
-  const fields = buildFields(member, input)
-  fields[F.users] = [member.recordId]
-  if (member.collabId) fields[F.user] = { id: member.collabId }
+  const fields = buildFields(input)
+  // "App user" is our reliable key — typecast creates the option if it doesn't exist yet.
+  fields[F.appUser] = appUser
+  // Best-effort: also populate the Airtable collaborator + team link for existing views.
+  try {
+    const member = await resolveTeamMember(appUser)
+    if (member) {
+      fields[F.users] = [member.recordId]
+      if (member.collabId) fields[F.user] = { id: member.collabId }
+    }
+  } catch { /* non-blocking */ }
   const res = await fetch(`${API_BASE}/${TIMELOG_BASE_ID}/${TIMELOG_TABLE_ID}`, {
     method: 'POST',
     headers: { ...authHeader(), 'Content-Type': 'application/json' },
@@ -200,13 +209,13 @@ export async function createTimeLog(member: TeamMember, input: {
   return mapEntry((await res.json()) as RawRecord)
 }
 
-export async function updateTimeLog(member: TeamMember, id: string, input: {
+export async function updateTimeLog(id: string, input: {
   date?: string
   durationSeconds?: number
   projetId?: string | null
   description?: string | null
 }): Promise<TimeLogEntry> {
-  const fields = buildFields(member, input)
+  const fields = buildFields(input)
   const res = await fetch(`${API_BASE}/${TIMELOG_BASE_ID}/${TIMELOG_TABLE_ID}/${id}`, {
     method: 'PATCH',
     headers: { ...authHeader(), 'Content-Type': 'application/json' },

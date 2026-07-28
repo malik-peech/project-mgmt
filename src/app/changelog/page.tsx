@@ -17,6 +17,7 @@ const RELEASES: Release[] = [
       'Vues Jour / Semaine / Mois avec total par jour et repérage des jours non cloqués (en rouge/orange)',
       'Calendrier : glisser un log vers un autre jour, étirer le bas d\'un log pour changer sa durée, clic droit pour dupliquer/supprimer',
       'Données stockées dans la table Time log (Airtable) — durée + projet + note',
+      'Clocking : association via le champ « App user » (créé automatiquement) — plus fiable, chaque PM retrouve ses logs quel que soit son nom',
     ],
   },
   {

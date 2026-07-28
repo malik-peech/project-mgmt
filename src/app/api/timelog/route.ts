@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { ensureStore, buildLookupMap } from '@/lib/store'
 import { sanitize } from '@/lib/sanitize'
-import { resolveTeamMember, listTimeLogs, createTimeLog, type TimeLogEntry } from '@/lib/timelog'
+import { listTimeLogs, createTimeLog, type TimeLogEntry } from '@/lib/timelog'
 
 /** Attach projet ref / name / client to a raw time-log entry (from the store). */
 async function enrich(entries: TimeLogEntry[]) {
@@ -35,12 +35,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'user, from, to requis' }, { status: 400 })
     }
 
-    const member = await resolveTeamMember(user)
-    if (!member) {
-      return NextResponse.json(sanitize({ linked: false, entries: [] }))
-    }
-
-    const entries = await listTimeLogs(member, from, to)
+    const entries = await listTimeLogs(user, from, to)
     const enriched = await enrich(entries)
     return NextResponse.json(sanitize({ linked: true, entries: enriched }), {
       headers: { 'Cache-Control': 'no-store' },
@@ -61,11 +56,7 @@ export async function POST(request: Request) {
     if (!user || !date || !durationSeconds) {
       return NextResponse.json({ error: 'user, date, durationSeconds requis' }, { status: 400 })
     }
-    const member = await resolveTeamMember(String(user))
-    if (!member) {
-      return NextResponse.json({ error: 'Compte non relié à la table Time log' }, { status: 422 })
-    }
-    const created = await createTimeLog(member, {
+    const created = await createTimeLog(String(user), {
       date: String(date),
       durationSeconds: Number(durationSeconds),
       projetId: projetId || null,
