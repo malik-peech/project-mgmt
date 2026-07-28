@@ -415,6 +415,8 @@ function WeekView({ from, byDate, totalFor, onDayClick, onDropToDay, onContext, 
         const logs = byDate.get(ds) ?? []
         const total = totalFor(ds)
         const empty = total === 0
+        const gap = Math.max(0, DAY_TARGET_SECONDS - total)
+        const gapHeight = Math.max(44, Math.round((gap / 3600) * HOUR_PX))
         return (
           <div key={ds}
             onClick={() => onDayClick(ds)}
@@ -438,10 +440,15 @@ function WeekView({ from, byDate, totalFor, onDayClick, onDropToDay, onContext, 
                   </div>
                 )
               })}
-              {empty && (
-                <p className="text-[11px] text-red-400 text-center pt-6 flex flex-col items-center gap-1">
-                  <Plus className="w-4 h-4" /> Clique pour clocker
-                </p>
+              {gap > 0 && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDayClick(ds) }}
+                  style={{ height: gapHeight }}
+                  className="w-full rounded-md border-2 border-dashed border-red-200 bg-red-50/60 hover:bg-red-50 text-red-400 hover:text-red-500 text-[10px] font-medium flex flex-col items-center justify-center gap-0.5 transition"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {empty ? 'Clique pour clocker' : `Il manque ${fmtDur(gap)}`}
+                </button>
               )}
             </div>
           </div>
