@@ -532,7 +532,11 @@ function WeekView({ from, byDate, totalFor, tasksByDate, onDayClick, onLogTask, 
                 <div className="space-y-1.5">
                   {(tasksByDate.get(ds) ?? []).map((t) => (
                     <div key={t.id} className="rounded-md bg-gray-50 px-1.5 py-1">
-                      <p className="text-[10px] text-gray-700 truncate mb-1" title={t.name}>{t.name}</p>
+                      <div className="flex items-center gap-1">
+                        {t.projetRef && <span className="font-mono text-[9px] font-bold text-gray-800 shrink-0">{t.projetRef}</span>}
+                        {t.clientName && <span className="text-[9px] text-gray-400 truncate">· {t.clientName}</span>}
+                      </div>
+                      <p className="text-[10px] text-gray-600 truncate mb-1" title={t.name}>{t.name}</p>
                       <QuickChips size="xs" onLog={(sec) => onLogTask(t, sec)} />
                     </div>
                   ))}
@@ -683,10 +687,11 @@ function DayView({ dateStr, logs, total, dayTasks, myProjects, onAddClick, onLog
               <div className="space-y-1.5">
                 {dayTasks.map((t) => (
                   <div key={t.id} className="rounded-lg border border-gray-100 px-2.5 py-2">
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      {t.projetRef && <span className="font-mono text-[10px] text-gray-400 shrink-0">{t.projetRef}</span>}
-                      <span className="text-xs text-gray-700 truncate" title={t.name}>{t.name}</span>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      {t.projetRef && <span className="font-mono text-[10px] font-bold text-gray-800 shrink-0">{t.projetRef}</span>}
+                      {t.clientName && <span className="text-[10px] text-gray-400 truncate">· {t.clientName}</span>}
                     </div>
+                    <p className="text-xs text-gray-700 truncate mb-1.5" title={t.name}>{t.name}</p>
                     <QuickChips onLog={(sec) => onLog(t.projetId || '', sec, t.name)} />
                   </div>
                 ))}
