@@ -12,6 +12,7 @@ import type { TimeLog, Projet, Task } from '@/types'
 
 // Compact durations for one-click logging from tasks / projects helpers.
 const INLINE_DURATIONS: { label: string; seconds: number }[] = [
+  { label: '15m', seconds: 900 },
   { label: '30m', seconds: 1800 },
   { label: '1h', seconds: 3600 },
   { label: '2h', seconds: 7200 },
@@ -75,8 +76,8 @@ export default function ClockingPage() {
   const [desc, setDesc] = useState('')
   const [saving, setSaving] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; log: TimeLog } | null>(null)
-  // Date (YYYY-MM-DD) for the click-to-add popup, or null when closed.
-  const [addModal, setAddModal] = useState<string | null>(null)
+  // Click-to-add popup: target date + optional prefilled project/note, or null.
+  const [addModal, setAddModal] = useState<{ date: string; projId?: string; note?: string } | null>(null)
 
   // Visible range → [from, to]
   const [from, to] = useMemo<[string, string]>(() => {
@@ -298,8 +299,9 @@ export default function ClockingPage() {
             <div className="h-64 bg-gray-100 rounded-xl animate-pulse" />
           ) : view === 'semaine' ? (
             <WeekView from={from} byDate={byDate} totalFor={totalFor} tasksByDate={tasksByDate}
-              onDayClick={(d) => setAddModal(d)}
+              onDayClick={(d) => setAddModal({ date: d })}
               onLogTask={(t, sec) => createLog((t.dueDate || ymd(anchor)).substring(0, 10), sec, t.projetId || '', t.name)}
+              onCustomTask={(t) => setAddModal({ date: (t.dueDate || ymd(anchor)).substring(0, 10), projId: t.projetId, note: t.name })}
               onDropToDay={(id, dateStr) => patchLog(id, { date: dateStr })}
               onContext={(e, log) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, log }) }}
               startResize={(id, e, sec) => { resizeRef.current = { id, startY: e.clientY, startSec: sec }; setResizePreview({ id, sec }) }}
@@ -307,14 +309,15 @@ export default function ClockingPage() {
             />
           ) : view === 'mois' ? (
             <MonthView anchor={anchor} byDate={byDate} totalFor={totalFor}
-              onDayClick={(d) => setAddModal(d)}
+              onDayClick={(d) => setAddModal({ date: d })}
               onDropToDay={(id, dateStr) => patchLog(id, { date: dateStr })}
             />
           ) : (
             <DayView dateStr={ymd(anchor)} logs={byDate.get(ymd(anchor)) ?? []} total={totalFor(ymd(anchor))}
               dayTasks={tasksByDate.get(ymd(anchor)) ?? []} myProjects={myProjects}
-              onAddClick={() => setAddModal(ymd(anchor))}
+              onAddClick={() => setAddModal({ date: ymd(anchor) })}
               onLog={(projId, sec, note) => createLog(ymd(anchor), sec, projId, note)}
+              onCustom={(projId, note) => setAddModal({ date: ymd(anchor), projId, note })}
               onContext={(e, log) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, log }) }}
               startResize={(id, e, sec) => { resizeRef.current = { id, startY: e.clientY, startSec: sec }; setResizePreview({ id, sec }) }}
               resizePreview={resizePreview}
@@ -334,11 +337,13 @@ export default function ClockingPage() {
 
       {addModal && (
         <AddLogModal
-          date={addModal}
+          date={addModal.date}
+          initialProjId={addModal.projId}
+          initialNote={addModal.note}
           projetOptions={projetOptions}
           saving={saving}
           onClose={() => setAddModal(null)}
-          onCreate={(projId, seconds, note) => { createLog(addModal, seconds, projId, note); setAddModal(null) }}
+          onCreate={(projId, seconds, note) => { createLog(addModal.date, seconds, projId, note); setAddModal(null) }}
         />
       )}
     </div>
@@ -346,15 +351,17 @@ export default function ClockingPage() {
 }
 
 /* ─── Click-to-add popup ─── */
-function AddLogModal({ date, projetOptions, saving, onClose, onCreate }: {
+function AddLogModal({ date, projetOptions, saving, onClose, onCreate, initialProjId, initialNote }: {
   date: string
   projetOptions: { value: string; label: string; sub?: string }[]
   saving: boolean
   onClose: () => void
   onCreate: (projId: string, seconds: number, note: string) => void
+  initialProjId?: string
+  initialNote?: string
 }) {
-  const [projId, setProjId] = useState('')
-  const [note, setNote] = useState('')
+  const [projId, setProjId] = useState(initialProjId || '')
+  const [note, setNote] = useState(initialNote || '')
   const [h, setH] = useState('')
   const [m, setM] = useState('')
   const customSec = (parseInt(h || '0', 10) * 3600) + (parseInt(m || '0', 10) * 60)
@@ -444,7 +451,7 @@ function LogPill({ log, height, onContext, onResizeStart, previewSec }: {
 }
 
 /* ─── One-click duration chips (log from a task/project) ─── */
-function QuickChips({ onLog, size = 'sm' }: { onLog: (seconds: number) => void; size?: 'sm' | 'xs' }) {
+function QuickChips({ onLog, onCustom, size = 'sm' }: { onLog: (seconds: number) => void; onCustom?: () => void; size?: 'sm' | 'xs' }) {
   const cls = size === 'xs' ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[11px]'
   return (
     <div className="flex flex-wrap gap-1 shrink-0">
@@ -454,6 +461,13 @@ function QuickChips({ onLog, size = 'sm' }: { onLog: (seconds: number) => void; 
           {d.label}
         </button>
       ))}
+      {onCustom && (
+        <button onClick={(e) => { e.stopPropagation(); onCustom() }}
+          className={`${cls} rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition font-medium`}
+          title="Durée personnalisée">
+          perso…
+        </button>
+      )}
     </div>
   )
 }
@@ -464,13 +478,14 @@ function DayTotal({ seconds }: { seconds: number }) {
 }
 
 /* ─── Week view ─── */
-function WeekView({ from, byDate, totalFor, tasksByDate, onDayClick, onLogTask, onDropToDay, onContext, startResize, resizePreview }: {
+function WeekView({ from, byDate, totalFor, tasksByDate, onDayClick, onLogTask, onCustomTask, onDropToDay, onContext, startResize, resizePreview }: {
   from: string
   byDate: Map<string, TimeLog[]>
   totalFor: (d: string) => number
   tasksByDate: Map<string, Task[]>
   onDayClick: (d: string) => void
   onLogTask: (task: Task, seconds: number) => void
+  onCustomTask: (task: Task) => void
   onDropToDay: (id: string, dateStr: string) => void
   onContext: (e: React.MouseEvent, log: TimeLog) => void
   startResize: (id: string, e: React.MouseEvent, sec: number) => void
@@ -504,7 +519,8 @@ function WeekView({ from, byDate, totalFor, tasksByDate, onDayClick, onLogTask, 
               {logs.map((log) => {
                 const preview = resizePreview?.id === log.id ? resizePreview.sec : undefined
                 const sec = preview ?? log.durationSeconds
-                const h = Math.max(30, Math.round((sec / 3600) * HOUR_PX))
+                // Min height keeps small durations readable (ref + client + durée).
+                const h = Math.max(48, Math.round((sec / 3600) * HOUR_PX))
                 return (
                   <div key={log.id} onClick={(e) => e.stopPropagation()}>
                     <LogPill log={log} height={h} onContext={onContext} onResizeStart={startResize} previewSec={preview} />
@@ -537,7 +553,7 @@ function WeekView({ from, byDate, totalFor, tasksByDate, onDayClick, onLogTask, 
                         {t.clientName && <span className="text-[9px] text-gray-400 truncate">· {t.clientName}</span>}
                       </div>
                       <p className="text-[10px] text-gray-600 truncate mb-1" title={t.name}>{t.name}</p>
-                      <QuickChips size="xs" onLog={(sec) => onLogTask(t, sec)} />
+                      <QuickChips size="xs" onLog={(sec) => onLogTask(t, sec)} onCustom={() => onCustomTask(t)} />
                     </div>
                   ))}
                 </div>
@@ -611,7 +627,7 @@ function MonthView({ anchor, byDate, totalFor, onDayClick, onDropToDay }: {
 }
 
 /* ─── Day view ─── */
-function DayView({ dateStr, logs, total, dayTasks, myProjects, onAddClick, onLog, onContext, startResize, resizePreview }: {
+function DayView({ dateStr, logs, total, dayTasks, myProjects, onAddClick, onLog, onCustom, onContext, startResize, resizePreview }: {
   dateStr: string
   logs: TimeLog[]
   total: number
@@ -619,6 +635,7 @@ function DayView({ dateStr, logs, total, dayTasks, myProjects, onAddClick, onLog
   myProjects: Projet[]
   onAddClick: () => void
   onLog: (projId: string, seconds: number, note: string) => void
+  onCustom: (projId: string, note: string) => void
   onContext: (e: React.MouseEvent, log: TimeLog) => void
   startResize: (id: string, e: React.MouseEvent, sec: number) => void
   resizePreview: { id: string; sec: number } | null
@@ -692,7 +709,7 @@ function DayView({ dateStr, logs, total, dayTasks, myProjects, onAddClick, onLog
                       {t.clientName && <span className="text-[10px] text-gray-400 truncate">· {t.clientName}</span>}
                     </div>
                     <p className="text-xs text-gray-700 truncate mb-1.5" title={t.name}>{t.name}</p>
-                    <QuickChips onLog={(sec) => onLog(t.projetId || '', sec, t.name)} />
+                    <QuickChips onLog={(sec) => onLog(t.projetId || '', sec, t.name)} onCustom={() => onCustom(t.projetId || '', t.name)} />
                   </div>
                 ))}
               </div>
@@ -710,7 +727,7 @@ function DayView({ dateStr, logs, total, dayTasks, myProjects, onAddClick, onLog
                     {p.ref && <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>}
                     <span className="text-xs text-gray-700 truncate" title={p.nom}>{p.nom}</span>
                   </div>
-                  <QuickChips onLog={(sec) => onLog(p.id, sec, '')} />
+                  <QuickChips onLog={(sec) => onLog(p.id, sec, '')} onCustom={() => onCustom(p.id, '')} />
                 </div>
               ))}
               {myProjects.length === 0 && <p className="text-[11px] text-gray-300">Aucun projet.</p>}

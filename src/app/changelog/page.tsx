@@ -16,6 +16,7 @@ const RELEASES: Release[] = [
       'Tasks : bouton « + Ajouter une task » sous chaque bloc projet (création rapide directement rattachée au projet)',
       'Clocking : les tasks prévues le jour s\'affichent en vues jour et semaine — un clic sur une durée logue le temps sur le projet de la task',
       'Clocking · vue jour : liste « Mes projets » avec durées cliquables pour un ajout rapide',
+      'Clocking : chips rapides enrichis (15 min + « perso… » pour une durée personnalisée) ; vue semaine — pills à hauteur mini lisible même pour les petites durées',
     ],
   },
   {
