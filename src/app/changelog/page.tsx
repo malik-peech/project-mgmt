@@ -10,6 +10,15 @@ interface Release {
 
 const RELEASES: Release[] = [
   {
+    version: '1.32',
+    date: '28/07/2026',
+    changes: [
+      'Tasks : bouton « + Ajouter une task » sous chaque bloc projet (création rapide directement rattachée au projet)',
+      'Clocking : les tasks prévues le jour s\'affichent en vues jour et semaine — un clic sur une durée logue le temps sur le projet de la task',
+      'Clocking · vue jour : liste « Mes projets » avec durées cliquables pour un ajout rapide',
+    ],
+  },
+  {
     version: '1.31',
     date: '28/07/2026',
     changes: [

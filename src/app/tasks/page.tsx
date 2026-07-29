@@ -141,6 +141,9 @@ export default function TasksPage() {
   const [inlineType, setInlineType] = useState('')
   const [inlinePriority, setInlinePriority] = useState('')
   const [inlineCreating, setInlineCreating] = useState(false)
+  // Per-project inline add (the "+ Ajouter une task" under a project block)
+  const [addGroupId, setAddGroupId] = useState<string | null>(null)
+  const [addGroupName, setAddGroupName] = useState('')
 
   // Form state (modal)
   const [form, setForm] = useState({ name: '', projetId: '', type: '' as string, priority: '' as string, dueDate: '', description: '' })
@@ -420,6 +423,32 @@ export default function TasksPage() {
         setInlinePriority('')
       }
     } catch {} finally { setInlineCreating(false) }
+  }
+
+  // Quick-add a task directly under a project block (the per-project "+").
+  const createTaskForProject = async (projetId: string, name: string) => {
+    if (!name.trim() || !projetId) return
+    const d = new Date()
+    const body: Record<string, string> = {
+      name: name.trim(),
+      projetId,
+      dueDate: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+    }
+    if (userName) body.assigneManuel = userName
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        const newTask = await res.json()
+        mutateTasks((prev) => [newTask, ...(prev ?? [])])
+      }
+    } catch {} finally {
+      setAddGroupName('')
+      setAddGroupId(null)
+    }
   }
 
   // Set of project IDs where the current user is PM or DA
@@ -1025,6 +1054,32 @@ export default function TasksPage() {
               )}
             </div>
           )})}
+              {/* Per-project quick add */}
+              {group.projetId && (
+                <div className="px-4 py-2">
+                  {addGroupId === group.projetId ? (
+                    <input
+                      autoFocus
+                      value={addGroupName}
+                      onChange={(e) => setAddGroupName(e.target.value)}
+                      onBlur={() => { if (addGroupName.trim()) createTaskForProject(group.projetId!, addGroupName); else setAddGroupId(null) }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') createTaskForProject(group.projetId!, addGroupName)
+                        if (e.key === 'Escape') { setAddGroupName(''); setAddGroupId(null) }
+                      }}
+                      placeholder="Nouvelle task pour ce projet — Entrée pour valider"
+                      className="w-full text-sm border border-indigo-300 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => { setAddGroupId(group.projetId!); setAddGroupName('') }}
+                      className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-indigo-600 transition py-0.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Ajouter une task
+                    </button>
+                  )}
+                </div>
+              )}
               </div>
             </div>
           ))}

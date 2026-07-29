@@ -6,9 +6,17 @@ import { useData } from '@/hooks/useData'
 import ComboSelect from '@/components/ComboSelect'
 import ContextMenu from '@/components/ContextMenu'
 import {
-  Clock, ChevronLeft, ChevronRight, Plus, Copy, Trash2, AlertTriangle, Loader2, CalendarDays,
+  Clock, ChevronLeft, ChevronRight, Plus, Copy, Trash2, AlertTriangle, Loader2, CalendarDays, ListTodo, FolderKanban,
 } from 'lucide-react'
-import type { TimeLog, Projet } from '@/types'
+import type { TimeLog, Projet, Task } from '@/types'
+
+// Compact durations for one-click logging from tasks / projects helpers.
+const INLINE_DURATIONS: { label: string; seconds: number }[] = [
+  { label: '30m', seconds: 1800 },
+  { label: '1h', seconds: 3600 },
+  { label: '2h', seconds: 7200 },
+  { label: '4h', seconds: 14400 },
+]
 
 // Preset durations (labels align with the Airtable "Time range" options).
 const DURATION_PRESETS: { label: string; seconds: number }[] = [
@@ -88,6 +96,10 @@ export default function ClockingPage() {
     ready ? '/api/projets' : null,
     { key: 'projets-all', enabled: ready, staleTime: 60_000 }
   )
+  const { data: tasks } = useData<Task[]>(
+    ready ? `/api/tasks?pm=${encodeURIComponent(userName)}` : null,
+    { key: `tasks-clocking-${userName}`, enabled: ready, staleTime: 60_000 }
+  )
 
   const linked = data?.linked !== false
   const entries = useMemo(() => data?.entries ?? [], [data])
@@ -105,18 +117,36 @@ export default function ClockingPage() {
   const totalFor = useCallback((dateStr: string) =>
     (byDate.get(dateStr) ?? []).reduce((s, e) => s + (e.durationSeconds || 0), 0), [byDate])
 
-  // Seule la liste des projets du PM (statut ≠ Done) + le projet générique 1789.
-  const projetOptions = useMemo(() => {
+  // Projets du PM (statut ≠ Done) + le projet générique 1789.
+  const myProjects = useMemo(() => {
     const all = projets ?? []
     const mine = all.filter((p) => p.statut !== 'Done' && p.pm === userName)
     const p1789 = all.find((p) => p.ref === '1789')
-    const list = p1789 && !mine.some((p) => p.id === p1789.id) ? [...mine, p1789] : mine
-    return list.map((p) => ({
+    return p1789 && !mine.some((p) => p.id === p1789.id) ? [...mine, p1789] : mine
+  }, [projets, userName])
+
+  const projetOptions = useMemo(() =>
+    myProjects.map((p) => ({
       value: p.id,
       label: `${p.ref ? p.ref + ' · ' : ''}${p.nom || '—'}`,
       sub: [p.ref, p.clientName].filter(Boolean).join(' · ') || undefined,
-    }))
-  }, [projets, userName])
+    })),
+    [myProjects]
+  )
+
+  // The user's tasks grouped by day (dueDate), to surface "what I did that day".
+  const tasksByDate = useMemo(() => {
+    const m = new Map<string, Task[]>()
+    for (const t of tasks ?? []) {
+      if (t.assigneManuel !== userName) continue
+      const d = (t.dueDate || '').substring(0, 10)
+      if (!d) continue
+      const list = m.get(d) ?? []
+      list.push(t)
+      m.set(d, list)
+    }
+    return m
+  }, [tasks, userName])
 
   // ── mutations ──
   const createLog = async (dateStr: string, durationSeconds: number, projId: string, description: string) => {
@@ -267,8 +297,9 @@ export default function ClockingPage() {
           {loading && !data ? (
             <div className="h-64 bg-gray-100 rounded-xl animate-pulse" />
           ) : view === 'semaine' ? (
-            <WeekView from={from} byDate={byDate} totalFor={totalFor}
+            <WeekView from={from} byDate={byDate} totalFor={totalFor} tasksByDate={tasksByDate}
               onDayClick={(d) => setAddModal(d)}
+              onLogTask={(t, sec) => createLog((t.dueDate || ymd(anchor)).substring(0, 10), sec, t.projetId || '', t.name)}
               onDropToDay={(id, dateStr) => patchLog(id, { date: dateStr })}
               onContext={(e, log) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, log }) }}
               startResize={(id, e, sec) => { resizeRef.current = { id, startY: e.clientY, startSec: sec }; setResizePreview({ id, sec }) }}
@@ -281,7 +312,9 @@ export default function ClockingPage() {
             />
           ) : (
             <DayView dateStr={ymd(anchor)} logs={byDate.get(ymd(anchor)) ?? []} total={totalFor(ymd(anchor))}
+              dayTasks={tasksByDate.get(ymd(anchor)) ?? []} myProjects={myProjects}
               onAddClick={() => setAddModal(ymd(anchor))}
+              onLog={(projId, sec, note) => createLog(ymd(anchor), sec, projId, note)}
               onContext={(e, log) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, log }) }}
               startResize={(id, e, sec) => { resizeRef.current = { id, startY: e.clientY, startSec: sec }; setResizePreview({ id, sec }) }}
               resizePreview={resizePreview}
@@ -410,17 +443,34 @@ function LogPill({ log, height, onContext, onResizeStart, previewSec }: {
   )
 }
 
+/* ─── One-click duration chips (log from a task/project) ─── */
+function QuickChips({ onLog, size = 'sm' }: { onLog: (seconds: number) => void; size?: 'sm' | 'xs' }) {
+  const cls = size === 'xs' ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[11px]'
+  return (
+    <div className="flex flex-wrap gap-1 shrink-0">
+      {INLINE_DURATIONS.map((d) => (
+        <button key={d.label} onClick={(e) => { e.stopPropagation(); onLog(d.seconds) }}
+          className={`${cls} rounded-full bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white transition font-medium`}>
+          {d.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function DayTotal({ seconds }: { seconds: number }) {
   const color = seconds === 0 ? 'text-red-500' : seconds < DAY_TARGET_SECONDS ? 'text-amber-600' : 'text-green-600'
   return <span className={`text-[11px] font-semibold tabular-nums ${color}`}>{seconds === 0 ? 'Non clocké' : fmtDur(seconds)}</span>
 }
 
 /* ─── Week view ─── */
-function WeekView({ from, byDate, totalFor, onDayClick, onDropToDay, onContext, startResize, resizePreview }: {
+function WeekView({ from, byDate, totalFor, tasksByDate, onDayClick, onLogTask, onDropToDay, onContext, startResize, resizePreview }: {
   from: string
   byDate: Map<string, TimeLog[]>
   totalFor: (d: string) => number
+  tasksByDate: Map<string, Task[]>
   onDayClick: (d: string) => void
+  onLogTask: (task: Task, seconds: number) => void
   onDropToDay: (id: string, dateStr: string) => void
   onContext: (e: React.MouseEvent, log: TimeLog) => void
   startResize: (id: string, e: React.MouseEvent, sec: number) => void
@@ -472,6 +522,23 @@ function WeekView({ from, byDate, totalFor, onDayClick, onDropToDay, onContext, 
                 </button>
               )}
             </div>
+
+            {/* Tasks du jour — clique une durée pour loguer */}
+            {(tasksByDate.get(ds) ?? []).length > 0 && (
+              <div className="mt-3 pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+                <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <ListTodo className="w-3 h-3" /> Tasks du jour
+                </p>
+                <div className="space-y-1.5">
+                  {(tasksByDate.get(ds) ?? []).map((t) => (
+                    <div key={t.id} className="rounded-md bg-gray-50 px-1.5 py-1">
+                      <p className="text-[10px] text-gray-700 truncate mb-1" title={t.name}>{t.name}</p>
+                      <QuickChips size="xs" onLog={(sec) => onLogTask(t, sec)} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )
       })}
@@ -540,11 +607,14 @@ function MonthView({ anchor, byDate, totalFor, onDayClick, onDropToDay }: {
 }
 
 /* ─── Day view ─── */
-function DayView({ dateStr, logs, total, onAddClick, onContext, startResize, resizePreview }: {
+function DayView({ dateStr, logs, total, dayTasks, myProjects, onAddClick, onLog, onContext, startResize, resizePreview }: {
   dateStr: string
   logs: TimeLog[]
   total: number
+  dayTasks: Task[]
+  myProjects: Projet[]
   onAddClick: () => void
+  onLog: (projId: string, seconds: number, note: string) => void
   onContext: (e: React.MouseEvent, log: TimeLog) => void
   startResize: (id: string, e: React.MouseEvent, sec: number) => void
   resizePreview: { id: string; sec: number } | null
@@ -552,7 +622,7 @@ function DayView({ dateStr, logs, total, onAddClick, onContext, startResize, res
   const gap = Math.max(0, DAY_TARGET_SECONDS - total)
   const gapHeight = Math.max(56, Math.round((gap / 3600) * HOUR_PX))
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 max-w-3xl">
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 max-w-6xl">
       <div className="flex items-center justify-between mb-4">
         <span className="text-sm font-semibold text-gray-700 capitalize">{parseLocal(dateStr).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
         <div className="flex items-center gap-2">
@@ -561,9 +631,9 @@ function DayView({ dateStr, logs, total, onAddClick, onContext, startResize, res
         </div>
       </div>
 
-      <div className="flex gap-6">
+      <div className="flex gap-6 flex-wrap">
         {/* Timeline column — logged blocks + pale-red missing space */}
-        <div className="w-52 shrink-0 space-y-1.5">
+        <div className="w-44 shrink-0 space-y-1.5">
           {logs.map((log) => {
             const preview = resizePreview?.id === log.id ? resizePreview.sec : undefined
             const sec = preview ?? log.durationSeconds
@@ -583,7 +653,7 @@ function DayView({ dateStr, logs, total, onAddClick, onContext, startResize, res
         </div>
 
         {/* Detail list */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-[200px]">
           {logs.length === 0 ? (
             <p className="text-sm text-gray-400 py-8 text-center">Aucun temps clocké ce jour — clique dans la zone rouge pour ajouter.</p>
           ) : (
@@ -601,6 +671,46 @@ function DayView({ dateStr, logs, total, onAddClick, onContext, startResize, res
               ))}
             </div>
           )}
+        </div>
+
+        {/* Helper: tasks of the day + my projects, one-click log */}
+        <div className="w-72 shrink-0 space-y-4">
+          {dayTasks.length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <ListTodo className="w-3.5 h-3.5" /> Tasks du jour
+              </p>
+              <div className="space-y-1.5">
+                {dayTasks.map((t) => (
+                  <div key={t.id} className="rounded-lg border border-gray-100 px-2.5 py-2">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      {t.projetRef && <span className="font-mono text-[10px] text-gray-400 shrink-0">{t.projetRef}</span>}
+                      <span className="text-xs text-gray-700 truncate" title={t.name}>{t.name}</span>
+                    </div>
+                    <QuickChips onLog={(sec) => onLog(t.projetId || '', sec, t.name)} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <FolderKanban className="w-3.5 h-3.5" /> Mes projets
+            </p>
+            <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-1">
+              {myProjects.map((p) => (
+                <div key={p.id} className="rounded-lg border border-gray-100 px-2.5 py-2">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    {p.ref && <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>}
+                    <span className="text-xs text-gray-700 truncate" title={p.nom}>{p.nom}</span>
+                  </div>
+                  <QuickChips onLog={(sec) => onLog(p.id, sec, '')} />
+                </div>
+              ))}
+              {myProjects.length === 0 && <p className="text-[11px] text-gray-300">Aucun projet.</p>}
+            </div>
+          </div>
         </div>
       </div>
     </div>
